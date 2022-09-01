@@ -1,0 +1,124 @@
+package ui
+
+import utils.Constants
+import Graph
+import Node
+import graph_tools.Plotter
+import org.jetbrains.annotations.Nullable
+import utils.Vector2
+import java.awt.*
+import java.awt.event.MouseEvent
+import java.awt.geom.Point2D
+import java.time.Instant
+
+
+object Clicker {
+    fun Vector2.isInSquare(lt: Vector2, br: Vector2, tolerance: Double): Boolean {
+        val xMatches = lt.x - tolerance < this.x && this.x < br.x + tolerance
+        val yMatches = lt.y - tolerance < this.y && this.y < br.y + tolerance
+        return xMatches && yMatches
+    }
+
+    fun selectClickedNode(g: Graph, clickCoordinates: Vector2): MutableSet<Node> {
+        return g.nodes
+            .minByOrNull { (it.position - clickCoordinates).lengthSquared() }
+            ?.let {
+                it.cache?.shapeBounds?.let { bounds ->
+                    if (clickCoordinates.isInSquare(
+                            it.position - bounds / 2,
+                            it.position + bounds / 2,
+                            10.0 / Plotter.t.scaleX.toDouble()
+                        )
+                    ) {
+                        mutableSetOf(it)
+                    } else {
+                        null
+                    }
+                }
+            }
+            ?: mutableSetOf()
+    }
+}
+
+object Utils {
+    fun MouseEvent.toScreenspaceVector(): Vector2 =  Vector2(this.x.toDouble(), this.y.toDouble())
+    fun MouseEvent.toWorkspaceVector(): Vector2 {
+        var pt = Point2D.Double(this.x.toDouble() + Constants.frameMargin, this.y.toDouble() + Constants.frameMargin)
+        var res = Plotter.t.inverseTransform(pt, null)
+        return Vector2(res.x.toDouble(), res.y.toDouble())
+    }
+
+    fun Vector2.toWorkspaceVector(): Vector2 {
+        var pt = Point2D.Double(this.x.toDouble() + utils.Constants.frameMargin, this.y.toDouble() + utils.Constants.frameMargin)
+        var res = Plotter.t.inverseTransform(pt, null)
+        return Vector2(res.x.toDouble(), res.y.toDouble())
+    }
+
+    fun Vector2.toScreenVector(): Vector2 {
+        var pt = Point2D.Double(this.x.toDouble(), this.y.toDouble())
+        var res = Plotter.t.transform(pt, null)
+        return Vector2(res.x.toDouble() - Constants.frameMargin, res.y.toDouble() - Constants.frameMargin)
+    }
+
+    fun Vector2.workspaceSizeTransform(): Vector2 {
+        return this * Plotter.t.scaleX.toDouble()
+    }
+
+    fun <T> T?.orElse(t: T): T = this ?: t
+
+    fun <T> T?.orElse(t: () -> T): T = this ?: t()
+    fun <T> T.exhaustive(): T = this
+    fun <K, V> Map<K, V>.inverseMap() = map { Pair(it.value, it.key) }.toMap().toMutableMap()
+
+    fun <T : Any> T.letIf(condition: Boolean, f: (T)->T): T = if(condition) f(this) else this
+    fun <T : Nullable> T.letIf(condition: Boolean, f: (T)->T): T = if(condition) f(this) else this
+
+    //fun <T> T?.letIf(condition: Boolean, f: (T?)->T?): T? = if(condition) f(this) else this
+
+    fun <T> T?.isNotNull() = this != null
+
+    fun <T> Boolean.fold(onZero: T, onOne: T): T = if (this) onOne else onZero
+
+    class CachedMap<K, V>(
+        val map: MutableMap<K, V> = mutableMapOf(),
+        val f: (K) -> V,
+    ) {
+        operator fun get(k: K): V {
+            return map[k].orElse {
+                val newElement = f(k)
+                map[k] = newElement
+                newElement
+            }
+        }
+    }
+
+
+    object PerformanceData {
+        val avgTimes: MutableMap<String, Double> = mutableMapOf()
+        fun withPerformanceCheck(id: String, limit: Double, updateWeight: Double = 1.0, onIssue: () -> Unit = {}, f: () -> Unit) {
+            val watchStart = Instant.now()
+
+            f()
+
+            val watchEnd = Instant.now()
+
+            val avgTime =  (avgTimes[id].orElse(0.0)*(1-updateWeight) + (watchEnd.toEpochMilli() - watchStart.toEpochMilli())*updateWeight)
+            avgTimes[id] = avgTime
+            if (avgTime > limit) {
+                println("Performance watch '$id' detected average time of $avgTime!")
+                onIssue()
+                avgTimes[id] = 0.0
+            }
+        }
+    }
+}
+
+fun createAndShowGUI() {
+    val frame = Window("Sane Graph Edit")
+    frame.isVisible = true
+}
+
+fun main(args: Array<String>) {
+    println("Program arguments: ${args.joinToString()}")
+    EventQueue.invokeLater(::createAndShowGUI)
+}

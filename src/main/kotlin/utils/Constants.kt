@@ -1,26 +1,35 @@
+package utils
+
 import java.awt.Color
 
 object Constants {
-    val optimizeAt = 30
+    val stylePickerDimensions = Vector2(500, 300)
+    val wantColorSampler = false
+    val maxZoom = 50.0
+
+    val gravitySpringStrength = 100.0
+    val maxOptimizerMove = 10000.0
+    val minOptimizeMove = 5.0
+
+    val optimizeAt = 100.0
+
 
     val doubletapTimeout = 500
-    val shapeSizeCf = 1.3f
-    val shapeSizeMargin = 15.0f
     val cursorDeadZone = 5
-    val defaultUIScale = 2.0f
-    val arrowLength = 10.0f
-    val connectionDotRadius = 4
+    val defaultUIScale = 2.0
+    val arrowLength = 10.0
+    val arrowheadRadius = 4.0
 
     val defaultNodeText = "New node"
 
     // make the node name edit field a bit bigger than the actual text
-//    val nodeEditorXMargin = 4.0f
-//    val nodeEditorYMargin = 2.0f
+//    val nodeEditorXMargin = 4.0
+//    val nodeEditorYMargin = 2.0
 //    val textRenderYOffset = 10
     //or the same for text field
-    val nodeEditorXMargin = 8.0f
-    val nodeEditorYMargin = 8.0f
-    val textRenderYOffset = 11.5f // magic constant :-/
+    val nodeEditorXMargin = 8.0
+    val nodeEditorYMargin = 8.0
+    val textRenderYOffset = 11.5 // magic constant :-/
 
     const val `😍` = "😍"
 
@@ -30,7 +39,8 @@ object Constants {
 
     //some colors
     val selectedColor = Color(100, 150, 50)
-    val defaultColor = Color(0, 0, 0)
+    val defaultFgColor = Color(0, 0, 0)
+    val defaultBgColor = Color(255, 255, 255)
 
     val helpCommands = """
             Graph manipulation

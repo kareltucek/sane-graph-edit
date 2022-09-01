@@ -1,6 +1,6 @@
-package dotparser
+package parser_dot
 
-import Utils.orElse
+import ui.Utils.orElse
 
 class IdGen {
     val counters: MutableMap<String, Long> = mutableMapOf()
@@ -11,5 +11,9 @@ class IdGen {
         val id = counters[prefix].orElse(0)
         counters[prefix] = id + 1
         return prefix + id.toString()
+    }
+
+    companion object {
+        val global = IdGen()
     }
 }

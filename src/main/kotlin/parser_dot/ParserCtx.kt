@@ -1,44 +1,50 @@
-package dotparser
+package parser_dot
 
 import Edge
 import Graph
-import Lexer
+import DotGraphLoader
 import Node
 
 data class ParserCtx(
     val graph: Graph,
     val idGen: IdGen,
+    val log: ParseLog,
     val nodeStack: MutableList<Node> = mutableListOf(),
     val edgeStack: MutableList<Edge> = mutableListOf(),
     val nodes: MutableMap<String, Node> = mutableMapOf(),
     val edges: MutableMap<String, Edge> = mutableMapOf(),
-
-    ) {
+) {
 
     fun clear() {
         this.edgeStack.clear()
         this.nodeStack.clear()
     }
 
-    fun pushNode(it: Lexer.Token): Node {
-        if (!this.nodes.containsKey(it.value)) {
-            this.nodes[it.value] = Node.fromId(it.value)
-            this.graph.add(nodes[it.value]!!)
+    fun pushNode(it: DotGraphLoader.Token): Node {
+        val id = it.value
+        if (!this.nodes.containsKey(id)) {
+            val n = Node(name = id)
+            this.nodes[id] = n
+            this.graph.add(nodes[id]!!)
+            log.add(LogNodeDefined(id))
         }
 
-        return this.nodes[it.value]!!
+        this.nodeStack.add(this.nodes[id]!!)
+
+        return this.nodes[id]!!
     }
 
-    fun pushEdge(edge: Lexer.Token): Edge? {
+    fun pushEdge(edge: DotGraphLoader.Token): Edge? {
         return this.nodeStack
             .takeLast(2)
             .takeIf { it.size == 2 }
             ?.let { it[0] to it[1] }
             ?.let { (src, dst) ->
                 val id = idGen.new("e")
-                val e = Edge(src = src, dst = dst, id = id)
+                val e = Edge(src = src, dst = dst, name = id)
                 this.graph.add(e)
                 this.edgeStack.add(e)
+                log.add(LogEdgeDefined(id))
                 e
             }
     }
@@ -57,5 +63,8 @@ data class ParserCtx(
                 }
             }
         }
+    }
+
+    fun pushGraphAttribute(tok: DotGraphLoader.Token, attr: DotGraphLoader.Token) {
     }
 }
