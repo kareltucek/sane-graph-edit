@@ -38,7 +38,7 @@ class NodeEditor(
 
         override fun keyPressed(e: KeyEvent) {
             when (e.keyCode) {
-                KeyEvent.VK_ESCAPE -> endNodeEdit()
+                KeyEvent.VK_ESCAPE -> parent.endNodeEdit()
             }
         }
 
@@ -126,7 +126,6 @@ class NodeEditor(
     fun endNodeEdit() {
         if (editedNode != null) {
             editedNode!!.attributes.text = this.text
-            parent.repaint()
             editedNode = null
         }
     }
