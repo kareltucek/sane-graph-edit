@@ -64,7 +64,7 @@ class NodeEditor(
 
     fun updatePosition(setCaretBy: Vector2? = null) {
         editedNode?.let { n ->
-            val correctedFontSize = Plotter.correctedFontSize()
+            val correctedFontSize = Plotter.screenspaceFontSize()
             this.setFont(this.font.deriveFont(correctedFontSize.toFloat()))
 
             Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
@@ -84,8 +84,8 @@ class NodeEditor(
             } else {
                 setCaretBy?.let { caret ->
                     val fm = this.getFontMetrics(this.font)
-                    val lineIdx = ((caret.y - ul.y) / fm.height).toInt()
-                    val line = n.cache.lines[lineIdx.coerceIn(0, n.cache.lines.size - 1)]
+                    val lineIdx = ((caret.y - ul.y) / fm.height).toInt().coerceIn(0, n.cache.lines.size - 1)
+                    val line = n.cache.lines[lineIdx]
                     //compute specific caret position
                     (0..line.length - 2).find {
                         val s = line.substring(0, it + 1)

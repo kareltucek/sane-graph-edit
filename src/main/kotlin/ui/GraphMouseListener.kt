@@ -125,7 +125,7 @@ class GraphMouseListener(
         graphView.endNodeEdit()
         graphView.endStylePicker()
 
-        val coef = Math.pow(0.99, e.unitsToScroll.toDouble()).toDouble()
+        val coef = Math.pow(Constants.zoomOutStep, e.unitsToScroll.toDouble()).toDouble()
         val maxZoom = Constants.maxZoom
 
         if ((Plotter.t.scaleX > 1/maxZoom || coef > 1.0) && (Plotter.t.scaleX < maxZoom || coef < 1.0)) {

@@ -42,6 +42,14 @@ data class Vector2(val x: Double, val y: Double) {
         )
     }
 
+    fun coerceLength(minOptimizeMove: Double, maxOptimizerMove: Double): Vector2 {
+        val len = this.length()
+        return when {
+            minOptimizeMove <= len && len <= maxOptimizerMove -> this
+            else -> this * len.coerceIn(minOptimizeMove, maxOptimizerMove) / len
+        }
+    }
+
     companion object {
         fun Rectangle2D.toVector2() = Vector2(this.width.toDouble(), this.height.toDouble())
 

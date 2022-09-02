@@ -6,6 +6,7 @@ import parser_dot.IdGen
 import parser_dot.ParseLog
 import ui.Utils.filterNotNull
 import ui.Utils.fromHexString
+import ui.Utils.letIf
 import ui.Utils.orElse
 import ui.Utils.toHexString
 import utils.Constants
@@ -98,6 +99,7 @@ class Node(
         var text: String = "",
         var bg: Color? = null,
         var fg: Color? = null,
+        var scale: Double = 0.0,
         var other: MutableMap<String, String?> = mutableMapOf(),
     ) {
     }
@@ -139,6 +141,13 @@ class Node(
             "label" to attributes.text,
             "pos" to "${position.x},${position.y}",
         ).filterNotNull() + attributes.other.filterNotNull()
+    }
+
+    fun setSize(absolute: Double? = null, relative: Double? = null) {
+        this.attributes.scale = this.attributes.scale
+            .orElse(0.0)
+            .letIf (absolute != null) { absolute!! }
+            .letIf (relative != null) { it + relative!! }
     }
 
     constructor(label: String, pos: Vector2) : this(position = pos, attributes = NodeAttributes(text = label))

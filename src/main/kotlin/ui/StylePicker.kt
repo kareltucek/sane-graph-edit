@@ -173,7 +173,29 @@ class StylePicker(
         plusButton = JButton()
         layout = GridBagLayout()
         ColorPickerPanel!!.layout = GridLayout(0, hues.size)
-
+        gridBagConstraints = GridBagConstraints()
+        gridBagConstraints.fill = GridBagConstraints.BOTH
+        gridBagConstraints.weightx = 1.0
+        gridBagConstraints.weighty = 1.0
+        add(ColorPickerPanel, gridBagConstraints)
+        SizePickerPanel!!.layout = GridLayout()
+        jLabel1!!.text = "Size:"
+        SizePickerPanel!!.add(jLabel1)
+        SizePickerPanel!!.add(jSpinner1)
+        minusButton!!.text = "-"
+        jTextField1!!.text = "jTextField1"
+        jTextField1!!.addActionListener { evt -> jTextField1ActionPerformed(evt) }
+        //jPanel2!!.add(jTextField1)
+        plusButton!!.text = "+"
+        SizePickerPanel!!.add(plusButton)
+        SizePickerPanel!!.add(minusButton)
+        gridBagConstraints = GridBagConstraints()
+        gridBagConstraints.gridx = 0
+        gridBagConstraints.gridy = 1
+        gridBagConstraints.weightx = 0.2
+        gridBagConstraints.weighty = 0.2
+        add(SizePickerPanel, gridBagConstraints)
+        this.border = LineBorder(Color.BLACK)
 
         colorStyles.forEach { style ->
             val b = JButton()
@@ -186,30 +208,22 @@ class StylePicker(
             ColorPickerPanel!!.add(b)
         }
 
-        gridBagConstraints = GridBagConstraints()
-        gridBagConstraints.fill = GridBagConstraints.BOTH
-        gridBagConstraints.weightx = 1.0
-        gridBagConstraints.weighty = 1.0
-        add(ColorPickerPanel, gridBagConstraints)
-        SizePickerPanel!!.layout = GridLayout()
-        jLabel1!!.text = "Size:"
-        SizePickerPanel!!.add(jLabel1)
-        SizePickerPanel!!.add(jSpinner1)
-        minusButton!!.text = "-"
-        //jPanel2!!.add(minusButton)
-        jTextField1!!.text = "jTextField1"
-        jTextField1!!.addActionListener { evt -> jTextField1ActionPerformed(evt) }
-        //jPanel2!!.add(jTextField1)
-        plusButton!!.text = "+"
-        //jPanel2!!.add(plusButton)
-        gridBagConstraints = GridBagConstraints()
-        gridBagConstraints.gridx = 0
-        gridBagConstraints.gridy = 1
-        gridBagConstraints.weightx = 0.2
-        gridBagConstraints.weighty = 0.2
-        add(SizePickerPanel, gridBagConstraints)
-        this.border = LineBorder(Color.BLACK)
+        minusButton!!.addActionListener {
+            setSize(-1.0)
+        }
+        plusButton!!.addActionListener {
+            setSize(1.0)
+        }
+
     } // </editor-fold>
+
+    private fun setSize(s: Double) {
+        parent.g.selectedNodes.forEach {
+            it.setSize(relative = s)
+        }
+        parent.g.needsRecomputing(parent.g.selectedNodes)
+        parent.repaint()
+    }
 
     private fun colorFieldClicked(style: StylePicker.ColorStyle) {
         parent.g.selectedNodes.forEach {

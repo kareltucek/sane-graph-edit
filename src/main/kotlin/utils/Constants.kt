@@ -3,6 +3,7 @@ package utils
 import java.awt.Color
 
 object Constants {
+    val zoomOutStep = 0.95
     val stylePickerDimensions = Vector2(500, 300)
     val wantColorSampler = false
     val maxZoom = 50.0

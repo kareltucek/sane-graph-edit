@@ -13,21 +13,23 @@ import utils.Constants
 import utils.Vector2
 import java.awt.*
 import java.awt.geom.AffineTransform
+import java.lang.Math.pow
 
 object Plotter {
     var t: AffineTransform = AffineTransform()
-    var fontSize: Double = 12.0
+    var defaultFontSize: Double = 12.0
     var renderArrowheads: Boolean = true
     var renderOvals: Boolean = true
     var thinStroke: Stroke = BasicStroke(1.0f)
     var thickStroke: Stroke = BasicStroke(2.0f)
 
-    fun correctedFontSize(): Double = (fontSize * t.scaleY).toDouble()
+    fun screenspaceFontSize(): Double = (defaultFontSize * t.scaleY).toDouble()
+    fun workspaceFontSize(n: Node): Double = (pow(1.3, n.attributes.scale.orElse(0.0)) * defaultFontSize).toDouble()
 
     fun setTransforms(g2d: Graphics2D, optimizationLevel: Int) {
         g2d.transform = t
-        g2d.setFont(g2d.font.deriveFont(fontSize.toFloat()))
-        g2d.setStroke ( BasicStroke(2.0f))
+        g2d.setFont(g2d.font.deriveFont(defaultFontSize.toFloat()))
+        g2d.setStroke(BasicStroke(2.0f))
         renderOvals = optimizationLevel < 2
     }
 
@@ -47,21 +49,30 @@ object Plotter {
     }
 
     fun recomputeNodes(g2d: Graphics2D, nodes: Iterable<Node>) {
-        val (fm, zoom) = when {
-            t.scaleX >= 1.0 -> g2d.fontMetrics to 1.0
-            else -> {
-                // If node is recomputed at too small scale, the dimensions are wrong when we zoom in later.
-                val zoom = 1.0
-                val myTransform = AffineTransform(t).also { it.setToScale(zoom, zoom) }
-                g2d.transform = myTransform
-                val fm = g2d.getFontMetrics(g2d.font)
-                g2d.transform = t
-                fm to zoom
+        nodes.forEach { n ->
+            val (fm, zoom, computeFontSize) = when {
+//            t.scaleX >= 1.0  -> g2d.fontMetrics to 1.0
+//                screenspaceFontSize() >= defaultFontSize -> Triple(g2d.fontMetrics, 1.0, screenspaceFontSize())
+                else -> {
+                    // If node is recomputed at too small scale, the dimensions are wrong when we zoom in later.
+                    val zoom = 1.0
+                    val myTransform = AffineTransform(t).also { it.setToScale(zoom, zoom) }
+                    g2d.transform = myTransform
+                    val fm = g2d.getFontMetrics(g2d.font)
+                    fm to zoom
+                    Triple(g2d.fontMetrics, 1.0, defaultFontSize)
+                }
             }
+
+            val actualFontSize = workspaceFontSize(n)
+            val actualFont = g2d.font.deriveFont(actualFontSize.toFloat())
+            val f = g2d.font.deriveFont(computeFontSize.toFloat())
+            val myfm = g2d.getFontMetrics(f)
+            n.cache.font = actualFont
+            recomputeBounds(n, myfm, (1.0 / zoom * actualFontSize / computeFontSize).toDouble())
         }
 
-        nodes.forEach { recomputeBounds(it, fm, (1.0 / zoom).toDouble()) }
-
+        g2d.transform = t
     }
 
     fun recomputeEdges(edges: Iterable<Edge>) {
@@ -86,7 +97,7 @@ object Plotter {
         fun recomputeEdge(e: Edge) {
             val dir = (e.dst.position - e.src.position).toUnit()
             val cp1 = e.src.cache.shape.connectionPoint(dir, e.src, 0.0)
-            val cp2 = e.dst.cache.shape.connectionPoint(dir, e.dst,Constants.arrowheadRadius)
+            val cp2 = e.dst.cache.shape.connectionPoint(dir, e.dst, Constants.arrowheadRadius)
             val src1 = e.src.position + cp1
             val src2 = e.src.position - cp1
             val dst1 = e.dst.position - cp2
@@ -114,16 +125,16 @@ object Plotter {
                 g2d.fillOval(
                     dst.x.toInt() - r,
                     dst.y.toInt() - r,
-                    r*2,
-                    r*2,
+                    r * 2,
+                    r * 2,
                 )
             } else if (renderArrowheads) {
                 val r = (Constants.arrowheadRadius).toInt()
                 g2d.fillRect(
                     dst.x.toInt() - r,
                     dst.y.toInt() - r,
-                    r*2,
-                    r*2,
+                    r * 2,
+                    r * 2,
                 )
             }
         }
@@ -134,7 +145,7 @@ object Plotter {
 
             g2d.paint = n.attributes.bg.orElse(Constants.defaultBgColor)
 
-            if(selected) {
+            if (selected) {
                 g2d.stroke = thickStroke
             }
 
@@ -144,11 +155,13 @@ object Plotter {
 
             g2d.paint = n.attributes.fg.orElse(Constants.defaultFgColor)
 
+            n.cache.font?.let { g2d.font = it }
+
             bounds.lines.withIndex().forEach { s ->
                 g2d.drawString(
                     s.value,
                     (textPos.x).toFloat(),
-                    (textPos.y + Constants.textRenderYOffset + g2d.fontMetrics.height * s.index).toFloat()
+                    (textPos.y + g2d.fontMetrics.ascent + g2d.fontMetrics.height * s.index).toFloat()
                 )
             }
 
