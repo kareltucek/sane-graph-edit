@@ -1,14 +1,20 @@
 import graph_tools.NodeShape
+import graph_tools.NodeShapeImpl
 import graph_tools.Plotter
-import graph_tools.RectangleShape
 import utils.Vector2.Companion.Zero
 import parser_dot.IdGen
 import parser_dot.ParseLog
+import ui.Utils.filterNotNull
+import ui.Utils.fromHexString
+import ui.Utils.orElse
+import ui.Utils.toHexString
 import utils.Constants
 import utils.Vector2
 import java.awt.Color
 import java.awt.Font
 import java.awt.Graphics2D
+
+
 
 
 class Edge(
@@ -80,10 +86,11 @@ class Node(
     }
 
     data class NodeCache(
-        val textBounds: Vector2 = Zero,
-        val shapeBounds: Vector2 = Zero,
-        val font: Font? = null,
-        val lines: List<String> = emptyList()
+        var textBounds: Vector2 = Zero,
+        var shapeBounds: Vector2 = Zero,
+        var shape: NodeShapeImpl = NodeShape.Rectangle.impl,
+        var font: Font? = null,
+        var lines: List<String> = emptyList()
     )
 
     class NodeAttributes(
@@ -91,17 +98,28 @@ class Node(
         var text: String = "",
         var bg: Color? = null,
         var fg: Color? = null,
-        var shape: NodeShape = NodeShape.Rectangle,
-        var other: MutableMap<String, String> = mutableMapOf(),
+        var other: MutableMap<String, String?> = mutableMapOf(),
     ) {
-        fun setStyle(bg: Color?, fg: Color?) {
-            this.bg = bg
-            this.fg = fg
-        }
+    }
+
+    fun setStyle(bg: Color?, fg: Color?) {
+        this.attributes.bg = bg
+        this.attributes.fg = fg
+    }
+
+    fun setShape(shape: NodeShape?) {
+        this.cache.shape = shape?.impl.orElse(NodeShape.defaultShape.impl)
+        this.attributes.other["shape"] = shape?.id
     }
 
     fun applyAttribute(l: String, r: String) {
         when (l) {
+            "shape" -> {
+                this.cache.shape = NodeShape.values().find { it.id == r }?.impl.orElse(NodeShape.defaultShape.impl)
+                attributes.other[l] = r
+            }
+            "fillcolor" -> attributes.bg = fromHexString(r)
+            "color" -> attributes.fg = fromHexString(r)
             "label" -> attributes.text = r
             "pos" -> r.split(",")
                 .map { it.toDouble() }
@@ -116,9 +134,11 @@ class Node(
 
     fun retrieveAttributes(): Map<String, String> {
         return mapOf(
+            "fillcolor" to attributes.bg?.toHexString(),
+            "color" to attributes.fg?.toHexString(),
             "label" to attributes.text,
             "pos" to "${position.x},${position.y}",
-        ) + attributes.other
+        ).filterNotNull() + attributes.other.filterNotNull()
     }
 
     constructor(label: String, pos: Vector2) : this(position = pos, attributes = NodeAttributes(text = label))

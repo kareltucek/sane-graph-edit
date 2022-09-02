@@ -5,7 +5,7 @@ import Graph
 import Node
 import graph_tools.Plotter.TextPlotter.drawEdge
 import graph_tools.Plotter.TextPlotter.drawNode
-import graph_tools.Plotter.TextPlotter.getBounds
+import graph_tools.Plotter.TextPlotter.recomputeBounds
 import graph_tools.Plotter.TextPlotter.recomputeEdge
 import ui.Utils.orElse
 import utils.Constants.defaultBgColor
@@ -60,7 +60,7 @@ object Plotter {
             }
         }
 
-        nodes.forEach { it.cache = getBounds(it, fm, (1.0 / zoom).toDouble()) }
+        nodes.forEach { recomputeBounds(it, fm, (1.0 / zoom).toDouble()) }
 
     }
 
@@ -70,25 +70,23 @@ object Plotter {
 
     object TextPlotter {
 
-        fun getBounds(n: Node, fm: FontMetrics, scale: Double = 1.0): Node.NodeCache {
+        fun recomputeBounds(n: Node, fm: FontMetrics, scale: Double = 1.0) {
             val lines = n.attributes.text.split("\n")
 
             val maxWidth = lines.map { fm.stringWidth(it) }.maxOrNull() ?: 0
             val perLineHeight = fm.height
             val textBounds = Vector2(maxWidth, lines.size * perLineHeight)
-            val shapeBounds = n.attributes.shape.impl.computeShapeBounds(textBounds)
+            val shapeBounds = n.cache.shape.computeShapeBounds(textBounds)
 
-            return Node.NodeCache(
-                textBounds = textBounds * scale,
-                shapeBounds = shapeBounds * scale,
-                lines = lines,
-            )
+            n.cache.textBounds = textBounds * scale
+            n.cache.shapeBounds = shapeBounds * scale
+            n.cache.lines = lines
         }
 
         fun recomputeEdge(e: Edge) {
             val dir = (e.dst.position - e.src.position).toUnit()
-            val cp1 = e.src.attributes.shape.impl.connectionPoint(dir, e.src, 0.0)
-            val cp2 = e.dst.attributes.shape.impl.connectionPoint(dir, e.dst,Constants.arrowheadRadius)
+            val cp1 = e.src.cache.shape.connectionPoint(dir, e.src, 0.0)
+            val cp2 = e.dst.cache.shape.connectionPoint(dir, e.dst,Constants.arrowheadRadius)
             val src1 = e.src.position + cp1
             val src2 = e.src.position - cp1
             val dst1 = e.dst.position - cp2
@@ -140,7 +138,7 @@ object Plotter {
                 g2d.stroke = thickStroke
             }
 
-            n.attributes.shape.impl.paint(g2d, n)
+            n.cache.shape.paint(g2d, n)
 
             g2d.stroke = thinStroke
 

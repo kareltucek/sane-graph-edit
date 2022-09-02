@@ -88,19 +88,8 @@ class StylePicker(
         val foreground: Color? = null,
         val label: String = "😊",
     ) {
-        constructor(r: Int, g: Int, b: Int, l: Double, label: String) : this(
-            background = Color(procBgColor(r, l), procBgColor(g, l), procBgColor(b, l)),
-            foreground = Color(procFgColor(r, l), procFgColor(g, l), procFgColor(b, l)),
-            label = label,
-        )
 
         companion object {
-            fun procFgColor(v: Int, l: Double): Int = (v * 0.3 + 255 * 0.2).toInt()
-            fun procBgColor(v: Int, l: Double): Int = (255 - (255 - v) * l).toInt()
-
-            fun Color.toColorStyle(weight: Double, label: String = "😊") =
-                ColorStyle(this.red, this.green, this.blue, weight, label)
-
             fun fromHue(h: Double, s: Double = 0.2, v: Double = 1.0, label: String = "😊") = ColorStyle(
                 background = HSV(h, s, v).toColor(),
                 foreground = HSV(h, s * 2, ((1 - v) * 2).coerceIn(0.0, 0.5)).toColor(),
@@ -134,17 +123,17 @@ class StylePicker(
     val saturationHue = listOf(
         0.20 to 0.0, //red
         0.35 to 40.0, //orange
-        0.25 to 60.0, //yellow
+        0.30 to 60.0, //yellow
         0.25 to 100.0, //green
         0.20 to 190.0, //blue
         0.15 to 230.0, //dark blue
-        0.15 to 280.0, //purple
-        0.25 to 320.0, //pink
+        0.20 to 280.0, //purple
+        0.20 to 320.0, //pink
     ).map { it.first to it.second/360.0*3.0}
 
     val saturationValueMultipliers = listOf(
-        Triple(0.5, 1.0, 0.5),
-        Triple(1.0, 1.0, 0.35),
+        Triple(0.5, 1.0, 0.4),
+        Triple(1.0, 1.0, 0.3),
         Triple(1.2, 0.9, 0.2)
     )
 
@@ -224,7 +213,7 @@ class StylePicker(
 
     private fun colorFieldClicked(style: StylePicker.ColorStyle) {
         parent.g.selectedNodes.forEach {
-            it.attributes.setStyle(style.background, style.foreground)
+            it.setStyle(style.background, style.foreground)
         }
         parent.endStylePicker()
     }

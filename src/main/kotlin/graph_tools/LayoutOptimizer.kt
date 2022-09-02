@@ -44,25 +44,27 @@ object LayoutOptimizer {
         Utils.PerformanceData.withPerformanceCheck("LayoutOptimizer", 5.0, onIssue = { g.printStats() }) {
             val tgt = SpringTarget.fromContext(movingNodes, restrictOperator, g.selectedNodes.size)
             if (tgt != SpringTarget.MoveNoOne) {
-                val dbg = listOfNotNull(
-                    computeCollisionSprings(g, tgt, movingNodes).map { it to "collision" },
-                    computeGravitySprings(g, tgt, movingNodes).map { it to "grav" },
-                    computeBBSprings(g, tgt).map { it to "bb" },
+                val springSet = listOf(
+                    Triple({ computeCollisionSprings(g, tgt, movingNodes) }, true, "collision"),
+                    Triple({ computeGravitySprings(g, tgt, movingNodes) }, true, "grav"),
+                    Triple({ computeBBSprings(g, tgt) }, true, "bb")
                 )
 
-                    .reduce { a, b -> a + b }
-                    .groupBy { it.first.n }
+                val takeAPeek = if (false) {
+                    springSet
+                        .filter { it.second }
+                        .flatMap { set -> (set.first)().map { it to set.third } }
+                        .groupBy { it.first.n }
+                } else {
+                    null
+                }
 
-                val springMap = listOfNotNull(
-                    computeCollisionSprings(g, tgt, movingNodes),
-                    computeGravitySprings(g, tgt, movingNodes),
-                    computeBBSprings(g, tgt),
-                )
-                    .reduce { a, b -> a + b }
+                val springMap = springSet
+                    .filter { it.second }
+                    .flatMap { (it.first)() }
                     .groupBy { it.n }
 
                 g.nodes
-
                     .forEach { n ->
                         springMap[n]?.let { springs ->
                             val weight = when (tgt) {
@@ -74,7 +76,7 @@ object LayoutOptimizer {
 
                             val delta = (springs.map { it -> it.v }).reduce { a, b -> a + b } / springs.size
 
-                            n.position = n.position + delta //.takeIf { it.distance() > 1.0 }.orElse(Zero)
+                            n.position = n.position + delta
                         }
                     }
 
@@ -133,21 +135,21 @@ object LayoutOptimizer {
             return f1 + f2
         }
 
-        fun computeBBSpring(g: Graph, node: Node, other: Node, e: Edge, strength: Double = 1.0): Spring {
-            val cn = (e.src == node).fold(e.cache.srcPt, e.cache.dstPt)
-            val co = -(e.src == other).fold(e.cache.srcPt, e.cache.dstPt)
+        fun computeBBSpring(g: Graph, node: Node, othr: Node, e: Edge, strength: Double = 1.0): Spring {
+            val cn = (e.src == node).fold(e.cache.dstPt, e.cache.srcPt).let { +it - node.position}
+            val co = (e.src == othr).fold(e.cache.dstPt, e.cache.srcPt).let { -it + othr.position}
             val c1 = listOf(cn, co).minBy { it.lengthSquared() }
             val c2 = listOf(cn, co).maxBy { it.lengthSquared() }
 
-            val f = degFactor(g, node, other) // degree factor
+            val f = degFactor(g, node, othr) // degree factor
             val d = 1.5 // distance factor
 
-            val desiredLocation = (other.position - (c1 + c2) * d - c1 * f * d)
+            val desiredLocation = (othr.position - (c1 + c2) * d - c1 * f * d)
             val diff = desiredLocation - node.position
 
             return Spring(
                 n = node,
-                v = diff * 1.5 // this makes it converge faster
+                v = diff * 0.5  // this makes it converge faster
             )
         }
 
@@ -203,7 +205,7 @@ object LayoutOptimizer {
                         ((1 - grav.dot(dir)) / 2)
                             .let { it }
                     } else {
-                        (- grav.dot(dir))
+                        (-grav.dot(dir))
                             .coerceAtLeast(0.0)
                             .let { it * it }
                     }
@@ -258,11 +260,11 @@ object LayoutOptimizer {
             }
         }
 
-        fun computeCollisionSpring(g: Graph, node: Node, other: Node, strengthModulator: Double = 1.0): Spring? {
-            val (n, o) = node.position to other.position
+        fun computeCollisionSpring(g: Graph, node: Node, othr: Node, strengthModulator: Double = 1.0): Spring? {
+            val (n, o) = node.position to othr.position
             val dir = (o - n).toUnit()
-            val c1 = node.attributes.shape.impl.connectionPoint(dir, node)
-            val c2 = node.attributes.shape.impl.connectionPoint(dir, other)
+            val c1 = node.cache.shape.connectionPoint(dir, node)
+            val c2 = othr.cache.shape.connectionPoint(dir, othr)
 
 //            val distanceCf = g.findEdge(node, other).isNotNull().fold( 2.0, 1.5)
             val distanceCf = 1.5
@@ -271,7 +273,7 @@ object LayoutOptimizer {
             return if ((n - o).length() < desiredDistance) {
                 Spring(
                     n = node,
-                    v = (other.position - (c1 + c2) * distanceCf * strengthModulator) - node.position
+                    v = (othr.position - (c1 + c2) * distanceCf * strengthModulator) - node.position
                 )
             } else {
                 null

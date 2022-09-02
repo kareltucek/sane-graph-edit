@@ -67,12 +67,12 @@ class NodeEditor(
             val correctedFontSize = Plotter.correctedFontSize()
             this.setFont(this.font.deriveFont(correctedFontSize.toFloat()))
 
-            val bounds = Plotter.TextPlotter.getBounds(n, this.getFontMetrics(this.font))
+            Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
 
             val margin = (4* Plotter.t.scaleX).toInt()
             this.margin = Insets(margin, margin,margin,margin)
             val center = n.position.toScreenVector() // + utils.Vector2(utils.Constants.nodeEditorXMargin, 0.0)
-            val textBounds = bounds.textBounds + Vector2(2 * margin, 2 * margin);
+            val textBounds = n.cache.textBounds + Vector2(2 * margin, 2 * margin);
 
             val ul = center - textBounds / 2
             val br = center + textBounds / 2
