@@ -47,7 +47,7 @@ object Plotter {
     }
 
     fun drawSelectionBox(g2d: Graphics2D, ul: Vector2, br: Vector2) {
-        g2d.paint = defaultBgColor
+        g2d.paint = Constants.defaultFgColor
         g2d.drawRect(ul.x.toInt(), ul.y.toInt(), (br.x - ul.x).toInt(), (br.y - ul.y).toInt())
     }
 
