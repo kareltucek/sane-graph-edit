@@ -22,8 +22,8 @@ object Plotter {
     var defaultFontSize: Double = 12.0
     var renderArrowheads: Boolean = true
     var renderOvals: Boolean = true
-    var thinStroke: Stroke = BasicStroke(1.0f)
-    var thickStroke: Stroke = BasicStroke(2.0f)
+    var thinStroke: BasicStroke = BasicStroke(1.0f)
+    var thickStroke: BasicStroke = BasicStroke(2.0f)
 
     fun fontScale(n: Node): Double = pow(Constants.fontSizeZoomCoef, n.attributes.scale.orElse(0.0))
     fun workspaceFontSize(n: Node): Double = (fontScale(n) * defaultFontSize)
@@ -136,7 +136,11 @@ object Plotter {
             g2d.paint = n.attributes.bg.orElse(Constants.defaultBgColor)
 
             if (selected) {
-                g2d.stroke = thickStroke
+                if (thickStroke.lineWidth*t.scaleX < 1.0) {
+                    g2d.stroke = BasicStroke((1.0 / t.scaleX).toFloat())
+                } else {
+                    g2d.stroke = thickStroke
+                }
             }
 
             n.cache.shape.paint(g2d, n)
