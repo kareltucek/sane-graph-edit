@@ -6,6 +6,7 @@ import graph_tools.Plotter.TextPlotter.drawNode
 import graph_tools.Plotter.TextPlotter.recomputeBounds
 import graph_tools.Plotter.TextPlotter.recomputeEdge
 import ui.Utils.orElse
+import ui.Utils.withIdentityTransform
 import utils.Constants.defaultBgColor
 import utils.Constants
 import utils.Vector2
@@ -14,7 +15,6 @@ import java.awt.geom.AffineTransform
 import java.lang.Math.pow
 
 object Plotter {
-    val identity: AffineTransform = AffineTransform()
     var t: AffineTransform = AffineTransform()
     var defaultFontSize: Double = 12.0
     var renderArrowheads: Boolean = true
@@ -49,8 +49,7 @@ object Plotter {
     }
 
 
-    fun recomputeNodes(g2d: Graphics2D, nodes: Iterable<Node>) {
-        g2d.transform = identity
+    fun recomputeNodes(g2d: Graphics2D, nodes: Iterable<Node>) = g2d.withIdentityTransform {
         nodes.forEach { n ->
             val fs = workspaceFontSize(n)
             val fd = FontData.get(g2d, fs)
@@ -58,8 +57,6 @@ object Plotter {
             val fm = g2d.getFontMetrics(fd.font)
             recomputeBounds(n, fm)
         }
-
-        g2d.transform = t
     }
 
     fun recomputeEdges(edges: Iterable<Edge>) {
@@ -177,16 +174,21 @@ data class FontData(
 
         fun get(g2d: Graphics2D, fs: Double): FontData {
             val fd = FontData.cache[fs].orElse {
-                val mf = g2d.font.deriveFont(fs.toFloat())
-                val mfm = g2d.getFontMetrics(mf)
-                val fontData = FontData(
-                    font = mf,
-                    ascent = mfm.ascent.toDouble(),
-                    height = mfm.height.toDouble(),
-                    scale = fs
-                )
-                FontData.cache[fs] = fontData
-                fontData
+                g2d.withIdentityTransform {
+                    val mf = g2d.font.deriveFont(fs.toFloat())
+                    val mfm = g2d.getFontMetrics(mf)
+                    if (mfm.height == 0) {
+                        val dbg = 7
+                    }
+                    val fontData = FontData(
+                        font = mf,
+                        ascent = mfm.ascent.toDouble(),
+                        height = mfm.height.toDouble(),
+                        scale = fs
+                    )
+                    FontData.cache[fs] = fontData
+                    fontData
+                }
             }
             return fd
         }

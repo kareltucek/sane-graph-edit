@@ -8,6 +8,7 @@ import ui.Utils.orElse
 import utils.Vector2
 import java.awt.*
 import java.awt.event.MouseEvent
+import java.awt.geom.AffineTransform
 import java.awt.geom.Point2D
 import java.time.Instant
 
@@ -95,6 +96,15 @@ object Utils {
             return s.substring(s.length - 2, s.length)
         }
         return "#${byteToHex(this.red)}${byteToHex(this.green)}${byteToHex(this.blue)}"
+    }
+
+    val identity = AffineTransform()
+    fun <R> Graphics2D.withIdentityTransform(f: ()->R): R {
+        val oldTransform = this.transform
+        this.transform = identity
+        val res = f()
+        this.transform = oldTransform
+        return res
     }
 
     @Suppress("UNCHECKED_CAST")
