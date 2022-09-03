@@ -1,9 +1,8 @@
 package ui
 
 import utils.Constants
-import Node
+import graph_tools.Node
 import graph_tools.Plotter
-import ui.Utils.orElse
 import utils.Vector2
 import ui.Utils.toScreenVector
 import java.awt.Graphics

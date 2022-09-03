@@ -1,8 +1,6 @@
 package graph_tools
 
-import Edge
 import Graph
-import Node
 import graph_tools.Plotter.TextPlotter.drawEdge
 import graph_tools.Plotter.TextPlotter.drawNode
 import graph_tools.Plotter.TextPlotter.recomputeBounds
@@ -14,7 +12,6 @@ import utils.Vector2
 import java.awt.*
 import java.awt.geom.AffineTransform
 import java.lang.Math.pow
-import kotlin.math.nextUp
 
 object Plotter {
     val identity: AffineTransform = AffineTransform()

@@ -2,9 +2,8 @@ package ui
 
 import utils.Constants
 import Graph
-import Node
+import graph_tools.Node
 import graph_tools.Plotter
-import org.jetbrains.annotations.Nullable
 import ui.Utils.orElse
 import utils.Vector2
 import java.awt.*

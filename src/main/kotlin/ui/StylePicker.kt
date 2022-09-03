@@ -8,7 +8,6 @@ import java.awt.event.KeyEvent
 import java.awt.event.KeyListener
 import javax.swing.*
 import javax.swing.border.LineBorder
-import javax.swing.plaf.basic.BasicBorders
 
 
 /*
@@ -172,6 +171,7 @@ class StylePicker(
         jTextField1 = JTextField()
         plusButton = JButton()
         layout = GridBagLayout()
+        sizeField = JTextField()
         ColorPickerPanel!!.layout = GridLayout(0, hues.size)
         gridBagConstraints = GridBagConstraints()
         gridBagConstraints.fill = GridBagConstraints.BOTH
@@ -181,14 +181,12 @@ class StylePicker(
         SizePickerPanel!!.layout = GridLayout()
         jLabel1!!.text = "Size:"
         SizePickerPanel!!.add(jLabel1)
-//        SizePickerPanel!!.add(jSpinner1)
         minusButton!!.text = "-"
         jTextField1!!.text = "jTextField1"
         jTextField1!!.addActionListener { evt -> jTextField1ActionPerformed(evt) }
-        //jPanel2!!.add(jTextField1)
         plusButton!!.text = "+"
-        SizePickerPanel!!.add(plusButton)
         SizePickerPanel!!.add(minusButton)
+        SizePickerPanel!!.add(plusButton)
         plusButton!!.background = Constants.buttonGray
         minusButton!!.background = Constants.buttonGray
         gridBagConstraints = GridBagConstraints()
@@ -216,12 +214,15 @@ class StylePicker(
         plusButton!!.addActionListener {
             setSize(1.0)
         }
+        sizeField!!.addActionListener {
+            setSize(1.0)
+        }
 
     } // </editor-fold>
 
-    private fun setSize(s: Double) {
+    private fun setSize(r: Double) {
         parent.g.selectedNodes.forEach {
-            it.setSize(relative = s)
+            it.setSize(relative = r)
         }
         parent.g.needsRecomputing(parent.g.selectedNodes)
         parent.repaint()
@@ -256,6 +257,8 @@ class StylePicker(
 
     private
     var jSpinner1: JSpinner? = null
+
+    var sizeField: JTextField? = null
 
     private
     var jTextField1: JTextField? =

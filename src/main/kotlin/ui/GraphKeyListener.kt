@@ -1,8 +1,8 @@
 package ui
 
-import Edge
+import graph_tools.Edge
 import graph_tools.LayoutOptimizer
-import Node
+import graph_tools.Node
 import ui.GraphKeyListener.impl.centerScreen
 import ui.GraphKeyListener.impl.clearEdges
 import ui.GraphKeyListener.impl.deleteNode

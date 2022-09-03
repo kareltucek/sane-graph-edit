@@ -1,8 +1,6 @@
 package graph_tools
 
-import Edge
 import Graph
-import Node
 import graph_tools.LayoutOptimizer.impl.computeBBSprings
 import graph_tools.LayoutOptimizer.impl.computeCollisionSprings
 import graph_tools.LayoutOptimizer.impl.computeGravitySprings

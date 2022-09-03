@@ -1,14 +1,9 @@
 package ui
 
 import utils.Constants
-import DotGraphLoader
-import Graph
-import Node
 import graph_tools.Plotter
 import ui.Utils.PerformanceData.withPerformanceCheck
-import ui.Utils.orElse
 import utils.Vector2
-import ui.Utils.toWorkspaceVector
 import java.awt.*
 import javax.swing.JPanel
 

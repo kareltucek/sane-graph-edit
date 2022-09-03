@@ -1,9 +1,9 @@
 package parser_dot
 
-import Edge
+import graph_tools.Edge
 import Graph
 import DotGraphLoader
-import Node
+import graph_tools.Node
 
 data class ParserCtx(
     val graph: Graph,

@@ -2,7 +2,7 @@ package ui
 
 import utils.Constants
 import graph_tools.LayoutOptimizer
-import Node
+import graph_tools.Node
 import graph_tools.Plotter
 import utils.Vector2
 import ui.Utils.orElse

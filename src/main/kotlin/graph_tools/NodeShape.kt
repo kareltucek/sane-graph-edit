@@ -1,8 +1,6 @@
 package graph_tools
 
-import Node
 import ui.Utils.orElse
-import utils.Constants
 import utils.Vector2
 import java.awt.Color
 import java.awt.Graphics2D

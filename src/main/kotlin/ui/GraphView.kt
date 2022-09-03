@@ -1,7 +1,7 @@
 package ui
 
 import Graph
-import Node
+import graph_tools.Node
 import graph_tools.Plotter
 import ui.Utils.orElse
 import ui.Utils.toWorkspaceVector

@@ -1,8 +1,8 @@
 package parser_dot
 
-import Edge
+import graph_tools.Edge
 import Graph
-import Node
+import graph_tools.Node
 import ui.Utils.exhaustive
 import ui.Utils.inverseMap
 import ui.Utils.orElse
