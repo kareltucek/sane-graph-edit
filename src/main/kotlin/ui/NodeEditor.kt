@@ -3,6 +3,7 @@ package ui
 import utils.Constants
 import graph_tools.Node
 import graph_tools.Plotter
+import ui.Utils.orElse
 import utils.Vector2
 import ui.Utils.toScreenVector
 import java.awt.Graphics
@@ -37,9 +38,14 @@ class NodeEditor(
         override fun keyTyped(e: KeyEvent) { }
 
         override fun keyPressed(e: KeyEvent) {
-            when (e.keyCode) {
-                KeyEvent.VK_ESCAPE -> parent.endNodeEdit()
+            val used: Unit? = when (e.keyCode) {
+                KeyEvent.VK_ESCAPE -> {
+                    parent.endNodeEdit()
+                }
+
+                else -> null
             }
+            used?.let { e.consume() }
         }
 
         override fun keyReleased(e: KeyEvent) {}
@@ -66,11 +72,12 @@ class NodeEditor(
         editedNode?.let { n ->
             val correctedFontSize = Plotter.screenspaceFontSize(n)
 
-
-            this.setFont(n.cache.font!!.font)
-            // we have edited the text, so we should recompute the data at 1.0 zoom...
-            Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
-            this.setFont(this.font.deriveFont(correctedFontSize.toFloat()))
+            n.cache.font?.let { fd ->
+                this.font = fd.font
+                // we have edited the text, so we should recompute the data at 1.0 zoom...
+                Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
+            }
+            this.font = this.font.deriveFont(correctedFontSize.toFloat())
 
             val margin = ((n.cache.shapeBounds - n.cache.textBounds)/4)*Plotter.t.scaleX
             this.margin = Insets(margin.y.toInt(), margin.x.toInt(),margin.y.toInt(),margin.x.toInt())
@@ -117,6 +124,8 @@ class NodeEditor(
     fun startNodeEdit(n: Node, clickScreenCoordinates: Vector2?) {
         editedNode = n
         this.text = editedNode!!.attributes.text
+        this.background = n.attributes.bg.orElse(Constants.defaultBgColor)
+        this.foreground = n.attributes.fg.orElse(Constants.defaultFgColor)
         updatePosition(clickScreenCoordinates)
     }
 

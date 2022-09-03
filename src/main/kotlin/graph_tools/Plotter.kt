@@ -22,7 +22,7 @@ object Plotter {
     var thinStroke: BasicStroke = BasicStroke(1.0f)
     var thickStroke: BasicStroke = BasicStroke(2.0f)
 
-    fun fontScale(n: Node): Double = pow(Constants.fontSizeZoomCoef, n.attributes.scale.orElse(0.0))
+    fun fontScale(n: Node): Double = pow(Constants.fontSizeZoomCoef, n.attributes.nodeScale.orElse(0.0))
     fun workspaceFontSize(n: Node): Double = (fontScale(n) * defaultFontSize)
     fun screenspaceFontSize(n: Node): Double = ((fontScale(n) * defaultFontSize) * t.scaleX)
 

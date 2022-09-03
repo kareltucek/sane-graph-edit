@@ -2,6 +2,7 @@ import graph_tools.*
 import utils.Vector2.Companion.Zero
 import parser_dot.IdGen
 import parser_dot.ParseLog
+import ui.GraphKeyListener.impl.selectAll
 import utils.Constants
 import utils.Vector2
 import java.awt.Graphics2D
@@ -75,6 +76,9 @@ class Graph(
             edgesRestricted.removeAll(edgeMapRestricted[it]!!)
             edgeMapRestricted.remove(it)
             selectedNodesRestricted.remove(it)
+            if (lastActiveNode == it) {
+                lastActiveNode = null
+            }
         }
         nodesRestricted.removeAll(i)
     }
@@ -93,7 +97,9 @@ class Graph(
 
     fun selectAll(i: Iterable<Node>, commitHistory: Boolean = true) {
         selectedNodesRestricted.addAll(i)
-        lastActiveNode = i.lastOrNull()
+        i.lastOrNull()?.let {
+            lastActiveNode = it
+        }
     }
 
     fun unselect(e: Node, commitHistory: Boolean = true) {

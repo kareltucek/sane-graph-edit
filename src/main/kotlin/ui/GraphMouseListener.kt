@@ -25,7 +25,7 @@ class GraphMouseListener(
     override fun mousePressed(e: MouseEvent) {
         val pos = e.toWorkspaceVector()
 
-        if (e.button == BUTTON1) {
+        if (e.button == BUTTON1 && controller.state == null) {
             val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos)
             when {
                 //move single node
@@ -97,7 +97,16 @@ class GraphMouseListener(
 
 
     override fun mouseMoved(e: MouseEvent) {
-        graphView.lastCursorPosition = e.toWorkspaceVector()
+        val pos = e.toWorkspaceVector()
+
+        when {
+            controller.state == GraphMouseController.States.MovingNodes -> {
+                controller.dragMoveNode(pos, e.isShiftDown)
+            }
+        }
+
+        graphView.lastCursorPosition = pos
+        controller.lastPosition = pos
     }
 
     override fun mouseReleased(e: MouseEvent) {
@@ -181,6 +190,10 @@ class GraphMouseListener(
             state = States.MovingNodes
         }
 
+        fun startMove() {
+            state = States.MovingNodes
+        }
+
         fun startMoveOrSelectSingleNode(mouseoverNodes: MutableSet<Node>) {
             graphView.g.cleanSelect(mouseoverNodes)
             state = States.MovingNodes
@@ -228,7 +241,7 @@ class GraphMouseListener(
                 when (mouseoverNodes.size) {
                     0 -> {
                         spawnNewNode(pos)
-                        editNode(graphView.g.selectedNodes.first(), clickScreenCoordinates)
+//                        editNode(graphView.g.selectedNodes.first(), clickScreenCoordinates)
                     }
 
                     1 -> {
@@ -268,7 +281,8 @@ class GraphMouseListener(
         fun spawnNewNode(pos: Vector2) {
             val newNode = Node(
                 label = Constants.defaultNodeText,
-                pos = pos
+                pos = pos,
+                style = graphView.defaultNodeStyle,
             )
 
             graphView.g.add(newNode)

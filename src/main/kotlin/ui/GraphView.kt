@@ -23,6 +23,7 @@ class GraphView() : JLayeredPane() {
     val keyListener = GraphKeyListener(this)
     var lastCursorPosition: Vector2 = Vector2.Zero
     var optimizeOnDrag: Boolean = false
+    var defaultNodeStyle: NodeStyle = NodeStyle()
     var g: Graph = Graph.testGraph()
 
     fun placeMeAt(me: JComponent, ul: Vector2, br: Vector2) {

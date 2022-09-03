@@ -17,7 +17,6 @@ class Edge(
         var dstPt: Vector2 = Vector2.Zero,
     )
 
-
     class EdgeAttributes(
         var name: String = "",
         var other: MutableMap<String, String> = mutableMapOf(),

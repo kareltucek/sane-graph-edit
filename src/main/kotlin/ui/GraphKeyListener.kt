@@ -5,13 +5,18 @@ import graph_tools.LayoutOptimizer
 import graph_tools.Node
 import ui.GraphKeyListener.impl.centerScreen
 import ui.GraphKeyListener.impl.clearEdges
+import ui.GraphKeyListener.impl.copyFormat
 import ui.GraphKeyListener.impl.deleteNode
 import ui.GraphKeyListener.impl.drawEdge
 import ui.GraphKeyListener.impl.drawNodeWithEdge
 import ui.GraphKeyListener.impl.optimize
 import ui.GraphKeyListener.impl.selectAll
 import ui.GraphKeyListener.impl.editNode
+import ui.GraphKeyListener.impl.grab
+import ui.GraphKeyListener.impl.pasteFormat
 import ui.GraphKeyListener.impl.selectLinked
+import ui.GraphKeyListener.impl.unselectAll
+import ui.Utils.orElse
 import java.awt.event.KeyEvent
 import java.awt.event.KeyEvent.*
 import java.awt.event.KeyListener
@@ -20,22 +25,28 @@ class GraphKeyListener(
     val graphView: GraphView,
 ) : KeyListener {
     override fun keyTyped(e: KeyEvent) {
-        when (e.keyChar) {
-            'e' -> drawEdge(true, graphView)
-            'E' -> drawEdge(false, graphView)
-            'v' -> drawNodeWithEdge(true, graphView)
-            'V' -> drawNodeWithEdge(false, graphView)
+        val used: Unit? = when (e.keyChar) {
+            'e' -> drawEdge(graphView, true)
+            'E' -> drawEdge(graphView, false)
+            'v' -> drawNodeWithEdge(graphView, forwardEdge = true, append = false)
+            'V' -> drawNodeWithEdge(graphView, forwardEdge = false, append = false)
+            'a' -> drawNodeWithEdge(graphView, forwardEdge = true, append = true)
+            'A' -> drawNodeWithEdge(graphView, forwardEdge = false, append = true)
             'c' -> clearEdges(graphView)
-            'd' -> deleteNode(graphView)
+            'd' -> deleteNode(graphView, false)
+            'D' -> deleteNode(graphView, true)
             'o' -> optimize(graphView, false)
             'O' -> optimize(graphView, true)
-            ' ' -> editNode(graphView)
-            'l' -> selectLinked(true, graphView)
-            'L' -> selectLinked(false, graphView)
+            'l' -> selectLinked(graphView, true)
+            'L' -> selectLinked(graphView, false)
             '0' -> centerScreen(graphView)
+            'f' -> pasteFormat(graphView)
+            'F' -> copyFormat(graphView)
+            'g' -> grab(graphView)
+            else -> null
         }
+        used?.let { e.consume() }
     }
-
 
     override fun keyPressed(e: KeyEvent) {
         when {
@@ -51,107 +62,171 @@ class GraphKeyListener(
             e.keyCode == VK_A && e.isControlDown -> {
                 selectAll(graphView)
             }
-        }
 
+            e.keyCode == VK_ESCAPE -> {
+                unselectAll(graphView)
+            }
+
+            e.keyCode == VK_SPACE -> {
+                editNode(graphView, e.isShiftDown)
+            }
+        }
+        e.consume()
     }
+
 
     override fun keyReleased(e: KeyEvent) {}
 
     object impl {
+        fun copyFormat(graphView: GraphView) {
+            val target = graphView.g.selectedNodes.firstOrNull()
 
-        fun centerScreen(parent: GraphView) {
-            parent.centerScreen()
+            graphView.defaultNodeStyle = target?.let { n ->
+                NodeStyle.fromNode(n)
+            }.orElse(NodeStyle())
         }
 
-        fun selectLinked(forward: Boolean, parent: GraphView) {
-            parent.g.selectedNodes
+        fun pasteFormat(graphView: GraphView) {
+            graphView.g.selectedNodes.forEach {
+                it.setStyle(graphView.defaultNodeStyle)
+            }
+            graphView.g.needsRecomputing(graphView.g.selectedNodes)
+            graphView.repaint()
+        }
+        fun grab(graphView: GraphView) {
+            graphView.mouseListener.controller.startMove()
+        }
+
+        fun unselectAll(graphView: GraphView) {
+            graphView.g.cleanSelect(emptySet())
+            graphView.repaint()
+        }
+
+        fun centerScreen(graphView: GraphView) {
+            graphView.centerScreen()
+        }
+
+        fun selectLinked(graphView: GraphView, forward: Boolean) {
+            graphView.g.selectedNodes
                 .flatMap { n ->
-                    parent.g.edgeMap[n]
+                    graphView.g.edgeMap[n]
                         ?.map { if (forward) it.dst else it.src }
                         .orEmpty()
                 }
-                .let { parent.g.selectAll(it) }
-            parent.repaint()
+                .let { graphView.g.selectAll(it) }
+            graphView.repaint()
+        }
+        fun optimize(graphView: GraphView, restrict: Boolean) {
+            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
+            graphView.repaint()
         }
 
-        fun optimize(parent: GraphView, restrict: Boolean) {
-            LayoutOptimizer.optimize(parent.g, movingNodes = false, restrictOperator = restrict)
-            parent.repaint()
-        }
-
-        fun selectAll(parent: GraphView) {
-            if (parent.g.selectedNodes.size == parent.g.nodes.size) {
-                parent.g.cleanSelect(setOf())
+        fun selectAll(graphView: GraphView) {
+            if (graphView.g.selectedNodes.size == graphView.g.nodes.size) {
+                graphView.g.cleanSelect(setOf())
             } else {
-                parent.g.cleanSelect(parent.g.nodes)
+                graphView.g.cleanSelect(graphView.g.nodes)
             }
-            parent.repaint()
+            graphView.repaint()
         }
 
-        fun editNode(parent: GraphView) {
-            parent.g.lastActiveNode?.let { n ->
-                parent.startNodeEdit(n, null)
+        fun editNode(graphView: GraphView, select: Boolean) {
+            graphView.g.lastActiveNode?.let { n ->
+                if (select) {
+                    graphView.g.cleanSelect(setOf(n))
+                }
+                graphView.startNodeEdit(n, null)
             }
         }
 
-        fun deleteNode(parent: GraphView) {
-            val pos = parent.lastCursorPosition
-            val sel = parent.g.selectedNodes.map { it }
+        fun deleteNode(graphView: GraphView, reconnectNodes: Boolean) {
+            val pos = graphView.lastCursorPosition
+            val sel = graphView.g.selectedNodes.map { it }
 
-            parent.g.edges
+            if(reconnectNodes) {
+                sel.flatMap {
+                    val ins = graphView.g.findInEdges(it)
+                        .map { it.src }
+                        .toSet()
+                    val outs = graphView.g.findOutEdges(it)
+                        .map { it.dst }
+                        .toSet()
+                    ins.flatMap { src ->
+                        outs.map { dst ->
+                            src to dst
+                        }
+                    }
+                }
+                    .distinct()
+                    .forEach {
+                        graphView.g.add(Edge(it.first, it.second))
+                    }
+            }
+
+            graphView.g.edges
                 .filter { sel.contains(it.src) || sel.contains(it.dst) }
-                .let { parent.g.removeAllEdges(it.toSet()) }
+                .let { graphView.g.removeAllEdges(it.toSet()) }
 
-            parent.g.unselectAll(sel)
-            parent.g.removeAllNodes(sel)
+            graphView.g.unselectAll(sel)
+            graphView.g.removeAllNodes(sel)
 
-            parent.repaint()
+            graphView.repaint()
         }
 
 
-        fun clearEdges(parent: GraphView) {
-            val pos = parent.lastCursorPosition
-            val sel = parent.g.selectedNodes
+        fun clearEdges(graphView: GraphView) {
+            val pos = graphView.lastCursorPosition
+            val sel = graphView.g.selectedNodes
 
             sel.forEach { n ->
-                parent.g.edges.filter { it.src == n || it.dst == n }
-                    .let { parent.g.removeAllEdges(it.toSet()) }
+                graphView.g.edges.filter { it.src == n || it.dst == n }
+                    .let { graphView.g.removeAllEdges(it.toSet()) }
             }
 
-            parent.repaint()
+            graphView.repaint()
         }
 
-        fun drawNodeWithEdge(forward: Boolean, parent: GraphView) {
-            val pos = parent.lastCursorPosition
-            val sel = parent.g.selectedNodes
+        fun drawNodeWithEdge(graphView: GraphView, forwardEdge: Boolean, append: Boolean) {
+            val pos = graphView.lastCursorPosition
+
+            val from = if (append) {
+                graphView.g.lastActiveNode
+                    ?.let { listOf(it) }
+                    .orElse( graphView.g.selectedNodes )
+            } else {
+                graphView.g.selectedNodes
+            }
+
             val newNode = Node(
                 label = "New node",
-                pos = pos
+                pos = pos,
+                style = graphView.defaultNodeStyle,
             )
 
-            parent.g.add(newNode)
+            graphView.g.add(newNode)
 
-            sel.forEach { selectedNode ->
-                val e = if (forward) Edge(selectedNode, newNode) else Edge(newNode, selectedNode)
-                parent.g.add(e)
+            from.forEach { selectedNode ->
+                val e = if (forwardEdge) Edge(selectedNode, newNode) else Edge(newNode, selectedNode)
+                graphView.g.add(e)
             }
 
-            parent.repaint()
+
+            graphView.repaint()
         }
 
-        fun drawEdge(forward: Boolean, parent: GraphView) {
-            val pos = parent.lastCursorPosition
-            val pointed = Clicker.selectClickedNode(parent.g, pos)
-            val selected = parent.g.selectedNodes - pointed
+        fun drawEdge(graphView: GraphView, forward: Boolean) {
+            val pos = graphView.lastCursorPosition
+            val pointed = Clicker.selectClickedNode(graphView.g, pos)
+            val selected = graphView.g.selectedNodes - pointed
 
             val (src, dst) = if (forward) selected to pointed else pointed to selected
 
-            val existingEdges = parent.g.findEddges(src, dst)
+            val existingEdges = graphView.g.findEddges(src, dst)
             val representedSrcs = existingEdges.map { it.src }.toSet()
             val representedDsts = existingEdges.map { it.dst }.toSet()
 
             if (representedDsts.size == dst.size && representedSrcs.size == src.size) {
-                parent.g.removeAllEdges(existingEdges)
+                graphView.g.removeAllEdges(existingEdges)
             } else {
                 val existingConnections = existingEdges.associateBy { it.src to it.dst }
                 val missingEdges = src.flatMap { s ->
@@ -162,10 +237,10 @@ class GraphKeyListener(
                     .filter { !existingConnections.containsKey(it.src to it.dst) }
                     .filter { it.src != it.dst }
 
-                parent.g.addAllEdges(missingEdges)
+                graphView.g.addAllEdges(missingEdges)
             }
 
-            parent.repaint()
+            graphView.repaint()
         }
     }
 }
