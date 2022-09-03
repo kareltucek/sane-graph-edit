@@ -14,8 +14,10 @@ import utils.Vector2
 import java.awt.*
 import java.awt.geom.AffineTransform
 import java.lang.Math.pow
+import kotlin.math.nextUp
 
 object Plotter {
+    val identity: AffineTransform = AffineTransform()
     var t: AffineTransform = AffineTransform()
     var defaultFontSize: Double = 12.0
     var renderArrowheads: Boolean = true
@@ -23,8 +25,9 @@ object Plotter {
     var thinStroke: Stroke = BasicStroke(1.0f)
     var thickStroke: Stroke = BasicStroke(2.0f)
 
-    fun screenspaceFontSize(): Double = (defaultFontSize * t.scaleY).toDouble()
-    fun workspaceFontSize(n: Node): Double = (pow(1.3, n.attributes.scale.orElse(0.0)) * defaultFontSize).toDouble()
+    fun fontScale(n: Node): Double = pow(Constants.fontSizeZoomCoef, n.attributes.scale.orElse(0.0))
+    fun workspaceFontSize(n: Node): Double = (fontScale(n) * defaultFontSize)
+    fun screenspaceFontSize(n: Node): Double = ((fontScale(n) * defaultFontSize) * t.scaleX)
 
     fun setTransforms(g2d: Graphics2D, optimizationLevel: Int) {
         g2d.transform = t
@@ -48,28 +51,15 @@ object Plotter {
         g2d.drawRect(ul.x.toInt(), ul.y.toInt(), (br.x - ul.x).toInt(), (br.y - ul.y).toInt())
     }
 
-    fun recomputeNodes(g2d: Graphics2D, nodes: Iterable<Node>) {
-        nodes.forEach { n ->
-            val (fm, zoom, computeFontSize) = when {
-//            t.scaleX >= 1.0  -> g2d.fontMetrics to 1.0
-//                screenspaceFontSize() >= defaultFontSize -> Triple(g2d.fontMetrics, 1.0, screenspaceFontSize())
-                else -> {
-                    // If node is recomputed at too small scale, the dimensions are wrong when we zoom in later.
-                    val zoom = 1.0
-                    val myTransform = AffineTransform(t).also { it.setToScale(zoom, zoom) }
-                    g2d.transform = myTransform
-                    val fm = g2d.getFontMetrics(g2d.font)
-                    fm to zoom
-                    Triple(g2d.fontMetrics, 1.0, defaultFontSize)
-                }
-            }
 
-            val actualFontSize = workspaceFontSize(n)
-            val actualFont = g2d.font.deriveFont(actualFontSize.toFloat())
-            val f = g2d.font.deriveFont(computeFontSize.toFloat())
-            val myfm = g2d.getFontMetrics(f)
-            n.cache.font = actualFont
-            recomputeBounds(n, myfm, (1.0 / zoom * actualFontSize / computeFontSize).toDouble())
+    fun recomputeNodes(g2d: Graphics2D, nodes: Iterable<Node>) {
+        g2d.transform = identity
+        nodes.forEach { n ->
+            val fs = workspaceFontSize(n)
+            val fd = FontData.get(g2d, fs)
+            n.cache.font = fd
+            val fm = g2d.getFontMetrics(fd.font)
+            recomputeBounds(n, fm)
         }
 
         g2d.transform = t
@@ -81,7 +71,7 @@ object Plotter {
 
     object TextPlotter {
 
-        fun recomputeBounds(n: Node, fm: FontMetrics, scale: Double = 1.0) {
+        fun recomputeBounds(n: Node, fm: FontMetrics) {
             val lines = n.attributes.text.split("\n")
 
             val maxWidth = lines.map { fm.stringWidth(it) }.maxOrNull() ?: 0
@@ -89,8 +79,8 @@ object Plotter {
             val textBounds = Vector2(maxWidth, lines.size * perLineHeight)
             val shapeBounds = n.cache.shape.computeShapeBounds(textBounds)
 
-            n.cache.textBounds = textBounds * scale
-            n.cache.shapeBounds = shapeBounds * scale
+            n.cache.textBounds = textBounds
+            n.cache.shapeBounds = shapeBounds
             n.cache.lines = lines
         }
 
@@ -155,17 +145,49 @@ object Plotter {
 
             g2d.paint = n.attributes.fg.orElse(Constants.defaultFgColor)
 
-            n.cache.font?.let { g2d.font = it }
+            val screenspaceFD = FontData.get(g2d, screenspaceFontSize(n))
 
-            bounds.lines.withIndex().forEach { s ->
-                g2d.drawString(
-                    s.value,
-                    (textPos.x).toFloat(),
-                    (textPos.y + g2d.fontMetrics.ascent + g2d.fontMetrics.height * s.index).toFloat()
-                )
+            n.cache.font?.let { workspaceFD ->
+                g2d.font = workspaceFD.font
+
+                bounds.lines.withIndex().forEach { s ->
+                    g2d.drawString(
+                        s.value,
+                        (textPos.x).toFloat(),
+                        (textPos.y + screenspaceFD.ascent/Plotter.t.scaleX + screenspaceFD.height /Plotter.t.scaleX* s.index).toFloat()
+                    )
+                }
             }
 
             g2d.paint = Constants.defaultFgColor
+        }
+    }
+}
+
+data class FontData(
+    val scale: Double,
+    val ascent: Double,
+    val height: Double,
+    val font: Font,
+) {
+
+    companion object {
+        val cache: MutableMap<Double, FontData> = mutableMapOf()
+
+        fun get(g2d: Graphics2D, fs: Double): FontData {
+            val fd = FontData.cache[fs].orElse {
+                val mf = g2d.font.deriveFont(fs.toFloat())
+                val mfm = g2d.getFontMetrics(mf)
+                val fontData = FontData(
+                    font = mf,
+                    ascent = mfm.ascent.toDouble(),
+                    height = mfm.height.toDouble(),
+                    scale = fs
+                )
+                FontData.cache[fs] = fontData
+                fontData
+            }
+            return fd
         }
     }
 }

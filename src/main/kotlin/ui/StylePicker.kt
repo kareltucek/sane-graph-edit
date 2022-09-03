@@ -181,7 +181,7 @@ class StylePicker(
         SizePickerPanel!!.layout = GridLayout()
         jLabel1!!.text = "Size:"
         SizePickerPanel!!.add(jLabel1)
-        SizePickerPanel!!.add(jSpinner1)
+//        SizePickerPanel!!.add(jSpinner1)
         minusButton!!.text = "-"
         jTextField1!!.text = "jTextField1"
         jTextField1!!.addActionListener { evt -> jTextField1ActionPerformed(evt) }
@@ -189,6 +189,8 @@ class StylePicker(
         plusButton!!.text = "+"
         SizePickerPanel!!.add(plusButton)
         SizePickerPanel!!.add(minusButton)
+        plusButton!!.background = Constants.buttonGray
+        minusButton!!.background = Constants.buttonGray
         gridBagConstraints = GridBagConstraints()
         gridBagConstraints.gridx = 0
         gridBagConstraints.gridy = 1

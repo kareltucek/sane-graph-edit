@@ -22,21 +22,17 @@ object Clicker {
 
     fun selectClickedNode(g: Graph, clickCoordinates: Vector2): MutableSet<Node> {
         return g.nodes
-            .minByOrNull { (it.position - clickCoordinates).lengthSquared() }
-            ?.let {
+            .filter {
                 it.cache?.shapeBounds?.let { bounds ->
-                    if (clickCoordinates.isInSquare(
-                            it.position - bounds / 2,
-                            it.position + bounds / 2,
-                            10.0 / Plotter.t.scaleX.toDouble()
-                        )
-                    ) {
-                        mutableSetOf(it)
-                    } else {
-                        null
-                    }
-                }
+                    clickCoordinates.isInSquare(
+                        it.position - bounds / 2,
+                        it.position + bounds / 2,
+                        10.0 / Plotter.t.scaleX.toDouble()
+                    )
+                }.orElse(false)
             }
+            .minByOrNull { (it.position - clickCoordinates).lengthSquared() }
+            ?.let { mutableSetOf(it) }
             ?: mutableSetOf()
     }
 }
@@ -86,7 +82,7 @@ object Utils {
             .chunked(2)
             .map { Integer.valueOf(it, 16) }
             .let {
-                 Color(
+                Color(
                     it[0].orElse(0),
                     it[1].orElse(0),
                     it[2].orElse(0)
@@ -105,9 +101,9 @@ object Utils {
     @Suppress("UNCHECKED_CAST")
     fun <K, V> Map<K, V?>.filterNotNull(): Map<K, V> = this.filter { it.value != null } as Map<K, V>
     class CachedMap<K, V>(
-        val map: MutableMap<K, V> = mutableMapOf(),
-        val f: (K) -> V,
+        val f: (K) -> V = { _ -> throw Throwable("creation function not specified") },
     ) {
+        val map: MutableMap<K, V> = mutableMapOf()
         operator fun get(k: K): V {
             return map[k].orElse {
                 val newElement = f(k)
@@ -115,8 +111,15 @@ object Utils {
                 newElement
             }
         }
-    }
 
+        operator fun get(k: K, v: () -> V): V {
+            return map[k].orElse {
+                val newElement = v()
+                map[k] = newElement
+                newElement
+            }
+        }
+    }
 
     object PerformanceData {
         val avgTimes: MutableMap<String, Double> = mutableMapOf()

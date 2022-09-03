@@ -1,3 +1,4 @@
+import graph_tools.FontData
 import graph_tools.NodeShape
 import graph_tools.NodeShapeImpl
 import graph_tools.Plotter
@@ -90,7 +91,7 @@ class Node(
         var textBounds: Vector2 = Zero,
         var shapeBounds: Vector2 = Zero,
         var shape: NodeShapeImpl = NodeShape.Rectangle.impl,
-        var font: Font? = null,
+        var font: FontData? = null,
         var lines: List<String> = emptyList()
     )
 

@@ -53,6 +53,7 @@ data class Vector2(val x: Double, val y: Double) {
     companion object {
         fun Rectangle2D.toVector2() = Vector2(this.width.toDouble(), this.height.toDouble())
 
+        val Unit = Vector2(1.0, 1.0)
         val Zero = Vector2(0.0, 0.0)
 
         fun computeCorners(a: Vector2, b: Vector2): Pair<Vector2, Vector2> {

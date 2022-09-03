@@ -3,6 +3,8 @@ package utils
 import java.awt.Color
 
 object Constants {
+    val buttonGray = Color(220, 220, 220)
+    val fontSizeZoomCoef = 1.3
     val zoomOutStep = 0.95
     val stylePickerDimensions = Vector2(500, 300)
     val wantColorSampler = false

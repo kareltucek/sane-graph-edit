@@ -3,6 +3,7 @@ package ui
 import utils.Constants
 import Node
 import graph_tools.Plotter
+import ui.Utils.orElse
 import utils.Vector2
 import ui.Utils.toScreenVector
 import java.awt.Graphics
@@ -64,18 +65,23 @@ class NodeEditor(
 
     fun updatePosition(setCaretBy: Vector2? = null) {
         editedNode?.let { n ->
-            val correctedFontSize = Plotter.screenspaceFontSize()
+            val correctedFontSize = Plotter.screenspaceFontSize(n)
+
+
+            this.setFont(n.cache.font!!.font)
+            // we have edited the text, so we should recompute the data at 1.0 zoom...
+            Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
             this.setFont(this.font.deriveFont(correctedFontSize.toFloat()))
 
-            Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
+            val margin = ((n.cache.shapeBounds - n.cache.textBounds)/4)*Plotter.t.scaleX
+            this.margin = Insets(margin.y.toInt(), margin.x.toInt(),margin.y.toInt(),margin.x.toInt())
+            val center = (n.position).toScreenVector()
+            val textBounds = n.cache.textBounds/2*Plotter.t.scaleX
 
-            val margin = (4* Plotter.t.scaleX).toInt()
-            this.margin = Insets(margin, margin,margin,margin)
-            val center = n.position.toScreenVector() // + utils.Vector2(utils.Constants.nodeEditorXMargin, 0.0)
-            val textBounds = n.cache.textBounds + Vector2(2 * margin, 2 * margin);
+            val textUl = center - textBounds
 
-            val ul = center - textBounds / 2
-            val br = center + textBounds / 2
+            val ul = center - textBounds - margin + Vector2.Unit
+            val br = center + textBounds + margin + Vector2.Unit
             parent.placeMeAt(this, ul, br)
 
             if (n.attributes.text == Constants.defaultNodeText) {
@@ -84,13 +90,13 @@ class NodeEditor(
             } else {
                 setCaretBy?.let { caret ->
                     val fm = this.getFontMetrics(this.font)
-                    val lineIdx = ((caret.y - ul.y) / fm.height).toInt().coerceIn(0, n.cache.lines.size - 1)
+                    val lineIdx = ((caret.y - textUl.y) / fm.height).toInt().coerceIn(0, n.cache.lines.size - 1)
                     val line = n.cache.lines[lineIdx]
                     //compute specific caret position
                     (0..line.length - 2).find {
                         val s = line.substring(0, it + 1)
                         val substringLen = fm.getStringBounds(s, this.graphics).width
-                        ul.x + substringLen > caret.x
+                        textUl.x + substringLen > caret.x
                     }
                         ?.let { caretIdx ->
                             val globalIndex = n.cache.lines
