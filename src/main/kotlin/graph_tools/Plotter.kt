@@ -5,8 +5,8 @@ import graph_tools.Plotter.TextPlotter.drawEdge
 import graph_tools.Plotter.TextPlotter.drawNode
 import graph_tools.Plotter.TextPlotter.recomputeBounds
 import graph_tools.Plotter.TextPlotter.recomputeEdge
-import ui.Utils.orElse
-import ui.Utils.withIdentityTransform
+import utils.Utils.orElse
+import utils.Utils.withIdentityTransform
 import utils.Constants.defaultBgColor
 import utils.Constants
 import utils.Vector2

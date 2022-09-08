@@ -1,6 +1,6 @@
 package parser_dot
 
-import ui.Utils.orElse
+import utils.Utils.orElse
 import java.util.*
 
 // (Yes, this is a naive tokenizer.)

@@ -2,7 +2,7 @@ package parser_dot
 
 import DotGraphLoader
 import Graph
-import ui.Utils.orElse
+import utils.Utils.orElse
 import java.util.*
 
 class Parser(

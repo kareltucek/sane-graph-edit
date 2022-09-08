@@ -1,6 +1,6 @@
 package parser_dot
 
-import ui.Utils.orElse
+import utils.Utils.orElse
 
 class IdGen {
     val counters: MutableMap<String, Long> = mutableMapOf()

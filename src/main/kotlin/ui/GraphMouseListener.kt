@@ -5,9 +5,11 @@ import graph_tools.LayoutOptimizer
 import graph_tools.Node
 import graph_tools.Plotter
 import utils.Vector2
-import ui.Utils.orElse
-import ui.Utils.toScreenspaceVector
-import ui.Utils.toWorkspaceVector
+import utils.Utils.orElse
+import utils.Utils.toScreenVector
+import utils.Utils.toScreenspaceVector
+import utils.Utils.toWorkspaceVector
+import java.awt.Robot
 import java.awt.event.*
 import java.awt.event.MouseEvent.*
 import java.time.Instant
@@ -201,6 +203,7 @@ class GraphMouseListener(
 
         fun dragPanView(pos: Vector2) {
             val diff = pos - lastPosition
+
             Plotter.t.translate(diff.x.toDouble(), diff.y.toDouble())
             graphView.repaint()
         }

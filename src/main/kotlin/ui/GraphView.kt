@@ -1,12 +1,14 @@
 package ui
 
 import Graph
+import graph_tools.GraphTools
 import graph_tools.Node
 import graph_tools.Plotter
-import ui.Utils.orElse
-import ui.Utils.toWorkspaceVector
+import utils.Utils.orElse
+import utils.Utils.toWorkspaceVector
 import utils.Constants
 import utils.Constants.stylePickerDimensions
+import utils.Rectangle
 import utils.Vector2
 import java.awt.Graphics
 import javax.swing.JComponent
@@ -27,10 +29,34 @@ class GraphView() : JLayeredPane() {
     var g: Graph = Graph.testGraph()
 
     fun placeMeAt(me: JComponent, ul: Vector2, br: Vector2) {
-        springLayout.putConstraint(SpringLayout.WEST, me, ul.x.toInt() + Constants.frameMargin, SpringLayout.WEST, this);
-        springLayout.putConstraint(SpringLayout.NORTH, me, ul.y.toInt() + Constants.frameMargin, SpringLayout.NORTH, this);
-        springLayout.putConstraint(SpringLayout.EAST, me, br.x.toInt() + Constants.frameMargin, SpringLayout.WEST, this);
-        springLayout.putConstraint(SpringLayout.SOUTH, me, br.y.toInt() + Constants.frameMargin, SpringLayout.NORTH, this);
+        springLayout.putConstraint(
+            SpringLayout.WEST,
+            me,
+            ul.x.toInt() + Constants.frameMargin,
+            SpringLayout.WEST,
+            this
+        );
+        springLayout.putConstraint(
+            SpringLayout.NORTH,
+            me,
+            ul.y.toInt() + Constants.frameMargin,
+            SpringLayout.NORTH,
+            this
+        );
+        springLayout.putConstraint(
+            SpringLayout.EAST,
+            me,
+            br.x.toInt() + Constants.frameMargin,
+            SpringLayout.WEST,
+            this
+        );
+        springLayout.putConstraint(
+            SpringLayout.SOUTH,
+            me,
+            br.y.toInt() + Constants.frameMargin,
+            SpringLayout.NORTH,
+            this
+        );
     }
 
     fun setTextFieldVisible(visible: Boolean) {
@@ -54,8 +80,8 @@ class GraphView() : JLayeredPane() {
 
     fun startStylePicker(screenCoordinatesPosition: Vector2? = null) {
         val center = screenCoordinatesPosition.orElse(lastCursorPosition.toWorkspaceVector())
-        val ul = center - stylePickerDimensions/2
-        val br = center + stylePickerDimensions/2
+        val ul = center - stylePickerDimensions / 2
+        val br = center + stylePickerDimensions / 2
         placeMeAt(stylePicker, ul, br)
         stylePicker.isVisible = true
         stylePicker.requestFocus()
@@ -110,20 +136,44 @@ class GraphView() : JLayeredPane() {
         graphCanvas.repaint()
     }
 
-    fun centerScreen() {
-        val center = g.selectedNodes
-            .takeIf { it.isNotEmpty() }
-            .orElse(g.nodes)
-            .let { nodes ->
-                nodes.fold(Vector2.Zero) { a, b -> a + b.position } / (nodes.size)
-            }
-
-        Plotter.t.setToScale(1.0, 1.0)
-        val mass = g.centerOfMass()
-        val viewCenter = Vector2(this.width, this.height).let { it/2 }.toWorkspaceVector()
-        val diff = viewCenter - center
+    fun setViewTo(pos: Vector2, scale: Double = 1.0) {
+        Plotter.t.setToScale(scale, scale)
+        val viewCenter = Vector2(this.width, this.height).let { it / 2 }.toWorkspaceVector()
+        val diff = viewCenter - pos
         Plotter.t.translate(diff.x.toDouble(), diff.y.toDouble())
         repaint()
+    }
+
+    fun centerScreen() {
+        val center =
+            g.selectedNodes
+                .takeIf { it.isNotEmpty() }
+                .orElse(g.nodes)
+                .let { GraphTools.computeCenterOfMass(it) }
+
+        setViewTo(center, 1.0)
+    }
+
+    fun boundScreen() {
+        val box =
+            g.selectedNodes
+                .takeIf { it.isNotEmpty() }
+                .orElse(g.nodes)
+                .let { GraphTools.computeBoundingBox(it) }
+
+        box?.let { r ->
+            val ul = r.ul
+            val br = r.br
+
+            val screenSize = Vector2(this.width, this.height)
+            val size = br - ul
+            val scale = screenSize / size
+            val targetScale = Math.min(scale.x, scale.y)
+                .let { it / 1.1 }
+                .coerceIn(0.0001, 1.0)
+
+            setViewTo((box.ul + box.br)/2, targetScale)
+        }
     }
 
     public override fun paintComponent(g: Graphics) {
@@ -135,7 +185,7 @@ class GraphView() : JLayeredPane() {
 
 
 class Window(title: String) : JFrame() {
-    val sh: GraphView =  GraphView()
+    val sh: GraphView = GraphView()
 
     init {
         createUI(title)

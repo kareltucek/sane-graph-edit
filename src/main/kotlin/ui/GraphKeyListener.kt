@@ -1,22 +1,16 @@
 package ui
 
+import graph_tools.GraphTools.computeGeneration
 import graph_tools.Edge
+import graph_tools.GraphTools.computeClosure
 import graph_tools.LayoutOptimizer
 import graph_tools.Node
-import ui.GraphKeyListener.impl.centerScreen
-import ui.GraphKeyListener.impl.clearEdges
-import ui.GraphKeyListener.impl.copyFormat
-import ui.GraphKeyListener.impl.deleteNode
-import ui.GraphKeyListener.impl.drawEdge
-import ui.GraphKeyListener.impl.drawNodeWithEdge
-import ui.GraphKeyListener.impl.optimize
 import ui.GraphKeyListener.impl.selectAll
 import ui.GraphKeyListener.impl.editNode
-import ui.GraphKeyListener.impl.grab
-import ui.GraphKeyListener.impl.pasteFormat
-import ui.GraphKeyListener.impl.selectLinked
+import ui.GraphKeyListener.impl.executeCommand
 import ui.GraphKeyListener.impl.unselectAll
-import ui.Utils.orElse
+import utils.Utils.orElse
+import utils.Utils.toUnit
 import java.awt.event.KeyEvent
 import java.awt.event.KeyEvent.*
 import java.awt.event.KeyListener
@@ -25,27 +19,10 @@ class GraphKeyListener(
     val graphView: GraphView,
 ) : KeyListener {
     override fun keyTyped(e: KeyEvent) {
-        val used: Unit? = when (e.keyChar) {
-            'e' -> drawEdge(graphView, true)
-            'E' -> drawEdge(graphView, false)
-            'v' -> drawNodeWithEdge(graphView, forwardEdge = true, append = false)
-            'V' -> drawNodeWithEdge(graphView, forwardEdge = false, append = false)
-            'a' -> drawNodeWithEdge(graphView, forwardEdge = true, append = true)
-            'A' -> drawNodeWithEdge(graphView, forwardEdge = false, append = true)
-            'c' -> clearEdges(graphView)
-            'd' -> deleteNode(graphView, false)
-            'D' -> deleteNode(graphView, true)
-            'o' -> optimize(graphView, false)
-            'O' -> optimize(graphView, true)
-            'l' -> selectLinked(graphView, true)
-            'L' -> selectLinked(graphView, false)
-            '0' -> centerScreen(graphView)
-            'f' -> pasteFormat(graphView)
-            'F' -> copyFormat(graphView)
-            'g' -> grab(graphView)
-            else -> null
+        val used = executeCommand(e.keyChar.toString(), graphView)
+        if (used) {
+            e.consume()
         }
-        used?.let { e.consume() }
     }
 
     override fun keyPressed(e: KeyEvent) {
@@ -78,6 +55,44 @@ class GraphKeyListener(
     override fun keyReleased(e: KeyEvent) {}
 
     object impl {
+        fun executeCommand(oneCommand: String, graphView: GraphView): Boolean {
+            val used: Unit? = when (oneCommand) {
+                "e" -> drawEdge(graphView, true)
+                "E" -> drawEdge(graphView, false)
+                "v" -> drawNodeWithEdge(graphView, forwardEdge = true, append = false)
+                "V" -> drawNodeWithEdge(graphView, forwardEdge = false, append = false)
+                "a" -> drawNodeWithEdge(graphView, forwardEdge = true, append = true)
+                "A" -> drawNodeWithEdge(graphView, forwardEdge = false, append = true)
+                "c" -> clearEdges(graphView)
+                "d" -> deleteNode(graphView, false)
+                "D" -> deleteNode(graphView, true)
+                "o" -> optimize(graphView, false)
+                "O" -> optimize(graphView, true)
+                "t" -> selectClosure(graphView, true)
+                "T" -> selectClosure(graphView, false)
+                "l" -> selectLinked(graphView, true)
+                "L" -> selectLinked(graphView, false)
+                "w" -> unselectOldestGen(graphView, true)
+                "W" -> unselectOldestGen(graphView, false)
+                "0" -> boundScreen(graphView)
+                "1" -> centerScreen(graphView)
+                "f" -> pasteFormat(graphView)
+                "F" -> copyFormat(graphView)
+                "g" -> grab(graphView)
+                "G" -> executeMacro(graphView, "tw0").toUnit()
+                else -> null
+            }
+            return used != null
+        }
+
+        fun executeMacro(graphView: GraphView, commandSequence: String): Boolean {
+            return commandSequence
+                .chunked(1)
+                .map { executeCommand(it, graphView) }
+                .fold(true) { a, b -> a && b }
+        }
+
+
         fun copyFormat(graphView: GraphView) {
             val target = graphView.g.selectedNodes.firstOrNull()
 
@@ -93,6 +108,7 @@ class GraphKeyListener(
             graphView.g.needsRecomputing(graphView.g.selectedNodes)
             graphView.repaint()
         }
+
         fun grab(graphView: GraphView) {
             graphView.mouseListener.controller.startMove()
         }
@@ -106,16 +122,35 @@ class GraphKeyListener(
             graphView.centerScreen()
         }
 
-        fun selectLinked(graphView: GraphView, forward: Boolean) {
-            graphView.g.selectedNodes
-                .flatMap { n ->
-                    graphView.g.edgeMap[n]
-                        ?.map { if (forward) it.dst else it.src }
-                        .orEmpty()
-                }
-                .let { graphView.g.selectAll(it) }
+        fun boundScreen(graphView: GraphView) {
+            graphView.boundScreen()
+        }
+
+        fun selectClosure(graphView: GraphView, forward: Boolean) {
+            val nextGen = computeClosure(graphView.g, graphView.g.selectedNodes, forward)
+            graphView.g.selectAll(nextGen)
             graphView.repaint()
         }
+
+        fun selectLinked(graphView: GraphView, forward: Boolean) {
+            val nextGen = computeGeneration(graphView.g, graphView.g.selectedNodes, forward)
+            graphView.g.selectAll(nextGen)
+            graphView.repaint()
+        }
+
+        fun unselectOldestGen(graphView: GraphView, forward: Boolean) {
+            val oldestGen = graphView.g.selectedNodes
+                .filter {
+                    if (forward) {
+                        graphView.g.findEddges(graphView.g.selectedNodes, setOf(it)).isEmpty()
+                    } else {
+                        graphView.g.findEddges(setOf(it), graphView.g.selectedNodes).isEmpty()
+                    }
+                }
+            graphView.g.unselectAll(oldestGen)
+            graphView.repaint()
+        }
+
         fun optimize(graphView: GraphView, restrict: Boolean) {
             LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
             graphView.repaint()
@@ -143,7 +178,7 @@ class GraphKeyListener(
             val pos = graphView.lastCursorPosition
             val sel = graphView.g.selectedNodes.map { it }
 
-            if(reconnectNodes) {
+            if (reconnectNodes) {
                 sel.flatMap {
                     val ins = graphView.g.findInEdges(it)
                         .map { it.src }
@@ -192,7 +227,7 @@ class GraphKeyListener(
             val from = if (append) {
                 graphView.g.lastActiveNode
                     ?.let { listOf(it) }
-                    .orElse( graphView.g.selectedNodes )
+                    .orElse(graphView.g.selectedNodes)
             } else {
                 graphView.g.selectedNodes
             }

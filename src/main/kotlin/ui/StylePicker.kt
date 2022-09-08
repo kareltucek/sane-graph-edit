@@ -2,7 +2,7 @@ package ui
 
 import ui.ColorStyle.PickerSet.colorStyles
 import ui.ColorStyle.PickerSet.hues
-import ui.Utils.orElse
+import utils.Utils.orElse
 import utils.Constants
 import java.awt.*
 import java.awt.event.ActionEvent

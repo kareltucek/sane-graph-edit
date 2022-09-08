@@ -2,7 +2,7 @@ package ui
 
 import utils.Constants
 import graph_tools.Plotter
-import ui.Utils.PerformanceData.withPerformanceCheck
+import utils.Utils.PerformanceData.withPerformanceCheck
 import utils.Vector2
 import java.awt.*
 import javax.swing.JPanel

@@ -3,9 +3,9 @@ package ui
 import utils.Constants
 import graph_tools.Node
 import graph_tools.Plotter
-import ui.Utils.orElse
+import utils.Utils.orElse
 import utils.Vector2
-import ui.Utils.toScreenVector
+import utils.Utils.toScreenVector
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Insets
@@ -99,7 +99,7 @@ class NodeEditor(
                     val lineIdx = ((caret.y - textUl.y) / fm.height).toInt().coerceIn(0, n.cache.lines.size - 1)
                     val line = n.cache.lines[lineIdx]
                     //compute specific caret position
-                    (0..line.length - 2).find {
+                    (0..line.length - 1).find {
                         val s = line.substring(0, it + 1)
                         val substringLen = fm.getStringBounds(s, this.graphics).width
                         textUl.x + substringLen > caret.x

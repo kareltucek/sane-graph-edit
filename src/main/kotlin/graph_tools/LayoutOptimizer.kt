@@ -1,13 +1,12 @@
 package graph_tools
 
 import Graph
-import graph_tools.LayoutOptimizer.impl.computeBBSprings
 import graph_tools.LayoutOptimizer.impl.computeCollisionSprings
 import graph_tools.LayoutOptimizer.impl.computeGravitySprings
-import ui.Utils
-import ui.Utils.fold
-import ui.Utils.letIf
-import ui.Utils.orElse
+import utils.Utils
+import utils.Utils.fold
+import utils.Utils.letIf
+import utils.Utils.orElse
 import utils.Vector2
 import utils.Vector2.Companion.Zero
 
@@ -43,7 +42,7 @@ object LayoutOptimizer {
         movingNodes: Boolean,
         restrictOperator: Boolean
     ) {
-        compute(g, tgt, movingNodes, restrictOperator, 1.1)
+        compute(g, tgt, movingNodes, restrictOperator, 1.0)
     }
 
 
@@ -56,22 +55,20 @@ object LayoutOptimizer {
     ) {
         if (tgt != SpringTarget.MoveNoOne) {
             val springSet = listOf(
-                Triple({ computeCollisionSprings(g, tgt, movingNodes) }, true, "collision"),
-                Triple({ computeGravitySprings(g, tgt, movingNodes) }, true, "grav"),
-                Triple({ computeBBSprings(g, tgt) }, true, "bb")
+                Pair({ computeCollisionSprings(g, tgt, movingNodes) }, "collision"),
+                Pair({ computeGravitySprings(g, tgt, movingNodes) }, "grav"),
+//                Pair({ computeBBSprings(g, tgt) }, "bb")
             )
 
-            val takeAPeek = if (false) {
+            val takeAPeek = if (true) {
                 springSet
-                    .filter { it.second }
-                    .flatMap { set -> (set.first)().map { it to set.third } }
+                    .flatMap { set -> (set.first)().map { it to set.second } }
                     .groupBy { it.first.n }
             } else {
                 null
             }
 
             val springMap = springSet
-                .filter { it.second }
                 .flatMap { (it.first)() }
                 .groupBy { it.n }
 
@@ -88,7 +85,8 @@ object LayoutOptimizer {
                 n.position = n.position + delta*deltaMultiplier
             }
 
-            g.needsRecomputing(g.nodes)
+            /** We need to recompute connection points immediately because this function can be called multiple times per drawn frame. */
+            Plotter.recomputeEdges(g.edges)
         }
     }
 
@@ -133,12 +131,9 @@ object LayoutOptimizer {
         fun degFactor(g: Graph, node: Node, other: Node): Double {
             val d1 = g.edgeMap[node]?.size.orElse(0).toDouble()
             val d2 = g.edgeMap[other]?.size.orElse(0).toDouble()
-//            return 1.0 + 0.3 * Math.min(d1, d2).coerceAtLeast(1.5).toDouble()
 
-//            return 0.7 * Math.min(d1, d2).toDouble().let { if (it > 2) it + 1 else it }
-
-            val f1 = 0.7 * Math.min(d1, d2).let { if (it > 2) it + 1 else it }
-            val f2 = 0.15 * (Math.max(d1, d2) - 5).coerceAtLeast(0.0)
+            val f1 = 0.2 * Math.min(d1, d2).let { if (it > 2) it + 1 else it }
+            val f2 = 0.0 * (Math.max(d1, d2) - 5).coerceAtLeast(0.0)
             return f1 + f2
         }
 
@@ -149,14 +144,16 @@ object LayoutOptimizer {
             val c2 = listOf(cn, co).maxBy { it.lengthSquared() }
 
             val f = degFactor(g, node, othr) // degree factor
-            val d = 1.5 // distance factor
+            val d = 1.0 // distance factor
 
-            val desiredLocation = (othr.position - (c1 + c2) * d - c1 * f * d)
-            val diff = desiredLocation - node.position
+            val desiredRelativeLocation =  - (c1 + c2) * d
+//            val desiredRelativeLocation =  - (c1 + c2)
+            val desiredAbsoluteLocation = (node.position + othr.position + desiredRelativeLocation) / 2
+            val diff = desiredAbsoluteLocation - node.position
 
             return Spring(
                 n = node,
-                v = diff * 0.5  // this makes it converge faster
+                v = diff
             )
         }
 
@@ -164,6 +161,7 @@ object LayoutOptimizer {
         fun computeBBSprings(g: Graph, tgt: SpringTarget): List<Spring> {
             val edges = computeConnectedEdgeSet(g, tgt)
             val springs = edges.map { (src, dst, e) -> computeBBSpring(g, src, dst, e) }
+
             return springs
         }
 
@@ -171,9 +169,7 @@ object LayoutOptimizer {
             val strength = moving.fold(20.0, 20.0)
             val nodes = computeNodeSet(g, tgt)
             val gravities = Utils.CachedMap() { n: Node ->
-                g.edgeMap[n]
-                    .orEmpty()
-                    .filter { it.dst == n }
+                g.findInEdges(n)
                     .map { e ->
                         (e.dst.position - e.src.position).toUnit()
                     }
@@ -204,23 +200,27 @@ object LayoutOptimizer {
             gravities: Utils.CachedMap<Node, Vector2>
         ): List<Spring> {
             val strength = moving.fold(10.0, 10.0)
-            return g.edgeMap[node].orEmpty().filter { e -> e.dst == node }
+            return g.findInEdges(node)
                 .flatMap {
                     val grav = gravities[it.src]
                     val dir = (it.dst.position - it.src.position).toUnit()
                     val fac = if (g.findOutEdges(it.src).size < 3) {
                         ((1 - grav.dot(dir)) / 2)
-                            .let { it }
+                        // 0-1, across entire circumference
                     } else {
                         (-grav.dot(dir))
                             .coerceAtLeast(0.0)
                             .let { it * it }
+                        0.0
+                        // 0-1, just around in edge
                     }
                     val res = (grav * fac).toUnit() * strength
+                    val correction = (-dir).toScale(res.length())
+
+                    //TODO: this does not seem to preserve distance!
 
                     listOfNotNull(
-                        Spring(n = it.dst, v = res),
-                        Spring(n = it.src, v = -res),
+                        Spring(n = it.dst, v = res + correction),
                     )
                 }
         }
@@ -274,7 +274,7 @@ object LayoutOptimizer {
             val c2 = othr.cache.shape.connectionPoint(dir, othr)
 
 //            val distanceCf = g.findEdge(node, other).isNotNull().fold( 2.0, 1.5)
-            val distanceCf = 1.5
+            val distanceCf = 2.0
             val desiredDistance = (c1 + c2).length() * distanceCf * strengthModulator
 
             return if ((n - o).length() < desiredDistance) {

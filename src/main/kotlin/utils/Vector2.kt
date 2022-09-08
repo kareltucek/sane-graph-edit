@@ -1,7 +1,7 @@
 package utils
 
-import ui.Utils.fold
-import ui.Utils.letIf
+import utils.Utils.fold
+import utils.Utils.letIf
 import java.awt.geom.Rectangle2D
 import kotlin.math.sign
 
@@ -33,7 +33,9 @@ data class Vector2(val x: Double, val y: Double) {
 
     fun toAbsolute() = Vector2(Math.abs(x), Math.abs(y))
 
-    fun toScale(d: Double) = (this * (d / this.length()))
+    fun toScale(d: Double) = toUnit() * d
+
+
     fun dot(b: Vector2) = x * b.x + y * b.y
     fun directBy(dir: Vector2): Vector2 {
         return Vector2(
@@ -49,6 +51,9 @@ data class Vector2(val x: Double, val y: Double) {
             else -> this * len.coerceIn(minOptimizeMove, maxOptimizerMove) / len
         }
     }
+
+    fun min(b: Vector2) = Vector2(Math.min(this.x, b.x), Math.min(this.y, b.y))
+    fun max(b: Vector2) = Vector2(Math.max(this.x, b.x), Math.max(this.y, b.y))
 
     companion object {
         fun Rectangle2D.toVector2() = Vector2(this.width.toDouble(), this.height.toDouble())
@@ -70,3 +75,5 @@ data class Vector2(val x: Double, val y: Double) {
         }
     }
 }
+
+data class Rectangle(val ul: Vector2, val br: Vector2)

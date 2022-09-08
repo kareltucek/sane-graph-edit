@@ -2,11 +2,11 @@ package graph_tools
 
 import ui.ColorStyle
 import ui.NodeStyle
-import ui.Utils
-import ui.Utils.filterNotNull
-import ui.Utils.letIf
-import ui.Utils.orElse
-import ui.Utils.toHexString
+import utils.Utils
+import utils.Utils.filterNotNull
+import utils.Utils.letIf
+import utils.Utils.orElse
+import utils.Utils.toHexString
 import utils.Constants
 import utils.Vector2
 import java.awt.Color
@@ -72,8 +72,10 @@ class Node(
             "fillcolor" -> attributes.bg = Utils.fromHexString(r)
             "color" -> attributes.fg = Utils.fromHexString(r)
             "label" -> attributes.text = r
-            "fontsize" -> attributes.nodeScale = log(r.toDouble(), Constants.fontSizeZoomCoef)
-            "pos" -> r.split(",")
+            "fontsize" -> attributes.nodeScale = log(r.toDouble()/Plotter.defaultFontSize, Constants.fontSizeZoomCoef)
+            "pos" -> r
+                .replace("!", "")
+                .split(",")
                 .map { it.toDouble() }
                 .takeIf { it.size == 2 }
                 ?.let {
@@ -88,9 +90,9 @@ class Node(
         return mapOf(
             "fillcolor" to attributes.bg?.toHexString(),
             "color" to attributes.fg?.toHexString(),
-            "fontsize" to attributes.nodeScale?.let { pow(Constants.fontSizeZoomCoef, it) }?.toString(),
+            "fontsize" to attributes.nodeScale?.let { pow(Constants.fontSizeZoomCoef, it)*Plotter.defaultFontSize }?.toString(),
             "label" to attributes.text,
-            "pos" to "${position.x},${position.y}",
+            "pos" to "${position.x},${position.y}!",
         ).filterNotNull() + attributes.other.filterNotNull()
     }
 

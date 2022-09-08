@@ -3,9 +3,9 @@ package parser_dot
 import graph_tools.Edge
 import Graph
 import graph_tools.Node
-import ui.Utils.exhaustive
-import ui.Utils.inverseMap
-import ui.Utils.orElse
+import utils.Utils.exhaustive
+import utils.Utils.inverseMap
+import utils.Utils.orElse
 
 class Serializer(
     val g: Graph,

@@ -1,8 +1,6 @@
 import graph_tools.*
-import utils.Vector2.Companion.Zero
 import parser_dot.IdGen
 import parser_dot.ParseLog
-import ui.GraphKeyListener.impl.selectAll
 import utils.Constants
 import utils.Vector2
 import java.awt.Graphics2D
@@ -153,10 +151,6 @@ class Graph(
         return e
     }
 
-    fun centerOfMass(): Vector2 {
-        return nodes.fold(Zero) { a, b -> a + b.position } / nodes.size
-    }
-
     fun printStats() {
         println("Graph has ${nodes.size} nodes, and ${edges.size} vertices!")
     }
@@ -181,3 +175,4 @@ class Graph(
         }
     }
 }
+
