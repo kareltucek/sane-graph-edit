@@ -1,6 +1,7 @@
 package graph_tools
 
 import Graph
+import graph_tools.LayoutOptimizer.impl.computeBBSprings
 import graph_tools.LayoutOptimizer.impl.computeCollisionSprings
 import graph_tools.LayoutOptimizer.impl.computeGravitySprings
 import utils.Utils
@@ -57,7 +58,7 @@ object LayoutOptimizer {
             val springSet = listOf(
                 Pair({ computeCollisionSprings(g, tgt, movingNodes) }, "collision"),
                 Pair({ computeGravitySprings(g, tgt, movingNodes) }, "grav"),
-//                Pair({ computeBBSprings(g, tgt) }, "bb")
+                Pair({ computeBBSprings(g, tgt) }, "bb")
             )
 
             val takeAPeek = if (true) {
@@ -134,7 +135,7 @@ object LayoutOptimizer {
 
             val f1 = 0.2 * Math.min(d1, d2).let { if (it > 2) it + 1 else it }
             val f2 = 0.0 * (Math.max(d1, d2) - 5).coerceAtLeast(0.0)
-            return f1 + f2
+            return 1.0 + f1 + f2
         }
 
         fun computeBBSpring(g: Graph, node: Node, othr: Node, e: Edge, strength: Double = 1.0): Spring {
@@ -146,7 +147,7 @@ object LayoutOptimizer {
             val f = degFactor(g, node, othr) // degree factor
             val d = 1.0 // distance factor
 
-            val desiredRelativeLocation =  - (c1 + c2) * d
+            val desiredRelativeLocation =  - (c1 + c2) * d * f
 //            val desiredRelativeLocation =  - (c1 + c2)
             val desiredAbsoluteLocation = (node.position + othr.position + desiredRelativeLocation) / 2
             val diff = desiredAbsoluteLocation - node.position
@@ -160,7 +161,7 @@ object LayoutOptimizer {
 
         fun computeBBSprings(g: Graph, tgt: SpringTarget): List<Spring> {
             val edges = computeConnectedEdgeSet(g, tgt)
-            val springs = edges.map { (src, dst, e) -> computeBBSpring(g, src, dst, e) }
+            val springs = edges.map { (src, dst, e) -> computeBBSpring(g, dst, src, e) }
 
             return springs
         }

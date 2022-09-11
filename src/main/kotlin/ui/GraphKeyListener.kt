@@ -80,6 +80,7 @@ class GraphKeyListener(
                 "F" -> copyFormat(graphView)
                 "g" -> grab(graphView)
                 "G" -> executeMacro(graphView, "tw0").toUnit()
+//                "G" -> executeMacro(graphView, "TW0").toUnit()
                 else -> null
             }
             return used != null
@@ -210,12 +211,19 @@ class GraphKeyListener(
 
 
         fun clearEdges(graphView: GraphView) {
+            val g = graphView.g
             val pos = graphView.lastCursorPosition
-            val sel = graphView.g.selectedNodes
+            val sel = g.selectedNodes
 
-            sel.forEach { n ->
-                graphView.g.edges.filter { it.src == n || it.dst == n }
-                    .let { graphView.g.removeAllEdges(it.toSet()) }
+            val edgesInComponent = g.findEddges(sel, sel)
+
+            if (edgesInComponent.isNotEmpty()) {
+                graphView.g.removeAllEdges(edgesInComponent)
+            } else {
+                sel.forEach { n ->
+                    graphView.g.edges.filter { it.src == n || it.dst == n }
+                        .let { graphView.g.removeAllEdges(it.toSet()) }
+                }
             }
 
             graphView.repaint()

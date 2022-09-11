@@ -9,6 +9,12 @@ import java.awt.geom.Point2D
 import java.time.Instant
 
 object Utils {
+
+    fun Double.format(digits: Int) = "%.${digits}f".format(this)
+
+    fun Double.toNiceString(): String {
+        return this.format(1)
+    }
     fun MouseEvent.toScreenspaceVector(): Vector2 = Vector2(this.x.toDouble(), this.y.toDouble())
     fun MouseEvent.toWorkspaceVector(): Vector2 {
         var pt = Point2D.Double(this.x.toDouble() + Constants.frameMargin, this.y.toDouble() + Constants.frameMargin)

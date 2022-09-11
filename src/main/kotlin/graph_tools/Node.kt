@@ -8,6 +8,7 @@ import utils.Utils.letIf
 import utils.Utils.orElse
 import utils.Utils.toHexString
 import utils.Constants
+import utils.Utils.toNiceString
 import utils.Vector2
 import java.awt.Color
 import java.lang.Math.pow
@@ -90,9 +91,9 @@ class Node(
         return mapOf(
             "fillcolor" to attributes.bg?.toHexString(),
             "color" to attributes.fg?.toHexString(),
-            "fontsize" to attributes.nodeScale?.let { pow(Constants.fontSizeZoomCoef, it)*Plotter.defaultFontSize }?.toString(),
+            "fontsize" to attributes.nodeScale?.let { pow(Constants.fontSizeZoomCoef, it)*Plotter.defaultFontSize }?.toNiceString(),
             "label" to attributes.text,
-            "pos" to "${position.x},${position.y}!",
+            "pos" to "${position.x.toNiceString()},${position.y.toNiceString()}!",
         ).filterNotNull() + attributes.other.filterNotNull()
     }
 

@@ -113,7 +113,7 @@ object Plotter {
                     r * 2,
                 )
             } else if (renderArrowheads) {
-                val r = (Constants.arrowheadRadius).toInt()
+                val r = (Constants.arrowheadRadius).toInt() - 1
                 g2d.fillRect(
                     dst.x.toInt() - r,
                     dst.y.toInt() - r,
@@ -131,7 +131,7 @@ object Plotter {
 
             if (selected) {
                 if (thickStroke.lineWidth*t.scaleX < 1.0) {
-                    g2d.stroke = BasicStroke((1.0 / t.scaleX).toFloat())
+                    g2d.stroke = BasicStroke((thickStroke.lineWidth / t.scaleX * 1.1).toFloat())
                 } else {
                     g2d.stroke = thickStroke
                 }

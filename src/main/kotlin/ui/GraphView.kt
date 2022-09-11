@@ -100,7 +100,7 @@ class GraphView() : JLayeredPane() {
 
     fun loadFile() {
         g = DotGraphLoader.loadFromFile("dot.dot")
-        centerScreen()
+        boundScreen()
     }
 
     init {
