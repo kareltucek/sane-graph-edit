@@ -48,12 +48,14 @@ object Constants {
     val helpCommands = """
             Graph manipulation
             ==================
-            v/V + mouseover - create new vertex under cursor and connect it to current selection 
+            v/V + mouseover - create new vertex under cursor and connect it to current selection
             e/E + mouseover - connect selected vertex(ices) to vertex under cursor
             c - clear edges
             d - delete selected nodes
+            u - undo last mutation
+            r - redo (or Ctrl+R)
             Doubleclick - create new vertex and edit it straight away, or edit vertex under cursor
-            Ctrl + click - multiselect 
+            Ctrl + click - multiselect
             Drag - move vertex, or pan view
         """.trimIndent()
 

@@ -85,10 +85,10 @@ jar on a machine without Gradle.
 
 ### Keyboard — history
 
-| Key          | Action                                                    |
-|--------------|-----------------------------------------------------------|
-| `Ctrl+Z`     | Undo the last mutation                                    |
-| `Ctrl+Shift+Z` or `Ctrl+Y` | Redo                                        |
+| Key            | Action                                                  |
+|----------------|---------------------------------------------------------|
+| `u`            | Undo the last mutation                                  |
+| `r` or `Ctrl+R`| Redo                                                    |
 
 Undo covers every user-visible change: spawning / deleting nodes,
 adding / removing edges, moving nodes (one step per drag, not per

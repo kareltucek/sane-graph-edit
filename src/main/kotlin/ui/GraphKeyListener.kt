@@ -55,22 +55,12 @@ class GraphKeyListener(
 
     override fun keyPressed(e: KeyEvent) {
         when {
-            // Undo / redo. Ctrl+Z undoes, Ctrl+Shift+Z (and Ctrl+Y) redoes.
-            // Both are standard; supporting both keeps muscle memory happy
-            // across editors.
-            e.keyCode == VK_Z && e.isControlDown && !e.isShiftDown -> {
-                graphView.g.history.undo()
-                graphView.g.needsRecomputing(graphView.g.nodes)
-                graphView.repaint()
-            }
-
-            e.keyCode == VK_Z && e.isControlDown && e.isShiftDown -> {
-                graphView.g.history.redo()
-                graphView.g.needsRecomputing(graphView.g.nodes)
-                graphView.repaint()
-            }
-
-            e.keyCode == VK_Y && e.isControlDown -> {
+            // Redo via Ctrl+R. The plain-character counterparts `u`
+            // (undo) and `r` (redo) come in through `keyTyped` →
+            // `executeCommand`, matching the rest of this editor's
+            // single-keystroke command style. Ctrl+R is kept as a
+            // modifier variant for muscle memory.
+            e.keyCode == VK_R && e.isControlDown -> {
                 graphView.g.history.redo()
                 graphView.g.needsRecomputing(graphView.g.nodes)
                 graphView.repaint()
@@ -127,6 +117,8 @@ class GraphKeyListener(
                 "1" -> centerScreen(graphView)
                 "f" -> pasteFormat(graphView)
                 "F" -> copyFormat(graphView)
+                "u" -> undo(graphView)
+                "r" -> redo(graphView)
                 "g" -> grab(graphView)
                 "G" -> executeMacro(graphView, "tw0").toUnit()
 //                "G" -> executeMacro(graphView, "TW0").toUnit()
@@ -161,6 +153,22 @@ class GraphKeyListener(
 
         fun grab(graphView: GraphView) {
             graphView.mouseListener.controller.startOrEndMove()
+        }
+
+        fun undo(graphView: GraphView) {
+            graphView.g.history.undo()
+            // Commands mark specific nodes dirty during their `undo`,
+            // but recompute-on-paint is a full sweep of the dirty set
+            // anyway — marking everything here costs nothing and covers
+            // layout commands that move many nodes at once.
+            graphView.g.needsRecomputing(graphView.g.nodes)
+            graphView.repaint()
+        }
+
+        fun redo(graphView: GraphView) {
+            graphView.g.history.redo()
+            graphView.g.needsRecomputing(graphView.g.nodes)
+            graphView.repaint()
         }
 
         fun unselectAll(graphView: GraphView) {

@@ -276,13 +276,15 @@ canonical list:
 | `l`/`L`| select one generation of neighbours                   |
 | `w`/`W`| unselect oldest generation                             |
 | `f`/`F`| paste/copy node style                                  |
+| `u`    | undo the last mutation                                 |
+| `r`    | redo the last undone mutation                          |
 | `g`    | toggle "grab and move" state                           |
 | `0`    | fit view to all / selection                            |
 | `1`    | centre view on selection                               |
 
 Ctrl-modified shortcuts go through `keyPressed` instead of
-`keyTyped`: `Ctrl+S` save, `Ctrl+O` open, `Ctrl+A` select-all,
-`Escape` deselect, `Space` edit active node.
+`keyTyped`: `Ctrl+S` save, `Ctrl+O` open, `Ctrl+R` redo, `Ctrl+A`
+select-all, `Escape` deselect, `Space` edit active node.
 
 See `Constants.helpCommands` for the in-app help text.
 
