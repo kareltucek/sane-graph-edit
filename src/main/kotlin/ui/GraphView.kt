@@ -16,6 +16,23 @@ import javax.swing.JFrame
 import javax.swing.JLayeredPane
 import javax.swing.SpringLayout
 
+/**
+ * The editor's main document view. Holds one [Graph] plus the three
+ * stacked widgets that make up the editing surface:
+ *
+ *   - [graphCanvas] — the rendered graph (layer 0)
+ *   - [nodeEditor] — in-place text editor that pops up over a node (layer 1)
+ *   - [stylePicker] — colour/shape/size popup (layer 1)
+ *
+ * Input handling is delegated to [mouseListener] and [keyListener]. The
+ * listeners mutate [g] and then call `repaint()`; the actual drawing
+ * happens in [graphCanvas]'s paint path via [graph_tools.Plotter].
+ *
+ * Current shape is "one graph per window". Tabs (see `tasks/tabs.md`)
+ * will promote this to "one `GraphView` per tab", at which point several
+ * of the singleton-ish concerns here (the view transform on `Plotter.t`,
+ * the startup test graph) need rethinking.
+ */
 class GraphView() : JLayeredPane() {
     val graphCanvas = GraphCanvas(this)
     val nodeEditor = NodeEditor(this)

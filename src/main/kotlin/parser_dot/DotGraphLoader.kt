@@ -6,6 +6,25 @@ import parser_dot.TokenType
 import java.io.File
 import java.util.*
 
+/**
+ * Façade over the DOT tokenizer, parser, and serializer.
+ *
+ * Graphviz DOT is the native file format for this editor. The round trip
+ * is lossy in that we only understand a subset of DOT attributes
+ * (`label`, `pos`, `fillcolor`, `color`, `fontsize`, `shape`), but the
+ * parser stashes everything else in `NodeAttributes.other` and the
+ * serializer writes it back verbatim — so unknown attributes survive
+ * open/save.
+ *
+ * The serializer also consults `Graph.parseLog` to preserve structure
+ * (comments, section breaks, declaration order) on files loaded from
+ * disk. Programmatically-constructed graphs have no parse log and fall
+ * back to a flat listing.
+ *
+ * [Test] holds a couple of hand-written smoke tests; call them from the
+ * top-level `main` in this file if you need to exercise the pipeline.
+ * Real unit tests belong under `src/test/kotlin`, once we have them.
+ */
 object DotGraphLoader {
     data class Token(val tpe: TokenType, val value: String)
 

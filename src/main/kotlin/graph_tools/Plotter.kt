@@ -14,7 +14,27 @@ import java.awt.*
 import java.awt.geom.AffineTransform
 import java.lang.Math.pow
 
+/**
+ * Read-only renderer that walks a [Graph] and paints it onto a
+ * [Graphics2D]. Owns the workspace→screen transform [t] and the font
+ * measurement cache ([FontData.cache]).
+ *
+ * Note — global state: [t] is a singleton. That's fine for the single
+ * currently-open graph, but once tabs land this needs to move onto
+ * `GraphView` or be explicitly saved/restored on tab switch. See
+ * `tasks/tabs.md`.
+ *
+ * Note — perf: the `optimizationLevel` argument to [setTransforms] comes
+ * from `GraphCanvas.optimizeLevel`, which bumps itself up whenever a paint
+ * frame exceeds a time budget. Higher levels drop antialiasing, then
+ * arrowheads, then text at zoomed-out scales.
+ */
 object Plotter {
+    /**
+     * Workspace → screen affine transform. Mutated directly by the input
+     * layer when the user pans (translate) or zooms (scale). Every
+     * rendering path starts by copying this into the current `Graphics2D`.
+     */
     var t: AffineTransform = AffineTransform()
     var defaultFontSize: Double = 12.0
     var renderArrowheads: Boolean = true

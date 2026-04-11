@@ -16,6 +16,24 @@ import java.awt.event.KeyEvent
 import java.awt.event.KeyEvent.*
 import java.awt.event.KeyListener
 
+/**
+ * Top-level keyboard handler for the canvas.
+ *
+ * Two dispatch paths:
+ *
+ *   - `keyPressed` handles modifier-driven shortcuts (Ctrl+S save,
+ *     Ctrl+O open, Ctrl+A select all, Escape deselect, Space edit).
+ *     These need the raw key code because the char form drops the
+ *     modifier.
+ *
+ *   - `keyTyped` forwards plain character keys to
+ *     [impl.executeCommand], a big single-character dispatch table for
+ *     the editor's text-editor-style commands (`e` for edge, `v` for
+ *     new+edge, `d` for delete, `o` for layout, etc.).
+ *
+ * Full command reference is at `Constants.helpCommands` and in
+ * `docs/developer/architecture.md`.
+ */
 class GraphKeyListener(
     val graphView: GraphView,
 ) : KeyListener {

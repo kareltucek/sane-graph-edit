@@ -6,16 +6,49 @@ import utils.Vector2
 import java.awt.Graphics2D
 
 
+/**
+ * In-memory model for one graph. Owns the set of nodes, edges, current
+ * selection, and the lazy "needs recomputing" bookkeeping that the renderer
+ * relies on.
+ *
+ * Design note — dirty tracking: layout measurements (text bounds, shape
+ * bounds, edge endpoints) live on `Node.cache` / `Edge.cache`. Whenever a
+ * caller mutates something that affects those measurements (position,
+ * text, font size, shape) it must call [needsRecomputing] so the next
+ * [recompute] pass refreshes the cache. The render loop in
+ * `GraphCanvas.doDrawing` calls [recompute] on every paint, so callers
+ * normally only need to mark nodes dirty, not compute anything themselves.
+ *
+ * Design note — identity vs equality: edges intentionally use referential
+ * equality (see `Edge.kt:32-47`), which means two edges with the same
+ * endpoints are distinct objects. This supports multi-edges and makes it
+ * possible to undo a removal by re-inserting the exact same object.
+ *
+ * See `docs/developer/architecture.md` for the broader picture.
+ */
 class Graph(
     var id: String = IdGen.global.new("g"),
 ) {
+    // The `*Restricted` names exist purely so that the read-only views
+    // below can expose `Set<...>` instead of `MutableSet<...>` to callers.
     private val nodesRestricted: MutableSet<Node> = mutableSetOf()
     private val edgesRestricted: MutableSet<Edge> = mutableSetOf()
     private val selectedNodesRestricted: MutableSet<Node> = mutableSetOf()
     private val edgeMapRestricted: MutableMap<Node, MutableSet<Edge>> = mutableMapOf()
     private val needsRecomputing: MutableSet<Node> = mutableSetOf()
 
+    /**
+     * The node that input should default to when there is no cursor under
+     * the pointer — e.g. `Space` to edit, `a` to append. Tracks the last
+     * add/select operation, which is distinct from `selectedNodes` (a set).
+     */
     var lastActiveNode: Node? = null
+    /**
+     * Structural log produced by the DOT parser. Used by the serializer to
+     * emit output that preserves the original file's layout (comment
+     * positions, section breaks, declaration order) on round-trip. Null on
+     * graphs that were constructed programmatically.
+     */
     var parseLog: ParseLog? = null
 
     val nodes: Set<Node>
