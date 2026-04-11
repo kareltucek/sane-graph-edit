@@ -1,11 +1,20 @@
 package ui
 
 import graph_tools.GraphTools.computeGeneration
+import graph_tools.AddEdgesCommand
+import graph_tools.AddNodeCommand
+import graph_tools.CompositeCommand
+import graph_tools.Command
 import graph_tools.Edge
 import graph_tools.GraphTools
 import graph_tools.GraphTools.computeClosure
 import graph_tools.LayoutOptimizer
+import graph_tools.MoveNodesCommand
 import graph_tools.Node
+import graph_tools.RemoveEdgesCommand
+import graph_tools.RemoveNodesCommand
+import graph_tools.StyleNodesCommand
+import utils.Vector2
 import ui.GraphKeyListener.impl.selectAll
 import ui.GraphKeyListener.impl.editNode
 import ui.GraphKeyListener.impl.executeCommand
@@ -46,6 +55,27 @@ class GraphKeyListener(
 
     override fun keyPressed(e: KeyEvent) {
         when {
+            // Undo / redo. Ctrl+Z undoes, Ctrl+Shift+Z (and Ctrl+Y) redoes.
+            // Both are standard; supporting both keeps muscle memory happy
+            // across editors.
+            e.keyCode == VK_Z && e.isControlDown && !e.isShiftDown -> {
+                graphView.g.history.undo()
+                graphView.g.needsRecomputing(graphView.g.nodes)
+                graphView.repaint()
+            }
+
+            e.keyCode == VK_Z && e.isControlDown && e.isShiftDown -> {
+                graphView.g.history.redo()
+                graphView.g.needsRecomputing(graphView.g.nodes)
+                graphView.repaint()
+            }
+
+            e.keyCode == VK_Y && e.isControlDown -> {
+                graphView.g.history.redo()
+                graphView.g.needsRecomputing(graphView.g.nodes)
+                graphView.repaint()
+            }
+
             e.keyCode == VK_S && e.isControlDown -> {
                 graphView.saveFile()
             }
@@ -122,10 +152,10 @@ class GraphKeyListener(
         }
 
         fun pasteFormat(graphView: GraphView) {
-            graphView.g.selectedNodes.forEach {
-                it.setStyle(graphView.defaultNodeStyle)
-            }
-            graphView.g.needsRecomputing(graphView.g.selectedNodes)
+            val targets = graphView.g.selectedNodes.toList()
+            if (targets.isEmpty()) return
+            val cmd = StyleNodesCommand.toUniform(graphView.g, targets, graphView.defaultNodeStyle)
+            graphView.g.commit(cmd)
             graphView.repaint()
         }
 
@@ -172,7 +202,16 @@ class GraphKeyListener(
         }
 
         fun optimize(graphView: GraphView, restrict: Boolean) {
+            // Capture positions before optimising, then build a
+            // MoveNodesCommand so the user can undo a layout pass with
+            // Ctrl+Z. We snapshot all nodes because the optimiser may
+            // touch any of them; unchanged nodes cost nothing to record.
+            val before = graphView.g.nodes.associateWith { it.position }
             LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
+            val after = graphView.g.nodes.associateWith { it.position }.toMutableMap()
+            if (before != after) {
+                graphView.g.history.commitWithoutRun(MoveNodesCommand(graphView.g, before, after))
+            }
             graphView.repaint()
         }
 
@@ -195,35 +234,45 @@ class GraphKeyListener(
         }
 
         fun deleteNode(graphView: GraphView, reconnectNodes: Boolean) {
-            val pos = graphView.lastCursorPosition
-            val sel = graphView.g.selectedNodes.map { it }
+            val g = graphView.g
+            val sel = g.selectedNodes.toList()
+            if (sel.isEmpty()) return
 
-            if (reconnectNodes) {
-                sel.flatMap {
-                    val ins = graphView.g.findInEdges(it)
-                        .map { it.src }
-                        .toSet()
-                    val outs = graphView.g.findOutEdges(it)
-                        .map { it.dst }
-                        .toSet()
-                    ins.flatMap { src ->
-                        outs.map { dst ->
-                            src to dst
-                        }
+            // Collect the reconnection edges first, before we compute the
+            // edges to remove — we want the new bridges in the graph
+            // *after* the originals are gone, but we need to derive them
+            // from the structure *before* deletion. Building them now and
+            // letting the composite command re-play the add after the
+            // removes is the cleanest order.
+            val reconnects: List<Edge> =
+                if (reconnectNodes) {
+                    sel.flatMap { n ->
+                        val ins = g.findInEdges(n).map { it.src }.toSet()
+                        val outs = g.findOutEdges(n).map { it.dst }.toSet()
+                        ins.flatMap { src -> outs.map { dst -> src to dst } }
                     }
+                        .distinct()
+                        // Don't bridge through deleted nodes.
+                        .filter { it.first !in sel && it.second !in sel }
+                        .map { Edge(it.first, it.second) }
+                } else {
+                    emptyList()
                 }
-                    .distinct()
-                    .forEach {
-                        graphView.g.add(Edge(it.first, it.second))
-                    }
-            }
 
-            graphView.g.edges
+            val incidentEdges = g.edges
                 .filter { sel.contains(it.src) || sel.contains(it.dst) }
-                .let { graphView.g.removeAllEdges(it.toSet()) }
+                .toList()
 
-            graphView.g.unselectAll(sel)
-            graphView.g.removeAllNodes(sel)
+            g.unselectAll(sel)
+
+            val children = buildList<Command> {
+                add(RemoveEdgesCommand(g, incidentEdges))
+                add(RemoveNodesCommand(g, sel))
+                if (reconnects.isNotEmpty()) {
+                    add(AddEdgesCommand(g, reconnects))
+                }
+            }
+            g.commit(CompositeCommand(children))
 
             graphView.repaint()
         }
@@ -231,37 +280,41 @@ class GraphKeyListener(
 
         fun clearEdges(graphView: GraphView) {
             val g = graphView.g
-            val pos = graphView.lastCursorPosition
             val sel = g.selectedNodes
 
             val edgesInComponent = g.findEddges(sel, sel)
 
-            if (edgesInComponent.isNotEmpty()) {
-                graphView.g.removeAllEdges(edgesInComponent)
-            } else {
-                sel.forEach { n ->
-                    graphView.g.edges.filter { it.src == n || it.dst == n }
-                        .let { graphView.g.removeAllEdges(it.toSet()) }
+            val victims: List<Edge> =
+                if (edgesInComponent.isNotEmpty()) {
+                    edgesInComponent.toList()
+                } else {
+                    sel.flatMap { n ->
+                        g.edges.filter { it.src == n || it.dst == n }
+                    }.distinct()
                 }
+
+            if (victims.isNotEmpty()) {
+                g.commit(RemoveEdgesCommand(g, victims))
             }
 
             graphView.repaint()
         }
 
         fun drawNodeWithEdge(graphView: GraphView, forwardEdge: Boolean, append: Boolean) {
+            val g = graphView.g
             val pos = graphView.lastCursorPosition
 
             val from = if (append) {
-                graphView.g.lastActiveNode
+                g.lastActiveNode
                     ?.let { listOf(it) }
-                    .orElse(graphView.g.selectedNodes)
+                    .orElse(g.selectedNodes)
             } else {
-                graphView.g.selectedNodes
+                g.selectedNodes
             }
 
             val style = from
                 .takeIf { it.size == 1 }
-                ?.let { GraphTools.pickNodeStyle(graphView.g, it.first()) }
+                ?.let { GraphTools.pickNodeStyle(g, it.first()) }
                 .orElse(graphView.defaultNodeStyle)
 
             val newNode = Node(
@@ -270,30 +323,40 @@ class GraphKeyListener(
                 style = style,
             )
 
-            graphView.g.add(newNode)
-
-            from.forEach { selectedNode ->
-                val e = if (forwardEdge) Edge(selectedNode, newNode) else Edge(newNode, selectedNode)
-                graphView.g.add(e)
+            val newEdges = from.map { selectedNode ->
+                if (forwardEdge) Edge(selectedNode, newNode) else Edge(newNode, selectedNode)
             }
 
+            val children = buildList<Command> {
+                add(AddNodeCommand(g, newNode))
+                if (newEdges.isNotEmpty()) {
+                    add(AddEdgesCommand(g, newEdges))
+                }
+            }
+            g.commit(CompositeCommand(children))
 
             graphView.repaint()
         }
 
         fun drawEdge(graphView: GraphView, forward: Boolean) {
+            val g = graphView.g
             val pos = graphView.lastCursorPosition
-            val pointed = Clicker.selectClickedNode(graphView.g, pos)
-            val selected = graphView.g.selectedNodes - pointed
+            val pointed = Clicker.selectClickedNode(g, pos)
+            val selected = g.selectedNodes - pointed
 
             val (src, dst) = if (forward) selected to pointed else pointed to selected
 
-            val existingEdges = graphView.g.findEddges(src, dst)
+            val existingEdges = g.findEddges(src, dst)
             val representedSrcs = existingEdges.map { it.src }.toSet()
             val representedDsts = existingEdges.map { it.dst }.toSet()
 
+            // Branch 1: all endpoints already covered → user is toggling
+            // the edges off. Branch 2: at least one pair is missing →
+            // add those, leave existing ones alone.
             if (representedDsts.size == dst.size && representedSrcs.size == src.size) {
-                graphView.g.removeAllEdges(existingEdges)
+                if (existingEdges.isNotEmpty()) {
+                    g.commit(RemoveEdgesCommand(g, existingEdges))
+                }
             } else {
                 val existingConnections = existingEdges.associateBy { it.src to it.dst }
                 val missingEdges = src.flatMap { s ->
@@ -304,7 +367,9 @@ class GraphKeyListener(
                     .filter { !existingConnections.containsKey(it.src to it.dst) }
                     .filter { it.src != it.dst }
 
-                graphView.g.addAllEdges(missingEdges)
+                if (missingEdges.isNotEmpty()) {
+                    g.commit(AddEdgesCommand(g, missingEdges))
+                }
             }
 
             graphView.repaint()

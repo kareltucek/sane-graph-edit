@@ -1,6 +1,7 @@
 package ui
 
 import utils.Constants
+import graph_tools.EditTextCommand
 import graph_tools.Node
 import graph_tools.Plotter
 import utils.Utils.orElse
@@ -52,6 +53,14 @@ class NodeEditor(
     }
 
     var editedNode: Node? = null
+
+    /**
+     * Original text of [editedNode] at the moment editing began. Captured
+     * so that [endNodeEdit] can push an [EditTextCommand] holding the
+     * full before/after pair — keeps label typing under a single undo
+     * step rather than one per character.
+     */
+    private var editStartText: String? = null
 
     init {
         this.document.addDocumentListener(dl)
@@ -123,6 +132,7 @@ class NodeEditor(
 
     fun startNodeEdit(n: Node, clickScreenCoordinates: Vector2?) {
         editedNode = n
+        editStartText = n.attributes.text
         this.text = editedNode!!.attributes.text
         this.background = n.attributes.bg.orElse(Constants.defaultBgColor)
         this.foreground = n.attributes.fg.orElse(Constants.defaultFgColor)
@@ -138,9 +148,25 @@ class NodeEditor(
     }
 
     fun endNodeEdit() {
-        if (editedNode != null) {
-            editedNode!!.attributes.text = this.text
-            editedNode = null
+        val n = editedNode ?: return
+        // `updateNodeEdit` kept the node text in sync with the editor
+        // while the user was typing, so the live text is already this.text.
+        // Snap back to the captured "before" so the history command's
+        // redo() can re-apply the final text cleanly and undo() can
+        // restore the original — avoids a "ghost" mutation that's not
+        // on the stack.
+        val finalText = this.text
+        val startText = editStartText
+        if (startText != null && startText != finalText) {
+            n.attributes.text = startText
+            parent.g.commit(EditTextCommand(parent.g, n, startText, finalText))
+        } else {
+            // No-op edit (opened, closed unchanged). Clear out any
+            // partial in-place updates made while moving the caret.
+            n.attributes.text = startText ?: finalText
         }
+        parent.g.needsRecomputing(n)
+        editedNode = null
+        editStartText = null
     }
 }

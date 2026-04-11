@@ -73,12 +73,11 @@ object Constants {
     val helpTodo = """
         Todo
         ====
-        - undo / redo (ur)
         - cfg parser
         - copy paste (ctrl+cv)
         - styles (y,p)
         - folding?
-        - layouting? 
+        - layouting?
         - highlight related to selection (s?)
     """.trimIndent()
 }

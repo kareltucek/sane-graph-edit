@@ -1,7 +1,9 @@
 package ui
 
 import utils.Constants
+import graph_tools.AddNodeCommand
 import graph_tools.LayoutOptimizer
+import graph_tools.MoveNodesCommand
 import graph_tools.Node
 import graph_tools.Plotter
 import utils.Vector2
@@ -161,6 +163,15 @@ class GraphMouseListener(
         var singleClickedTime: Instant? = Instant.now(),
         var selectionBoxFrom: Vector2? = null,
         var selectionBoxInitial: Set<Node>? = null,
+        /**
+         * Captured positions of nodes at the start of a move gesture.
+         * Built in [startMoveOrSelectSingleNode] /
+         * [startMoveMultipleNodes], consumed in [endSingleClick] to
+         * construct a single [MoveNodesCommand] for the whole drag —
+         * see `tasks/undo.md` for the rationale (per-drag transaction
+         * rather than one undo step per mouse-move event).
+         */
+        var moveStartPositions: Map<Node, Vector2>? = null,
     )  {
         enum class States { PanningWorkspace, MovingNodes, SelectionBox }
 
@@ -190,21 +201,40 @@ class GraphMouseListener(
                 graphView.g.cleanSelect(mouseoverNodes)
             }
             state = States.MovingNodes
+            captureMoveStart()
+        }
+
+        /**
+         * Snapshot the positions of every currently-selected node. Called
+         * when a move gesture begins so that the matching
+         * [MoveNodesCommand] built at release time has a stable "before"
+         * state regardless of how many intermediate drag events fire.
+         */
+        private fun captureMoveStart() {
+            moveStartPositions = graphView.g.selectedNodes.associateWith { it.position }
         }
 
         fun startOrEndMove() {
             when (state) {
-                States.MovingNodes -> state = null
-                else -> state = States.MovingNodes
+                States.MovingNodes -> {
+                    commitMoveIfAny()
+                    state = null
+                }
+                else -> {
+                    state = States.MovingNodes
+                    captureMoveStart()
+                }
             }
         }
         fun startMove() {
             state = States.MovingNodes
+            captureMoveStart()
         }
 
         fun startMoveOrSelectSingleNode(mouseoverNodes: MutableSet<Node>) {
             graphView.g.cleanSelect(mouseoverNodes)
             state = States.MovingNodes
+            captureMoveStart()
         }
 
         fun dragPanView(pos: Vector2) {
@@ -270,8 +300,25 @@ class GraphMouseListener(
                 singleClickedTime = pressedTime
             }
 
+            commitMoveIfAny()
+
             state = null
             selectionBoxFrom = null
+        }
+
+        /**
+         * If a move gesture was in progress, build a [MoveNodesCommand]
+         * from the captured start positions and the current (final)
+         * positions and push it onto the graph's undo stack. No-ops if no
+         * capture was taken or nothing actually moved.
+         */
+        fun commitMoveIfAny() {
+            val before = moveStartPositions ?: return
+            moveStartPositions = null
+            val after = before.keys.associateWith { it.position }.toMutableMap()
+            if (before.any { (n, p) -> after[n] != p }) {
+                graphView.g.history.commitWithoutRun(MoveNodesCommand(graphView.g, before, after))
+            }
         }
 
         fun dragOrEndSelectionBox(saveHistory: Boolean) {
@@ -294,7 +341,7 @@ class GraphMouseListener(
                 style = graphView.defaultNodeStyle,
             )
 
-            graphView.g.add(newNode)
+            graphView.g.commit(AddNodeCommand(graphView.g, newNode))
             graphView.g.cleanSelect(mutableSetOf(newNode))
             graphView.repaint()
         }

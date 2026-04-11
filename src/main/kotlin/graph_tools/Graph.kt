@@ -51,6 +51,25 @@ class Graph(
      */
     var parseLog: ParseLog? = null
 
+    /**
+     * Undo/redo stack attached to this graph. Every user-visible mutation
+     * should go through [commit] (or be pushed via [History.commitWithoutRun]
+     * for gestures that mutate the graph directly during the gesture — like
+     * node drag — and only record the reversible command on release).
+     *
+     * Low-level mutators on this class (`add`, `remove`, `addAllEdges`…)
+     * intentionally bypass the history: the DOT parser builds a graph from
+     * scratch by calling them, and we don't want the user to see a parse
+     * log as hundreds of undoable steps. Commands are responsible for
+     * calling the low-level mutators from their `redo`/`undo`.
+     */
+    val history: History = History()
+
+    /** Execute [cmd] and push it onto the undo stack. Short-hand for `history.apply`. */
+    fun commit(cmd: Command) {
+        history.apply(cmd)
+    }
+
     val nodes: Set<Node>
         get() {
             return nodesRestricted

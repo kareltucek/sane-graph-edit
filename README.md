@@ -83,6 +83,20 @@ jar on a machine without Gradle.
 | `F`        | Copy style from the selected node to the "clipboard"      |
 | `f`        | Paste the last-copied style onto the selected nodes       |
 
+### Keyboard — history
+
+| Key          | Action                                                    |
+|--------------|-----------------------------------------------------------|
+| `Ctrl+Z`     | Undo the last mutation                                    |
+| `Ctrl+Shift+Z` or `Ctrl+Y` | Redo                                        |
+
+Undo covers every user-visible change: spawning / deleting nodes,
+adding / removing edges, moving nodes (one step per drag, not per
+pixel), typing into a node (one step per edit session, not per
+keystroke), style / shape / size changes, and layout-optimiser runs.
+Selection changes and view transforms are not tracked — they're
+navigation, not data.
+
 ### Keyboard — files
 
 | Key        | Action                                                    |

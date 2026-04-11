@@ -342,11 +342,36 @@ act as springs, nodes repel. Triggered by:
 Good for tidying a graph you've hand-drawn, not for producing a
 canonical layout from scratch.
 
+## Undo / redo
+
+`graph_tools/History.kt` defines a `Command` interface and a bounded
+stack; `graph_tools/Commands.kt` holds the concrete commands
+(`AddNodeCommand`, `RemoveEdgesCommand`, `MoveNodesCommand`,
+`EditTextCommand`, `StyleNodesCommand`, `SetShapeCommand`,
+`SetSizeCommand`, plus `CompositeCommand` for grouping). Each
+`Graph` owns one `History` instance, so a per-graph (and
+eventually per-tab) undo stack falls out naturally.
+
+Rule of thumb when adding a new mutation:
+
+1. Write a `Command` that holds the before/after state.
+2. Call `graph.commit(cmd)` (runs redo + pushes to stack) for
+   instantaneous mutations, or `graph.history.commitWithoutRun(cmd)`
+   for mutations that happen live during a user gesture (like node
+   drag — the positions are already updated by the time you commit).
+3. Leave the low-level mutators on `Graph` (`add`, `remove`,
+   `addAllEdges`) alone: they stay off-the-record so the DOT parser
+   can populate a fresh graph without spamming the history.
+
+Drag coalescing is a "per-gesture transaction", not time-windowed:
+`GraphMouseController` snapshots positions on `startMove*` and
+commits once on release. Text edits coalesce within a 1-second
+window by `EditTextCommand.coalesceInto`.
+
 ## What is *not* in the box
 
 Items currently missing and planned under `tasks/`:
 
-- **Undo/redo** — nothing reverses mutations. See `tasks/undo.md`.
 - **Multiple tabs** — one graph at a time. See `tasks/tabs.md`.
 - **Save As / File picker** — saves to a hardcoded `dot.dot` in
   cwd. See `tasks/file-ui.md`.

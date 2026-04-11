@@ -1,6 +1,10 @@
 package ui
 
 import graph_tools.NodeShape
+import graph_tools.SetShapeCommand
+import graph_tools.SetSizeCommand
+import graph_tools.StyleNodesCommand
+import graph_tools.StyleSnapshot
 import ui.ColorStyle.PickerSet.colorStyles
 import ui.ColorStyle.PickerSet.hues
 import utils.Utils.orElse
@@ -124,24 +128,39 @@ class StylePicker(
     } // </editor-fold>
 
     private fun setSize(r: Double) {
-        parent.g.selectedNodes.forEach {
-            it.setSize(relative = r)
-        }
-        parent.g.needsRecomputing(parent.g.selectedNodes)
+        val targets = parent.g.selectedNodes.toList()
+        if (targets.isEmpty()) return
+        val before = targets.associateWith { it.attributes.nodeScale }
+        parent.g.commit(SetSizeCommand(parent.g, before, delta = r, absolute = null))
         parent.repaint()
     }
 
     private fun setShape(s: NodeShape) {
-        parent.g.selectedNodes.forEach {
-            it.setShape(s)
+        val targets = parent.g.selectedNodes.toList()
+        if (targets.isEmpty()) return
+        val before = targets.associateWith { n ->
+            // n.cache.shape is a NodeShapeImpl, but commands round-trip
+            // through the NodeShape enum (which the setShape API accepts).
+            // Recover the enum entry for each current shape.
+            NodeShape.values().firstOrNull { it.impl === n.cache.shape }
         }
-        parent.g.needsRecomputing(parent.g.selectedNodes)
+        parent.g.commit(SetShapeCommand(parent.g, before, s))
         parent.repaint()
     }
 
     private fun colorFieldClicked(style: ColorStyle) {
-        parent.g.selectedNodes.forEach {
-            it.setStyle(style)
+        val targets = parent.g.selectedNodes.toList()
+        if (targets.isNotEmpty()) {
+            val before = targets.associateWith { StyleSnapshot.of(it) }
+            val after = targets.associateWith {
+                StyleSnapshot(
+                    bg = style.background,
+                    fg = style.foreground,
+                    // Colour picks don't touch node scale; preserve it.
+                    nodeScale = it.attributes.nodeScale,
+                )
+            }
+            parent.g.commit(StyleNodesCommand(parent.g, before, after))
         }
         parent.endStylePicker()
     }
