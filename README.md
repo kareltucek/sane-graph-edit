@@ -110,27 +110,42 @@ On close, the editor prompts Save / Discard / Cancel for every
 unsaved tab. Last-used open/save directories are remembered in
 `~/.sanegrapedit.properties`.
 
-### Session persistence & autosave
+### Autosave backups
 
-The set of open file-backed tabs is persisted to
-`$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (falling
-back to `~/.config/sane-graph-edit/session.properties`) whenever
-you open, close, or save a file — and one last time on window
-close. On the next launch, those files are reopened automatically
-and the tab that was active last time becomes active again.
-Untitled tabs don't participate — there's no stable identifier to
-restore them from.
-
-Every 30 seconds, any dirty tab is flushed to
+Every 5 minutes, any dirty tab is written to
 `$XDG_CACHE_HOME/sane-graph-edit/backups/` (defaults to
-`~/.cache/sane-graph-edit/backups/`) as a plain DOT file. The
-filename is `f-<hash>.dot` where the hash is derived from the
-source file's absolute path, or `u-<uuid>.dot` for untitled tabs.
-Saving or closing a tab deletes its backup. **The backup
-directory is a crash-safety net, not an undo log** — if the
-editor crashes or the machine loses power, find the `.dot` file
-in `backups/`, rename it into place, and you're back up. If
-nothing bad happens, the directory stays small and transient.
+`~/.cache/sane-graph-edit/backups/`) as a plain DOT file with
+the filename
+
+```
+<basename>.<hash>.<id>.dot
+```
+
+where `basename` is the source file's name without its `.dot`
+extension (or `untitled` for tabs that have never been saved),
+`hash` is a short SHA-1 prefix of the absolute source path (or
+the tab's autosave UUID for untitled tabs) to disambiguate files
+that share a basename, and `id` is a monotonically increasing
+integer per `(basename, hash)` pair. Examples:
+
+```
+foo.3a1b9cd0.1.dot
+foo.3a1b9cd0.2.dot
+foo.3a1b9cd0.3.dot
+untitled.8e7d2f4a.1.dot
+```
+
+**Backups accumulate and are never deleted automatically.** The
+design goal is a safety net against your own saving mistakes: if
+you overwrite the wrong file, save after a bad delete, or
+clobber a graph with an empty document, the previous snapshots
+are still sitting in the backup directory. Recovery is manual —
+`ls ~/.cache/sane-graph-edit/backups/`, find the snapshot you
+want, copy it into place. When the directory gets too large,
+prune it yourself.
+
+The editor does **not** restore previously open tabs at startup
+— every launch begins with a single empty tab.
 
 ### Keyboard — tabs
 

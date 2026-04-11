@@ -395,31 +395,47 @@ in the selection + reference point for paste positioning). Paste
 commits a `CompositeCommand(AddNodesCommand + AddEdgesCommand)`
 so it's undoable.
 
-### Session persistence & autosave
+### Autosave backups
 
-Two separate on-disk stores, both XDG-compliant via
-`ui/XdgPaths.kt`:
+`ui/AutosaveManager.kt` runs a daemon `Timer` every 5 minutes
+(`DEFAULT_INTERVAL_MS`) that writes every dirty `GraphView` to
+`$XDG_CACHE_HOME/sane-graph-edit/backups/` (via `ui/XdgPaths.kt`)
+as a plain DOT file with the name
 
-- `ui/Session.kt` persists the list of file-backed tabs and the
-  active tab to
-  `$XDG_CONFIG_HOME/sane-graph-edit/session.properties`.
-  `TabManager.bootstrap()` reads it at startup and reopens every
-  file (skipping ones that have moved or fail to parse).
-  `TabManager.saveSession()` flushes it on tab open/close/save
-  and on window close.
-- `ui/AutosaveManager.kt` runs a daemon `Timer` every 30s that
-  writes every dirty `GraphView` to
-  `$XDG_CACHE_HOME/sane-graph-edit/backups/` as a plain DOT
-  file. The backup filename is a truncated SHA-1 of the absolute
-  source path (`f-<hash>.dot`) or a per-tab UUID for untitled
-  tabs (`u-<uuid>.dot`). Saving a tab or closing it deletes the
-  backup. Pure path logic lives in `BackupPaths` so unit tests
-  can exercise it without a tab manager.
+```
+<basename>.<hash>.<id>.dot
+```
 
-Neither component is load-bearing: session failure at startup
-degrades to "empty tab", backup failure at runtime is swallowed.
-The design goal is "helpful when it works, invisible when it
-doesn't".
+- `basename` is `currentFile.fileName` with the `.dot` suffix
+  removed, or `untitled` for tabs that have never been saved.
+- `hash` is the first 8 hex chars of `SHA-1(absolute source
+  path)` for file-backed tabs, or the first 8 chars of the
+  tab's autosave UUID for untitled tabs.
+- `id` is a monotonically increasing integer per
+  `(basename, hash)` prefix, allocated by `BackupIdAllocator`.
+
+Filename construction lives in the pure `BackupPaths` object
+(`basenameFor`, `hashFor`, `prefixFor`, `filenameFor`,
+`parseFilename`) so tests can exercise the scheme without a tab
+manager. `BackupIdAllocator` owns the counter state: it seeds
+itself lazily by scanning the backup directory for existing
+snapshots on the first lookup for a given prefix, so ids keep
+climbing across editor restarts.
+
+**Backups are never deleted automatically.** There is no
+`deleteBackup` method, no cleanup on save, no cleanup on tab
+close. The design goal is an accumulating safety net against
+the user's own saving mistakes; pruning is the user's job.
+
+The editor does **not** persist or restore tab state across
+launches — every startup begins with a single empty tab. If
+something goes wrong, recovery is manual: find the desired
+`.dot` file under `~/.cache/sane-graph-edit/backups/` and copy
+it into place.
+
+All IO in this path is best-effort: a failing backup write (disk
+full, permission denied) never kills the editor, and a missing
+backup directory is treated as empty rather than an error.
 
 ## What is *not* in the box
 
