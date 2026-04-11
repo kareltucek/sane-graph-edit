@@ -47,7 +47,21 @@ object Plotter {
     fun screenspaceFontSize(n: Node): Double = ((fontScale(n) * defaultFontSize) * t.scaleX)
 
     fun setTransforms(g2d: Graphics2D, optimizationLevel: Int) {
-        g2d.transform = t
+        // Concatenate, do *not* overwrite. The Graphics2D handed to a
+        // child component's paintComponent already has a transform
+        // installed by Swing: it pre-translates so that (0, 0) is the
+        // child's top-left, accounting for everything above and left
+        // of it (window borders, tab bar, layout offsets…). Replacing
+        // it with `t` would throw that pre-translation away and cause
+        // drawing to land at (Plotter.t.translate) measured from the
+        // window content origin, not from the canvas. Before the tab
+        // bar landed, GraphView lived at (0, 0) of the content pane
+        // and the pre-translation was a no-op, so the bug was
+        // invisible — now the tab bar adds ~26 pixels of vertical
+        // pre-translation that we must keep.
+        val composed = AffineTransform(g2d.transform)
+        composed.concatenate(t)
+        g2d.transform = composed
         g2d.setFont(g2d.font.deriveFont(defaultFontSize.toFloat()))
         g2d.setStroke(BasicStroke(2.0f))
         renderOvals = optimizationLevel < 3
