@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+
 plugins {
     kotlin("jvm") version "2.0.21"
     application
@@ -12,6 +14,12 @@ repositories {
 
 kotlin {
     jvmToolchain(21)
+    compilerOptions {
+        // Explicit so bumps to the Kotlin plugin (which may ship a
+        // newer default) don't silently change language semantics.
+        languageVersion.set(KotlinVersion.KOTLIN_2_0)
+        apiVersion.set(KotlinVersion.KOTLIN_2_0)
+    }
 }
 
 application {

@@ -2,6 +2,17 @@ out/
 build/
 .gradle/
 
+# IntelliJ regenerates these from the Gradle model on import — keep them out of VCS
+*.iml
+.idea/modules.xml
+.idea/misc.xml
+.idea/kotlinc.xml
+.idea/workspace.xml
+.idea/libraries/
+.idea/modules/
+.idea/jarRepositories.xml
+.idea/compiler.xml
+
 # Local / OS
 *.local
 .DS_Store
