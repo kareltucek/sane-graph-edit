@@ -66,17 +66,22 @@ object Constants {
         """.trimIndent()
 
     val helpFile = """
-        File manipulation
-        =================
-        Ctrl+o
-        Ctrl+s
+        Files & tabs
+        ============
+        Ctrl+O - open
+        Ctrl+S - save
+        Ctrl+Shift+S - save as
+        Ctrl+N / Ctrl+T - new tab
+        Ctrl+W - close tab
+        Ctrl+Tab / Ctrl+Shift+Tab - next/prev tab
+        Ctrl+C/X/V - copy/cut/paste (works across tabs)
     """.trimIndent()
 
     val helpTodo = """
         Todo
         ====
+        - svg export
         - cfg parser
-        - copy paste (ctrl+cv)
         - styles (y,p)
         - folding?
         - layouting?

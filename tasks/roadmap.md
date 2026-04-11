@@ -11,26 +11,19 @@ detailed design and checklist. Check those for the actual plans.
 The ordering below reflects a dependency chain: earlier items unblock
 later ones, and each step leaves the project in a runnable state.
 
-1. **[Gradle build](#)** — *done* (see commit `0b53e85`)
-2. **[Developer docs](../docs/developer/architecture.md)** — baseline
-   understanding of the architecture for anyone (including future me)
-   picking this back up.
-3. **[Undo / redo](undo.md)** — foundational. Touches the core data
-   model and forces every mutating operation through a command
-   abstraction. Doing this first means tabs, copy/paste, and the file
-   UI can all rely on it rather than retrofitting later.
-4. **[File UI](file-ui.md)** — `JFileChooser`, dirty tracking,
-   recent-directory memory. Replaces the hardcoded `dot.dot` path.
-5. **[SVG exporter](svg-export.md)** — the web-friendly angle. The
+1. **Gradle build** — *done*
+2. **Developer docs** — *done* (`docs/developer/architecture.md`)
+3. **Undo / redo** — *done*
+4. **File UI** — *done* (`JFileChooser`, dirty tracking, last-dir
+   memory, close-on-dirty prompt)
+5. **Tabs + cross-tab copy/paste** — *done* (`JTabbedPane`,
+   per-tab graph/history/transform/file, `Ctrl+T`/`Ctrl+W`/`Ctrl+Tab`,
+   `Ctrl+C/X/V` clipboard)
+6. **[SVG exporter](svg-export.md)** — the web-friendly angle. The
    renderer already speaks `Graphics2D`; a thin SVG-writing
    `Graphics2D` subclass, or a direct walk over the graph using the
    same primitives the `Plotter` uses, gets us scriptable export.
-6. **[Tabs + cross-tab copy/paste](tabs.md)** — wraps the current
-   single-`GraphView` assumption in a `JTabbedPane`. Requires undo to
-   already be per-graph and the file UI to already handle "which
-   document am I saving."
-7. **README + user docs** — done alongside each feature so the
-   instructions describe what the current `master` can actually do.
+7. **README + user docs** — done alongside each feature.
 
 ## Non-goals for 0.1
 

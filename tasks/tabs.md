@@ -1,5 +1,10 @@
 # Tabs (multiple open graphs) + cross-tab copy/paste
 
+> **Status: done.** Landed together with file-ui.md. The plan below
+> describes what was built; the actual code is in
+> `ui/TabManager.kt`, `ui/GraphView.kt`, and `ui/Clipboard.kt`.
+> Deviations from the plan are noted inline.
+
 ## Goal
 
 Open multiple graphs in one window, switch between them with a tab

@@ -12,6 +12,7 @@ build/
 .idea/modules/
 .idea/jarRepositories.xml
 .idea/compiler.xml
+.idea/gradle.xml
 
 # Local / OS
 *.local

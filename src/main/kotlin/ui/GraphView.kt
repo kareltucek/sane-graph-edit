@@ -8,12 +8,16 @@ import utils.Utils.orElse
 import utils.Utils.toWorkspaceVector
 import utils.Constants
 import utils.Constants.stylePickerDimensions
-import utils.Rectangle
 import utils.Vector2
 import java.awt.Graphics
+import java.awt.event.WindowAdapter
+import java.awt.event.WindowEvent
+import java.awt.geom.AffineTransform
+import java.nio.file.Path
 import javax.swing.JComponent
 import javax.swing.JFrame
 import javax.swing.JLayeredPane
+import javax.swing.JOptionPane
 import javax.swing.SpringLayout
 
 /**
@@ -28,12 +32,20 @@ import javax.swing.SpringLayout
  * listeners mutate [g] and then call `repaint()`; the actual drawing
  * happens in [graphCanvas]'s paint path via [graph_tools.Plotter].
  *
- * Current shape is "one graph per window". Tabs (see `tasks/tabs.md`)
- * will promote this to "one `GraphView` per tab", at which point several
- * of the singleton-ish concerns here (the view transform on `Plotter.t`,
- * the startup test graph) need rethinking.
+ * One `GraphView` is "one open document" in the tab model: it owns a
+ * [Graph] (and therefore a per-document undo history), a [currentFile]
+ * pointer, an [isDirty] flag, and a [viewTransform] that pans/zooms
+ * independently of other tabs.
+ *
+ * On tab switch, [ui.TabManager] rewires [Plotter.t] to point at the
+ * active view's [viewTransform]. That's the single piece of global
+ * state that still makes rendering work with multiple tabs without
+ * having to thread a transform through every draw call.
  */
-class GraphView() : JLayeredPane() {
+class GraphView(
+    initialGraph: Graph = Graph(),
+    initialFile: Path? = null,
+) : JLayeredPane() {
     val graphCanvas = GraphCanvas(this)
     val nodeEditor = NodeEditor(this)
     val stylePicker = StylePicker(this)
@@ -43,7 +55,95 @@ class GraphView() : JLayeredPane() {
     var lastCursorPosition: Vector2 = Vector2.Zero
     var optimizeOnDrag: Boolean = false
     var defaultNodeStyle: NodeStyle = NodeStyle()
-    var g: Graph = Graph.testGraph()
+
+    /**
+     * The graph this view is currently editing. Swap it out via
+     * [replaceGraph] — direct assignment would leave the previous
+     * graph's history listener dangling.
+     */
+    var g: Graph = initialGraph
+        private set
+
+    /**
+     * On-disk location the current graph was loaded from or last
+     * saved to. `null` means "untitled" — saving hits the Save-As
+     * dialog flow.
+     */
+    var currentFile: Path? = initialFile
+        private set
+
+    /**
+     * True if the graph has been mutated since the last save or
+     * load. Flipping this runs [onStateChange] so the tab title and
+     * window title can refresh.
+     */
+    var isDirty: Boolean = false
+        private set(value) {
+            if (field != value) {
+                field = value
+                onStateChange()
+            }
+        }
+
+    /**
+     * Per-view affine transform. [ui.TabManager] points [Plotter.t]
+     * at this object whenever this view becomes the active tab, so
+     * existing input code (pan/zoom/centering) that mutates
+     * `Plotter.t` ends up mutating the right tab's transform.
+     *
+     * Starts at identity; the first paint in [GraphCanvas.doDrawing]
+     * translates to the canvas centre.
+     */
+    val viewTransform: AffineTransform = AffineTransform()
+
+    /**
+     * Notified whenever anything that affects the tab title or the
+     * window title changes (dirty flag, file path, graph swap). The
+     * parent [ui.TabManager] sets this; the default no-ops so the
+     * view is usable outside a tab manager (e.g. in tests).
+     */
+    var onStateChange: () -> Unit = {}
+
+    /**
+     * Backref to the [ui.TabManager] that owns this view, if any.
+     * Key bindings that need to affect other tabs (Ctrl+T new,
+     * Ctrl+W close, Ctrl+Tab next, Ctrl+Shift+Tab prev) reach up
+     * through this field. Null when the view is used standalone,
+     * e.g. in unit tests.
+     */
+    var tabManager: TabManager? = null
+
+    init {
+        attachHistoryListener()
+    }
+
+    /**
+     * Hook the current graph's [graph_tools.History] to flip
+     * [isDirty] on any mutation. Called at construction and again
+     * whenever the graph is replaced (open/new), so listeners never
+     * accumulate against a graph that's no longer displayed.
+     */
+    private fun attachHistoryListener() {
+        g.history.addListener {
+            // Any mutation makes the document "not the same as the
+            // saved file any more". We don't try to detect the case
+            // where the user undoes back to the saved state — that's
+            // the "clean index" problem from text editors and isn't
+            // worth the complexity for this tool.
+            isDirty = true
+        }
+    }
+
+    /**
+     * Label the tab bar and window title should use for this view:
+     * the file's basename if there is one, `(untitled)` otherwise,
+     * prefixed with `*` while the graph is dirty.
+     */
+    val title: String
+        get() {
+            val base = currentFile?.fileName?.toString() ?: "(untitled)"
+            return if (isDirty) "*$base" else base
+        }
 
     fun placeMeAt(me: JComponent, ul: Vector2, br: Vector2) {
         springLayout.putConstraint(
@@ -111,17 +211,92 @@ class GraphView() : JLayeredPane() {
         parent.repaint()
     }
 
-    fun saveFile() {
-        DotGraphLoader.saveToFile(g, "dot.dot")
+    /**
+     * Swap [g] for [newGraph], re-wire the history listener, and
+     * reset the dirty flag. Used by open, new, and clear.
+     */
+    private fun replaceGraph(newGraph: Graph) {
+        g = newGraph
+        attachHistoryListener()
+        isDirty = false
+        onStateChange()
     }
 
-    fun loadFile() {
-        g = DotGraphLoader.loadFromFile("dot.dot")
-        boundScreen()
+    /**
+     * Save to [currentFile], or fall through to [saveFileAs] if the
+     * graph has never been saved. Returns true on success, false if
+     * the user cancelled a Save-As dialog.
+     */
+    fun saveFile(): Boolean {
+        val path = currentFile ?: return saveFileAs()
+        return writeTo(path)
+    }
+
+    /**
+     * Unconditionally show a Save-As dialog and write to the chosen
+     * path. Returns false on cancellation or write failure.
+     */
+    fun saveFileAs(): Boolean {
+        val defaultName = currentFile?.fileName?.toString() ?: "untitled.dot"
+        val path = FileOps.saveDialog(this, defaultName) ?: return false
+        return writeTo(path)
+    }
+
+    private fun writeTo(path: Path): Boolean {
+        return try {
+            DotGraphLoader.saveToFile(g, path.toString())
+            currentFile = path
+            isDirty = false
+            onStateChange()
+            true
+        } catch (t: Throwable) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Could not save to $path:\n${t.message}",
+                "Save error",
+                JOptionPane.ERROR_MESSAGE,
+            )
+            false
+        }
+    }
+
+    /**
+     * Prompt for a file, load it into this view, and fit the view
+     * to the new graph. Reports parse errors via a dialog; leaves
+     * the current graph untouched on failure.
+     */
+    fun openFile() {
+        val path = FileOps.openDialog(this) ?: return
+        try {
+            val loaded = DotGraphLoader.loadFromFile(path.toString())
+            replaceGraph(loaded)
+            currentFile = path
+            onStateChange()
+            boundScreen()
+            repaint()
+        } catch (t: Throwable) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Could not open $path:\n${t.message}",
+                "Open error",
+                JOptionPane.ERROR_MESSAGE,
+            )
+        }
+    }
+
+    /**
+     * Replace the current graph with an empty one. Use case: the
+     * user hits Ctrl+N or closes the last remaining tab.
+     */
+    fun clearToEmpty() {
+        replaceGraph(Graph())
+        currentFile = null
+        onStateChange()
+        repaint()
     }
 
     init {
-        nodeEditor.text = "abcd"
+        nodeEditor.text = ""
 
         this.layout = springLayout
         this.add(graphCanvas)
@@ -205,21 +380,51 @@ class GraphView() : JLayeredPane() {
 }
 
 
+/**
+ * Top-level application window. Holds a [TabManager] that swaps
+ * between [GraphView]s. The title bar shows the active tab's
+ * document name plus the app name.
+ *
+ * Close-on-dirty: overrides the default `EXIT_ON_CLOSE` so that a
+ * [java.awt.event.WindowAdapter] can intercept the close event and
+ * prompt Save / Discard / Cancel for every dirty tab before letting
+ * the process exit.
+ */
 class Window(title: String) : JFrame() {
-    val sh: GraphView = GraphView()
+    val tabManager: TabManager = TabManager(this)
 
     init {
+        // Point the renderer's transform at the first (and only) tab
+        // so the canvas's initial paint lands on the right view
+        // transform. Tab switches rewire this in TabManager.onChanged.
+        Plotter.t = tabManager.current.viewTransform
         createUI(title)
+    }
+
+    /** Update the frame title to reflect the active tab's document state. */
+    fun refreshTitle(baseAppName: String = "sane-graph-edit") {
+        val tab = tabManager.currentOrNull
+        setTitle(if (tab != null) "${tab.title} — $baseAppName" else baseAppName)
     }
 
     fun createUI(title: String) {
         setTitle(title)
-        add(sh)
+        add(tabManager.tabbedPane)
 
-        defaultCloseOperation = EXIT_ON_CLOSE
-        setSize(400, 350)
+        // Intercept close so we can prompt for each dirty tab.
+        defaultCloseOperation = DO_NOTHING_ON_CLOSE
+        addWindowListener(object : WindowAdapter() {
+            override fun windowClosing(e: WindowEvent) {
+                if (tabManager.confirmCloseAll()) {
+                    dispose()
+                    System.exit(0)
+                }
+            }
+        })
+
+        setSize(800, 600)
         setLocationRelativeTo(null)
-        pack()
+        refreshTitle()
 
         validate()
         repaint()

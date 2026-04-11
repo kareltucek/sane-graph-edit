@@ -99,10 +99,43 @@ navigation, not data.
 
 ### Keyboard — files
 
-| Key        | Action                                                    |
-|------------|-----------------------------------------------------------|
-| `Ctrl+S`   | Save *(currently always writes to `dot.dot` — see roadmap)* |
-| `Ctrl+O`   | Open *(currently always reads `dot.dot`)*                 |
+| Key             | Action                                                 |
+|-----------------|--------------------------------------------------------|
+| `Ctrl+O`        | Open — file chooser dialog                             |
+| `Ctrl+S`        | Save — writes to the current file, prompts on first save |
+| `Ctrl+Shift+S`  | Save As — always prompts                               |
+| `Ctrl+N`        | New tab                                                |
+
+On close, the editor prompts Save / Discard / Cancel for every
+unsaved tab. Last-used open/save directories are remembered in
+`~/.sanegrapedit.properties`.
+
+### Keyboard — tabs
+
+| Key                | Action                                               |
+|--------------------|------------------------------------------------------|
+| `Ctrl+T`           | Open a new empty tab                                 |
+| `Ctrl+W`           | Close current tab (prompt if unsaved)                |
+| `Ctrl+Tab`         | Next tab                                             |
+| `Ctrl+Shift+Tab`   | Previous tab                                         |
+| `Ctrl+PageDown`    | Next tab (alias)                                     |
+| `Ctrl+PageUp`      | Previous tab (alias)                                 |
+
+Each tab owns its own graph, file path, undo history, and view
+transform (pan / zoom). Closing the last tab clears it rather than
+removing it — the window is never empty.
+
+### Keyboard — clipboard
+
+| Key        | Action                                                   |
+|------------|----------------------------------------------------------|
+| `Ctrl+C`   | Copy selected nodes (plus edges with both endpoints in)  |
+| `Ctrl+X`   | Cut — copy and delete                                    |
+| `Ctrl+V`   | Paste under the cursor                                   |
+
+The clipboard is process-local and works across tabs: copy in one
+tab, switch tabs, paste. Pasted nodes become the new selection so
+they can be immediately repositioned or restyled.
 
 ## File format
 

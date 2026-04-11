@@ -3,6 +3,7 @@ package ui
 import graph_tools.GraphTools.computeGeneration
 import graph_tools.AddEdgesCommand
 import graph_tools.AddNodeCommand
+import graph_tools.AddNodesCommand
 import graph_tools.CompositeCommand
 import graph_tools.Command
 import graph_tools.Edge
@@ -15,6 +16,9 @@ import graph_tools.RemoveEdgesCommand
 import graph_tools.RemoveNodesCommand
 import graph_tools.StyleNodesCommand
 import utils.Vector2
+import ui.GraphKeyListener.impl.copySelection
+import ui.GraphKeyListener.impl.cutSelection
+import ui.GraphKeyListener.impl.pasteClipboard
 import ui.GraphKeyListener.impl.selectAll
 import ui.GraphKeyListener.impl.editNode
 import ui.GraphKeyListener.impl.executeCommand
@@ -55,24 +59,65 @@ class GraphKeyListener(
 
     override fun keyPressed(e: KeyEvent) {
         when {
-            // Redo via Ctrl+R. The plain-character counterparts `u`
-            // (undo) and `r` (redo) come in through `keyTyped` →
-            // `executeCommand`, matching the rest of this editor's
-            // single-keystroke command style. Ctrl+R is kept as a
-            // modifier variant for muscle memory.
+            // --- History: redo via Ctrl+R. The plain-character
+            // counterparts `u` (undo) and `r` (redo) come in through
+            // `keyTyped` → `executeCommand`.
             e.keyCode == VK_R && e.isControlDown -> {
                 graphView.g.history.redo()
                 graphView.g.needsRecomputing(graphView.g.nodes)
                 graphView.repaint()
             }
 
+            // --- Files: save, save-as, open, new.
+            e.keyCode == VK_S && e.isControlDown && e.isShiftDown -> {
+                graphView.saveFileAs()
+            }
             e.keyCode == VK_S && e.isControlDown -> {
                 graphView.saveFile()
             }
-
             e.keyCode == VK_O && e.isControlDown -> {
-                graphView.loadFile()
+                graphView.openFile()
                 graphView.repaint()
+            }
+            e.keyCode == VK_N && e.isControlDown -> {
+                // Ctrl+N opens a brand-new tab. Ctrl+T is an alias,
+                // offered because editors split on which shortcut
+                // means "new" vs "new tab".
+                graphView.tabManager?.newTab()
+            }
+
+            // --- Tabs: create, close, cycle. Ctrl+Tab traversal is
+            // handled here instead of via Swing's focus-cycle
+            // machinery because we want the behaviour even when
+            // focus is on the canvas (which normally swallows Tab).
+            e.keyCode == VK_T && e.isControlDown -> {
+                graphView.tabManager?.newTab()
+            }
+            e.keyCode == VK_W && e.isControlDown -> {
+                graphView.tabManager?.closeCurrent()
+            }
+            e.keyCode == VK_TAB && e.isControlDown && e.isShiftDown -> {
+                graphView.tabManager?.selectPrevious()
+            }
+            e.keyCode == VK_TAB && e.isControlDown -> {
+                graphView.tabManager?.selectNext()
+            }
+            e.keyCode == VK_PAGE_DOWN && e.isControlDown -> {
+                graphView.tabManager?.selectNext()
+            }
+            e.keyCode == VK_PAGE_UP && e.isControlDown -> {
+                graphView.tabManager?.selectPrevious()
+            }
+
+            // --- Clipboard.
+            e.keyCode == VK_C && e.isControlDown -> {
+                copySelection(graphView)
+            }
+            e.keyCode == VK_X && e.isControlDown -> {
+                cutSelection(graphView)
+            }
+            e.keyCode == VK_V && e.isControlDown -> {
+                pasteClipboard(graphView)
             }
 
             e.keyCode == VK_A && e.isControlDown -> {
@@ -168,6 +213,95 @@ class GraphKeyListener(
         fun redo(graphView: GraphView) {
             graphView.g.history.redo()
             graphView.g.needsRecomputing(graphView.g.nodes)
+            graphView.repaint()
+        }
+
+        /**
+         * Snapshot the current selection to the process-global
+         * [Clipboard] as a [NodeFragment]. Clones the nodes so
+         * subsequent mutations to the source graph don't touch the
+         * clipboard copy; filters edges to "both endpoints selected"
+         * so pasting a disconnected piece doesn't try to re-link to
+         * nodes that weren't copied.
+         *
+         * No-op if the selection is empty; the previous clipboard
+         * contents are left intact in that case (matches how text
+         * editors behave — Ctrl+C on nothing does not wipe state).
+         */
+        fun copySelection(graphView: GraphView) {
+            val sel = graphView.g.selectedNodes.toList()
+            if (sel.isEmpty()) return
+
+            // Map each original node to its clone. Edges use this
+            // map to rewrite their endpoints so the fragment is
+            // fully self-referential.
+            val nodeMap: Map<Node, Node> = sel.associateWith { it.deepClone() }
+            val edges: List<Edge> = graphView.g.edges
+                .filter { it.src in nodeMap && it.dst in nodeMap }
+                .map { Edge(nodeMap[it.src]!!, nodeMap[it.dst]!!) }
+            val reference = GraphTools.computeCenterOfMass(sel)
+
+            Clipboard.fragment = NodeFragment(
+                nodes = nodeMap.values.toList(),
+                edges = edges,
+                referencePoint = reference,
+            )
+        }
+
+        /**
+         * Copy the selection to the clipboard, then delete it from
+         * the graph as an undoable compound. The delete is a single
+         * history entry; the copy itself is not undoable (clipboards
+         * don't participate in undo stacks).
+         */
+        fun cutSelection(graphView: GraphView) {
+            val sel = graphView.g.selectedNodes.toList()
+            if (sel.isEmpty()) return
+            copySelection(graphView)
+            // Delegate to the existing delete-without-reconnect
+            // pathway so the history entry matches what `d` would
+            // produce.
+            deleteNode(graphView, false)
+        }
+
+        /**
+         * Instantiate a fresh copy of the clipboard fragment into
+         * the current graph, positioned so the fragment's reference
+         * point lands under the cursor. The paste is one undoable
+         * history step and the pasted nodes become the new
+         * selection (a convention that lets the user drag the
+         * insertion into place right after pasting).
+         */
+        fun pasteClipboard(graphView: GraphView) {
+            val frag = Clipboard.fragment ?: return
+            val g = graphView.g
+            val target = graphView.lastCursorPosition
+            val delta = target - frag.referencePoint
+
+            // Clone again on every paste so repeated Ctrl+V calls
+            // produce independent copies rather than multiple
+            // references to the same node.
+            val pasteMap: Map<Node, Node> = frag.nodes.associateWith { src ->
+                src.deepClone().also { it.position = src.position + delta }
+            }
+            val newNodes = pasteMap.values.toList()
+            val newEdges = frag.edges.map { e ->
+                // Edges in the fragment point to nodes in the
+                // fragment; rewire them to the fresh clones.
+                Edge(pasteMap[e.src]!!, pasteMap[e.dst]!!)
+            }
+
+            val children = buildList<Command> {
+                add(AddNodesCommand(g, newNodes))
+                if (newEdges.isNotEmpty()) {
+                    add(AddEdgesCommand(g, newEdges))
+                }
+            }
+            g.commit(CompositeCommand(children))
+
+            // Select the pasted nodes so the user can move them
+            // with a drag or adjust styling immediately.
+            g.cleanSelect(newNodes.toSet())
             graphView.repaint()
         }
 

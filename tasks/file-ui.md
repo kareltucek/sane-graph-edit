@@ -1,5 +1,10 @@
 # File save / open UI
 
+> **Status: done.** Landed together with tabs.md. Code lives in
+> `ui/FileOps.kt`, `ui/AppState.kt`, and the file-ops methods on
+> `ui/GraphView.kt` (`saveFile`, `saveFileAs`, `openFile`,
+> `clearToEmpty`).
+
 ## Goal
 
 Replace the hardcoded `dot.dot` filename with real file dialogs.

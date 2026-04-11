@@ -51,6 +51,18 @@ class AddNodeCommand(private val graph: Graph, private val node: Node) : Command
     }
 }
 
+/** Add a batch of [nodes] to [graph]. Used by paste. */
+class AddNodesCommand(private val graph: Graph, private val nodes: List<Node>) : Command {
+    override fun redo() {
+        graph.addAllNodes(nodes)
+        graph.needsRecomputing(nodes)
+    }
+
+    override fun undo() {
+        graph.removeAllNodes(nodes)
+    }
+}
+
 /** Add a batch of [edges] to [graph]. */
 class AddEdgesCommand(private val graph: Graph, private val edges: List<Edge>) : Command {
     override fun redo() {

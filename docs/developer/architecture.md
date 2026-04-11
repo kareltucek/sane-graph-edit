@@ -370,17 +370,39 @@ Drag coalescing is a "per-gesture transaction", not time-windowed:
 commits once on release. Text edits coalesce within a 1-second
 window by `EditTextCommand.coalesceInto`.
 
+## Tabs and file handling
+
+`ui/TabManager.kt` owns a `JTabbedPane` and the list of open
+`GraphView`s. Each tab is one document: its own `Graph` (so its
+own undo stack), its own `currentFile: Path?`, its own
+`isDirty: Boolean`, and its own `viewTransform: AffineTransform`.
+On tab switch, `TabManager.onChanged` reassigns the `Plotter.t`
+global reference to the active view's transform — same pattern as
+"the active terminal has stdin/stdout".
+
+Closing the last tab resets it to an empty untitled document
+rather than removing it, so the window is never empty. Closing
+the window walks every tab and prompts Save / Discard / Cancel
+for each dirty one before letting the process exit.
+
+`ui/FileOps.kt` wraps `JFileChooser` for open and save-as dialogs.
+`ui/AppState.kt` stores the last-used open and save directories
+in `~/.sanegrapedit.properties` so dialogs start somewhere useful.
+
+Cross-tab copy/paste uses a process-global `ui.Clipboard` holding
+a `NodeFragment` (cloned nodes + edges where both endpoints are
+in the selection + reference point for paste positioning). Paste
+commits a `CompositeCommand(AddNodesCommand + AddEdgesCommand)`
+so it's undoable.
+
 ## What is *not* in the box
 
 Items currently missing and planned under `tasks/`:
 
-- **Multiple tabs** — one graph at a time. See `tasks/tabs.md`.
-- **Save As / File picker** — saves to a hardcoded `dot.dot` in
-  cwd. See `tasks/file-ui.md`.
 - **SVG export** — no export at all. See `tasks/svg-export.md`.
-- **Tests** — no unit tests. The only "tests" are in
-  `DotGraphLoader.Test` and only run when you invoke `main()` in
-  that file directly.
+- **Broader test coverage** — we have unit tests for history and
+  the clipboard (`src/test/kotlin/`), but the renderer, the input
+  layer, and the DOT parser still rely on manual testing.
 
 ## Gotchas and legacy quirks
 
@@ -391,14 +413,16 @@ Items currently missing and planned under `tasks/`:
   top. The file is 312 lines of state-machine-by-convention.
   Leave it alone until there's a concrete reason to touch it; an
   input refactor is its own project.
-- **`Graph.testGraph()`** constructs a fixed 4-node graph and is
-  used as the startup state of a fresh `GraphView`. Once file UI
-  lands, a fresh tab should be empty, not this.
-- **`Plotter.t` is a singleton.** See the "rendering pipeline"
-  note above.
-- **The `.idea/` directory and `sanegrapedit.iml`** are still
-  tracked in git. They're harmless but the project now builds
-  with Gradle, so you don't need IntelliJ specifically.
+- **`Graph.testGraph()`** still exists as a seed fixture but no
+  longer runs on startup — fresh tabs are empty. Useful for
+  manual inspection and for tests.
+- **`Plotter.t` is still a singleton variable**, but now points
+  at the active tab's `GraphView.viewTransform`. `TabManager`
+  rewires it on every tab switch. A future cleanup would thread
+  the transform through draw calls explicitly; for now, the
+  invariant is "`Plotter.t === tabManager.current.viewTransform`
+  at all times outside the split-second window during a tab
+  switch".
 
 ## Where to start when making changes
 
