@@ -260,6 +260,10 @@ class GraphView(
             currentFile = path
             isDirty = false
             onStateChange()
+            // Persist the new file path in case this was the
+            // first save of an untitled tab (or a save-as
+            // redirecting an existing tab at a new file).
+            tabManager?.saveSession()
             true
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
@@ -286,6 +290,7 @@ class GraphView(
             onStateChange()
             boundScreen()
             repaint()
+            tabManager?.saveSession()
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
                 this,
@@ -398,26 +403,33 @@ class GraphView(
  * crash-safety backups of every dirty tab to
  * `$XDG_CACHE_HOME/sane-graph-edit/backups`.
  *
- * The editor does not restore previously open tabs at startup —
- * every launch begins with a single empty tab. The autosave
- * directory is the recovery path: snapshots accumulate there
- * untouched, and the user can manually rename a `.dot` file
- * back into place if something went wrong.
+ * Startup restores the previous session from
+ * `$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (if any):
+ * every file that was open last time is reopened in a tab, and
+ * the tab that was active last time becomes active again.
+ * Session restore only reopens files from disk — it does not
+ * recover unsaved edits. That's what the autosave backup
+ * directory is for, and it is left strictly alone by this
+ * class; recovery from a backup is a manual operation.
  *
  * Close-on-dirty: overrides the default `EXIT_ON_CLOSE` so that a
  * [java.awt.event.WindowAdapter] can intercept the close event and
- * prompt Save / Discard / Cancel for every dirty tab before letting
- * the process exit. On confirmed close the autosave timer is
- * cancelled.
+ * prompt Save / Discard / Cancel for every dirty tab before
+ * letting the process exit. On confirmed close the session is
+ * flushed one last time and the autosave timer is cancelled.
  */
 class Window(title: String) : JFrame() {
     val tabManager: TabManager = TabManager(this)
     val autosave: AutosaveManager = AutosaveManager(tabManager)
 
     init {
-        // Point the renderer's transform at the first (and only)
-        // tab so the canvas's initial paint lands on the right
-        // view transform. Tab switches rewire this in
+        // Populate the tab bar from the persisted session — or,
+        // if none exists, create a single empty tab so the
+        // window has something to show.
+        tabManager.bootstrap()
+        // Point the renderer's transform at the active tab so
+        // the canvas's initial paint lands on the right view
+        // transform. Tab switches rewire this in
         // TabManager.onChanged.
         Plotter.t = tabManager.current.viewTransform
         createUI(title)
@@ -434,12 +446,14 @@ class Window(title: String) : JFrame() {
         setTitle(title)
         add(tabManager.tabbedPane)
 
-        // Intercept close so we can prompt for each dirty tab
-        // and stop the autosave timer before exiting.
+        // Intercept close so we can prompt for each dirty tab,
+        // flush the session, and stop the autosave timer before
+        // exiting.
         defaultCloseOperation = DO_NOTHING_ON_CLOSE
         addWindowListener(object : WindowAdapter() {
             override fun windowClosing(e: WindowEvent) {
                 if (tabManager.confirmCloseAll()) {
+                    tabManager.saveSession()
                     autosave.stop()
                     dispose()
                     System.exit(0)

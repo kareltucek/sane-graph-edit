@@ -395,6 +395,22 @@ in the selection + reference point for paste positioning). Paste
 commits a `CompositeCommand(AddNodesCommand + AddEdgesCommand)`
 so it's undoable.
 
+### Session persistence
+
+`ui/Session.kt` persists the ordered list of file-backed tabs
+and the active tab path to
+`$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (via
+`ui/XdgPaths.kt`). `TabManager.bootstrap()` reads it at startup
+and reopens every file that still exists and parses; failures
+are skipped with a stderr warning. `TabManager.saveSession()` is
+called on tab open/close/save and on window close.
+
+Untitled tabs are intentionally omitted from the session — there
+is no stable identifier to restore them from, and their
+in-flight work is a different problem (see autosave backups,
+below). The restore path only reopens files *from disk*; it
+never touches the backup directory.
+
 ### Autosave backups
 
 `ui/AutosaveManager.kt` runs a daemon `Timer` every 5 minutes
@@ -426,12 +442,12 @@ climbing across editor restarts.
 `deleteBackup` method, no cleanup on save, no cleanup on tab
 close. The design goal is an accumulating safety net against
 the user's own saving mistakes; pruning is the user's job.
-
-The editor does **not** persist or restore tab state across
-launches — every startup begins with a single empty tab. If
-something goes wrong, recovery is manual: find the desired
-`.dot` file under `~/.cache/sane-graph-edit/backups/` and copy
-it into place.
+Recovery is likewise manual — find the desired `.dot` file
+under `~/.cache/sane-graph-edit/backups/` and copy it into
+place. The two persistence layers are intentionally separate:
+session restore reopens *files*, backups hold *content
+snapshots*, and neither automatically crosses into the other's
+job.
 
 All IO in this path is best-effort: a failing backup write (disk
 full, permission denied) never kills the editor, and a missing
