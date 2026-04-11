@@ -1,2 +1,10 @@
-out/*
+out/
+build/
+.gradle/
 
+# Local / OS
+*.local
+.DS_Store
+
+# Ignore dev save files in repo root
+/dot.dot
