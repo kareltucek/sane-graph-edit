@@ -214,24 +214,33 @@ class Graph(
          * keystroke and command reference, so a new user can read it
          * by just opening the editor without having to find a manual.
          *
-         * Edit `Constants.helpCommands` / `helpFile` / `helpAttribution`
-         * / `helpTodo` to update the displayed text — this function
-         * just lays the four help blocks out as a star with the
-         * commands node in the centre.
+         * Layout: a star with the commands node at the centre and the
+         * other four reference nodes around it (selection on top,
+         * files on the right, todo on the bottom, attribution on the
+         * left). Positions are generous because the text blocks are
+         * tall — anyone unhappy with the spacing can tap `o` to let
+         * the layout optimiser tidy it.
+         *
+         * Edit `Constants.helpCommands` / `helpSelection` / `helpFile`
+         * / `helpAttribution` / `helpTodo` to update the displayed
+         * text — this function just wires the five blocks together.
          */
         fun defaultGraph(): Graph {
             val g = Graph()
-            val commands = Node(Constants.helpCommands, Vector2(-300, 100))
-            val files = Node(Constants.helpFile, Vector2(300, 200))
-            val attribution = Node(Constants.helpAttribution, Vector2(-100, -200))
-            val todo = Node(Constants.helpTodo, Vector2(-300, -200))
+            val commands = Node(Constants.helpCommands, Vector2(0, 0))
+            val selection = Node(Constants.helpSelection, Vector2(0, -550))
+            val files = Node(Constants.helpFile, Vector2(700, 0))
+            val todo = Node(Constants.helpTodo, Vector2(0, 600))
+            val attribution = Node(Constants.helpAttribution, Vector2(-700, 0))
             g.add(commands)
+            g.add(selection)
             g.add(files)
-            g.add(attribution)
             g.add(todo)
+            g.add(attribution)
+            g.add(Edge(commands, selection))
             g.add(Edge(commands, files))
-            g.add(Edge(commands, attribution))
             g.add(Edge(commands, todo))
+            g.add(Edge(commands, attribution))
             return g
         }
     }

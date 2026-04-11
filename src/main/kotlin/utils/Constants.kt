@@ -46,45 +46,94 @@ object Constants {
     val defaultBgColor = Color(255, 255, 255)
 
     val helpCommands = """
-            Graph manipulation
-            ==================
-            v/V + mouseover - create new vertex under cursor and connect it to current selection
-            e/E + mouseover - connect selected vertex(ices) to vertex under cursor
-            c - clear edges
-            d - delete selected nodes
-            u - undo last mutation
-            r - redo (or Ctrl+R)
-            Doubleclick - create new vertex and edit it straight away, or edit vertex under cursor
-            Ctrl + click - multiselect
-            Drag - move vertex, or pan view
-        """.trimIndent()
+        Graph manipulation
+        ==================
+
+        Mouse
+          Double-click empty  - new node
+          Double-click node   - edit text
+          Drag a node         - move the selection
+          Drag empty space    - pan view
+          Mouse wheel         - zoom (centred on cursor)
+          Right-click         - colour / shape / size picker
+
+        Keys
+          v/V + mouseover - new node + edge from selection (fwd/bwd)
+          e/E + mouseover - connect selection to node under cursor (fwd/bwd)
+          a/A             - append new node + edge from last active (fwd/bwd)
+          c               - clear edges (within or incident to selection)
+          d               - delete selected nodes
+          D               - delete + reconnect predecessors to successors
+          o/O             - layout optimiser (free / restricted)
+          g               - toggle grab-and-move
+
+        Style
+          F - copy style from selected node
+          f - paste style onto selected nodes
+
+        History
+          u          - undo
+          r / Ctrl+R - redo
+    """.trimIndent()
+
+    val helpSelection = """
+        Selection & navigation
+        ======================
+
+        Mouse
+          Click node        - select (replaces current selection)
+          Ctrl + click node - toggle in / out of multi-selection
+          Ctrl + drag empty - rubber-band selection box
+
+        Keys
+          Ctrl+A      - select all / deselect all (toggle)
+          Escape      - clear selection
+          t/T         - add forward/backward reachable closure
+          l/L         - add one generation of neighbours
+          w/W         - remove the "oldest" generation of selection
+          Space       - edit text of last active node
+          Shift+Space - replace selection with last active, then edit
+
+        View
+          0 - fit view to all nodes (or to selection if any)
+          1 - centre view on selection
+    """.trimIndent()
 
     val helpAttribution = """
-            Created by Karel Tuček. 
-            
-            Code is freely available at github.com/kareltucek/saneGraphEdit.
-        """.trimIndent()
+        Created by Karel Tuček.
+
+        Code is freely available at
+        github.com/kareltucek/saneGraphEdit.
+    """.trimIndent()
 
     val helpFile = """
-        Files & tabs
-        ============
-        Ctrl+O - open
-        Ctrl+S - save
-        Ctrl+Shift+S - save as
-        Ctrl+N / Ctrl+T - new tab
-        Ctrl+W - close tab
-        Ctrl+Tab / Ctrl+Shift+Tab - next/prev tab
-        Ctrl+C/X/V - copy/cut/paste (works across tabs)
+        Files, tabs & clipboard
+        =======================
+
+        Files
+          Ctrl+O       - open
+          Ctrl+S       - save
+          Ctrl+Shift+S - save as
+
+        Tabs
+          Ctrl+N / Ctrl+T           - new tab
+          Ctrl+W                    - close tab (prompt if dirty)
+          Ctrl+Tab / Ctrl+Shift+Tab - next / previous tab
+          Ctrl+PgDn / Ctrl+PgUp     - next / previous tab (alias)
+
+        Clipboard
+          Ctrl+C / Ctrl+X / Ctrl+V  - copy / cut / paste
+                                      (works across tabs)
     """.trimIndent()
 
     val helpTodo = """
         Todo
         ====
         - svg export
+        - port to compose multiplatform
         - cfg parser
         - styles (y,p)
         - folding?
-        - layouting?
         - highlight related to selection (s?)
     """.trimIndent()
 }
