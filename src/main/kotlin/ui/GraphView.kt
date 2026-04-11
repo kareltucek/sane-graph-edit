@@ -44,7 +44,7 @@ import javax.swing.SpringLayout
  * having to thread a transform through every draw call.
  */
 class GraphView(
-    initialGraph: Graph = Graph(),
+    initialGraph: Graph = Graph.defaultGraph(),
     initialFile: Path? = null,
 ) : JLayeredPane() {
     val graphCanvas = GraphCanvas(this)

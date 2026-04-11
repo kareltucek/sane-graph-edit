@@ -208,21 +208,30 @@ class Graph(
     }
 
     companion object {
-        fun testGraph(): Graph {
+        /**
+         * The graph shown in a fresh tab — both the very first launch
+         * and every Ctrl+T / Ctrl+N afterward. Holds the in-app
+         * keystroke and command reference, so a new user can read it
+         * by just opening the editor without having to find a manual.
+         *
+         * Edit `Constants.helpCommands` / `helpFile` / `helpAttribution`
+         * / `helpTodo` to update the displayed text — this function
+         * just lays the four help blocks out as a star with the
+         * commands node in the centre.
+         */
+        fun defaultGraph(): Graph {
             val g = Graph()
-            val n1 = Node(Constants.helpCommands, Vector2(-300, 100))
-            val n2 = Node(Constants.helpFile, Vector2(300, 200))
-            val n3 = Node(Constants.helpAttribution, Vector2(-100, -200))
-            val n4 = Node(Constants.helpTodo, Vector2(-300, -200))
-            val e1 = Edge(n1, n2)
-            val e2 = Edge(n1, n3)
-            val e3 = Edge(n1, n3)
-            g.add(n1)
-            g.add(n2)
-            g.add(n3)
-            g.add(e1)
-            g.add(e2)
-            g.add(e3)
+            val commands = Node(Constants.helpCommands, Vector2(-300, 100))
+            val files = Node(Constants.helpFile, Vector2(300, 200))
+            val attribution = Node(Constants.helpAttribution, Vector2(-100, -200))
+            val todo = Node(Constants.helpTodo, Vector2(-300, -200))
+            g.add(commands)
+            g.add(files)
+            g.add(attribution)
+            g.add(todo)
+            g.add(Edge(commands, files))
+            g.add(Edge(commands, attribution))
+            g.add(Edge(commands, todo))
             return g
         }
     }

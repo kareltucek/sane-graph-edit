@@ -126,7 +126,11 @@ class TabManager(
      * All user-initiated paths leave it at the default `true`.
      */
     fun newTab(
-        graph: Graph = Graph(),
+        // Default to the help/keystroke reference graph rather than a
+        // truly empty document. A fresh tab is also "first contact"
+        // for any new user, and the help text being one Ctrl+T away
+        // is more useful than a blank canvas.
+        graph: Graph = Graph.defaultGraph(),
         path: Path? = null,
         persistSession: Boolean = true,
     ): GraphView {
