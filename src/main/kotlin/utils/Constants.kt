@@ -14,7 +14,7 @@ object Constants {
     val maxOptimizerMove = 10000.0
     val minOptimizeMove = 5.0
 
-    val optimizeAt = 100.0
+    val optimizeAt = 50.0
 
 
     val doubletapTimeout = 500

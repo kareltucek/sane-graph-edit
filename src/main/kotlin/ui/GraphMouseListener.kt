@@ -192,6 +192,12 @@ class GraphMouseListener(
             state = States.MovingNodes
         }
 
+        fun startOrEndMove() {
+            when (state) {
+                States.MovingNodes -> state = null
+                else -> state = States.MovingNodes
+            }
+        }
         fun startMove() {
             state = States.MovingNodes
         }

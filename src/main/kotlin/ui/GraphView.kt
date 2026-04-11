@@ -181,6 +181,10 @@ class GraphView() : JLayeredPane() {
 
         graphCanvas.doDrawing(g)
     }
+
+    public override fun repaint() {
+        super.repaint()
+    }
 }
 
 

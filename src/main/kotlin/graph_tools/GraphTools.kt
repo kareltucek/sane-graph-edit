@@ -1,6 +1,7 @@
 package graph_tools
 
 import Graph
+import ui.NodeStyle
 import utils.Rectangle
 import utils.Vector2
 
@@ -14,16 +15,16 @@ object GraphTools {
         val positions = nodes.flatMap {
             listOf(
                 it.position,
-                it.position - it.cache.shapeBounds/2,
-                it.position + it.cache.shapeBounds/2,
+                it.position - it.cache.shapeBounds / 2,
+                it.position + it.cache.shapeBounds / 2,
             )
         }
         val maybeUl = positions.reduceOrNull { a, b -> a.min(b) }
         val maybeBr = positions.reduceOrNull { a, b -> a.max(b) }
         return maybeUl?.let { ul ->
-           maybeBr?.let { br ->
-               Rectangle(ul, br)
-           }
+            maybeBr?.let { br ->
+                Rectangle(ul, br)
+            }
         }
     }
 
@@ -54,5 +55,18 @@ object GraphTools {
         }
 
         return closure
+    }
+
+    fun pickNodeStyle(graph: Graph, parent: Node): NodeStyle? {
+        return graph
+            .findOutEdges(parent)
+            .map { it.dst }
+            .map { it.getStyle() }
+            .takeIf { it.isNotEmpty() }
+            ?.takeIf { allStyles ->
+                val refStyle = allStyles.first()
+                allStyles.all { it == refStyle }
+            }
+            ?.first()
     }
 }

@@ -1,5 +1,6 @@
 package ui
 
+import graph_tools.NodeShape
 import ui.ColorStyle.PickerSet.colorStyles
 import ui.ColorStyle.PickerSet.hues
 import utils.Utils.orElse
@@ -42,11 +43,30 @@ class StylePicker(
         var gridBagConstraints: GridBagConstraints
         ColorPickerPanel = JPanel()
         SizePickerPanel = JPanel()
+
         jLabel1 = JLabel()
-        jSpinner1 = JSpinner()
         minusButton = JButton()
-        jTextField1 = JTextField()
         plusButton = JButton()
+        jLabel1!!.text = "Size:"
+        minusButton!!.text = "-"
+        plusButton!!.text = "+"
+        plusButton!!.background = Constants.buttonGray
+        minusButton!!.background = Constants.buttonGray
+
+        jLabel2 = JLabel()
+        ovalButton = JButton()
+        rectButton = JButton()
+        jLabel2!!.text = "Shape:"
+        ovalButton!!.text = "⚪"
+        rectButton!!.text = "⬜"
+        ovalButton!!.background = Constants.buttonGray
+        rectButton!!.background = Constants.buttonGray
+
+        jSeparator = JSeparator()
+        jSeparator!!.orientation = SwingConstants.VERTICAL
+
+        jSpinner1 = JSpinner()
+        jTextField1 = JTextField()
         layout = GridBagLayout()
         sizeField = JTextField()
         ColorPickerPanel!!.layout = GridLayout(0, hues.size)
@@ -56,16 +76,15 @@ class StylePicker(
         gridBagConstraints.weighty = 1.0
         add(ColorPickerPanel, gridBagConstraints)
         SizePickerPanel!!.layout = GridLayout()
-        jLabel1!!.text = "Size:"
-        SizePickerPanel!!.add(jLabel1)
-        minusButton!!.text = "-"
         jTextField1!!.text = "jTextField1"
         jTextField1!!.addActionListener { evt -> jTextField1ActionPerformed(evt) }
-        plusButton!!.text = "+"
+        SizePickerPanel!!.add(jLabel1)
         SizePickerPanel!!.add(minusButton)
         SizePickerPanel!!.add(plusButton)
-        plusButton!!.background = Constants.buttonGray
-        minusButton!!.background = Constants.buttonGray
+        SizePickerPanel!!.add(jSeparator)
+        SizePickerPanel!!.add(jLabel2)
+        SizePickerPanel!!.add(rectButton)
+        SizePickerPanel!!.add(ovalButton)
         gridBagConstraints = GridBagConstraints()
         gridBagConstraints.gridx = 0
         gridBagConstraints.gridy = 1
@@ -95,11 +114,26 @@ class StylePicker(
             setSize(1.0)
         }
 
+        ovalButton!!.addActionListener {
+            setShape(NodeShape.Oval)
+        }
+        rectButton!!.addActionListener {
+            setShape(NodeShape.Rectangle)
+        }
+
     } // </editor-fold>
 
     private fun setSize(r: Double) {
         parent.g.selectedNodes.forEach {
             it.setSize(relative = r)
+        }
+        parent.g.needsRecomputing(parent.g.selectedNodes)
+        parent.repaint()
+    }
+
+    private fun setShape(s: NodeShape) {
+        parent.g.selectedNodes.forEach {
+            it.setShape(s)
         }
         parent.g.needsRecomputing(parent.g.selectedNodes)
         parent.repaint()
@@ -116,29 +150,22 @@ class StylePicker(
         // TODO add your handling code here:
     }
 
-    // Variables declaration - do not modify
-    private
-    var minusButton: JButton? = null
+    private var jSeparator: JSeparator? = null
+    private var ovalButton: JButton? = null
+    private var rectButton: JButton? = null
+    private var minusButton: JButton? = null
+    private var plusButton: JButton? = null
+    private var jLabel1: JLabel? = null
+    private var jLabel2: JLabel? = null
 
-    private
-    var plusButton: JButton? = null
+    private var ColorPickerPanel: JPanel? = null
+    private var SizePickerPanel: JPanel? = null
 
-    private
-    var jLabel1: JLabel? = null
-
-    private
-    var ColorPickerPanel: JPanel? = null
-
-    private
-    var SizePickerPanel: JPanel? = null
-
-    private
-    var jSpinner1: JSpinner? = null
+    private var jSpinner1: JSpinner? = null
 
     var sizeField: JTextField? = null
 
-    private
-    var jTextField1: JTextField? =
+    private var jTextField1: JTextField? =
         null // End of variables declaration
 
     /**

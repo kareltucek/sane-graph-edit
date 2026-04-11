@@ -104,6 +104,10 @@ class Node(
             .letIf(relative != null) { it + relative!! }
     }
 
+    fun getStyle(): NodeStyle {
+        return NodeStyle.fromNode(this)
+    }
+
     constructor(label: String, pos: Vector2) : this(position = pos, attributes = NodeAttributes(text = label))
 
     constructor(label: String, pos: Vector2, style: NodeStyle) : this(

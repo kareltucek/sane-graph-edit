@@ -15,16 +15,14 @@ class GraphCanvas(
 
     init {
         this.isFocusable = true
+        // prevents artifact caused by overlay windows, such as oneko
+        this.isDoubleBuffered = true
         this.requestFocus()
         //this.minimumSize = Dimension(500, 500)
         //this.size = Dimension(1000, 1000)
         //this.background = Color(255, 255, 255)
         validate()
         repaint()
-    }
-
-    fun requestGlobalRepaint() {
-        parent.repaint()
     }
 
     fun doDrawing(graphics: Graphics) {
@@ -38,7 +36,9 @@ class GraphCanvas(
             this.requestFocus()
         }
 
-        if (optimizeLevel < 1) {
+        val panning = this.parent.mouseListener.controller.state != null
+
+        if (optimizeLevel < 1 || (optimizeLevel < 2 && !panning)) {
             val rh = RenderingHints(
                 RenderingHints.KEY_ANTIALIASING,
                 RenderingHints.VALUE_ANTIALIAS_ON
@@ -47,7 +47,7 @@ class GraphCanvas(
             g2d.setRenderingHints(rh)
         }
 
-        withPerformanceCheck("GraphViewOnDraw", Constants.optimizeAt, 0.01, {optimizeLevel++}) {
+        withPerformanceCheck("GraphViewOnDraw", (50 + optimizeLevel*50.0), 0.01, {optimizeLevel++}) {
 
             g2d.drawRect(1, 1, this.width - 2, this.height - 2)
 

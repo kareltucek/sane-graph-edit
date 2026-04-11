@@ -2,6 +2,7 @@ package ui
 
 import graph_tools.GraphTools.computeGeneration
 import graph_tools.Edge
+import graph_tools.GraphTools
 import graph_tools.GraphTools.computeClosure
 import graph_tools.LayoutOptimizer
 import graph_tools.Node
@@ -111,7 +112,7 @@ class GraphKeyListener(
         }
 
         fun grab(graphView: GraphView) {
-            graphView.mouseListener.controller.startMove()
+            graphView.mouseListener.controller.startOrEndMove()
         }
 
         fun unselectAll(graphView: GraphView) {
@@ -240,10 +241,15 @@ class GraphKeyListener(
                 graphView.g.selectedNodes
             }
 
+            val style = from
+                .takeIf { it.size == 1 }
+                ?.let { GraphTools.pickNodeStyle(graphView.g, it.first()) }
+                .orElse(graphView.defaultNodeStyle)
+
             val newNode = Node(
                 label = "New node",
                 pos = pos,
-                style = graphView.defaultNodeStyle,
+                style = style,
             )
 
             graphView.g.add(newNode)

@@ -30,7 +30,7 @@ object Plotter {
         g2d.transform = t
         g2d.setFont(g2d.font.deriveFont(defaultFontSize.toFloat()))
         g2d.setStroke(BasicStroke(2.0f))
-        renderOvals = optimizationLevel < 2
+        renderOvals = optimizationLevel < 3
     }
 
     fun drawGraph(g2d: Graphics2D, g: Graph) {
@@ -130,7 +130,7 @@ object Plotter {
             g2d.paint = n.attributes.bg.orElse(Constants.defaultBgColor)
 
             if (selected) {
-                if (thickStroke.lineWidth*t.scaleX < 1.0) {
+                if (thickStroke.lineWidth * t.scaleX < 1.0) {
                     g2d.stroke = BasicStroke((thickStroke.lineWidth / t.scaleX * 1.1).toFloat())
                 } else {
                     g2d.stroke = thickStroke
@@ -145,17 +145,27 @@ object Plotter {
 
             val screenspaceFD = FontData.get(g2d, screenspaceFontSize(n))
 
-            n.cache.font?.let { workspaceFD ->
-                g2d.font = workspaceFD.font
+            /**
+             * For small fonts (w.r.t. how it is shown on screen), output height is messed up because of integral height.
+             *
+             * This follows the text component rendering. Fixing it would mess up text-editing vs read-only node correspondence.
+             *
+             * We would have to render all nodes as UI components, which would (I fear) strongly affect performance.
+             */
 
-                bounds.lines.withIndex().forEach { s ->
-                    g2d.drawString(
-                        s.value,
-                        (textPos.x).toFloat(),
-                        (textPos.y + screenspaceFD.ascent/Plotter.t.scaleX + screenspaceFD.height /Plotter.t.scaleX* s.index).toFloat()
-                    )
+            n.cache.font
+                ?.takeIf { screenspaceFD.scale >= 5.0 } //reduce rendering time on zoomed-out graphs...
+                ?.let { workspaceFD ->
+                    g2d.font = workspaceFD.font
+
+                    bounds.lines.withIndex().forEach { s ->
+                        g2d.drawString(
+                            s.value,
+                            (textPos.x).toFloat(),
+                            (textPos.y + screenspaceFD.ascent / Plotter.t.scaleX + screenspaceFD.height / Plotter.t.scaleX * s.index.toDouble()).toFloat()
+                        )
+                    }
                 }
-            }
 
             g2d.paint = Constants.defaultFgColor
         }

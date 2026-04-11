@@ -12,6 +12,8 @@ enum class NodeShape(val id: String, val impl: NodeShapeImpl) {
 
     companion object {
         val defaultShape = Rectangle
+
+        fun fromString(s: String?): NodeShape? = NodeShape.values().find { it.id == s }
     }
 }
 
@@ -47,15 +49,13 @@ class OvalShape : NodeShapeImpl {
         val bounds = n.cache
         val shapePos = n.position - bounds.shapeBounds / 2;
 
-        n.attributes.bg?.let { c ->
-            g2d.paint = c
-            g2d.fillOval(
-                shapePos.x.toInt(),
-                shapePos.y.toInt(),
-                bounds.shapeBounds.x.toInt(),
-                bounds.shapeBounds.y.toInt()
-            )
-        }
+        g2d.paint = n.attributes.bg.orElse(Color.WHITE)
+        g2d.fillOval(
+            shapePos.x.toInt(),
+            shapePos.y.toInt(),
+            bounds.shapeBounds.x.toInt(),
+            bounds.shapeBounds.y.toInt()
+        )
 
         g2d.paint = n.attributes.fg.orElse(Color.BLACK)
         g2d.drawOval(

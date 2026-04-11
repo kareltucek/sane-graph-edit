@@ -1,6 +1,7 @@
 package ui
 
 import graph_tools.Node
+import graph_tools.NodeShape
 import utils.Constants
 import java.awt.Color
 
@@ -14,7 +15,7 @@ data class NodeStyle(
             return NodeStyle(
                 background = n.attributes.bg,
                 foreground = n.attributes.fg,
-                nodeScale = n.attributes.nodeScale
+                nodeScale = n.attributes.nodeScale,
             )
         }
     }
@@ -68,9 +69,11 @@ data class ColorStyle(
         ).map { it.first to it.second/360.0*3.0}
 
         val saturationValueMultipliers = listOf(
+            /* saturation, background value, foreground value */
             Triple(0.5, 1.0, 0.4),
             Triple(1.0, 1.0, 0.3),
-            Triple(1.2, 0.9, 0.2)
+            Triple(1.2, 0.9, 0.2),
+            Triple(1.2, 0.8, 0.1),
         )
 
         val colorStyles = listOfNotNull(
