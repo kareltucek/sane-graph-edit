@@ -110,6 +110,28 @@ On close, the editor prompts Save / Discard / Cancel for every
 unsaved tab. Last-used open/save directories are remembered in
 `~/.sanegrapedit.properties`.
 
+### Session persistence & autosave
+
+The set of open file-backed tabs is persisted to
+`$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (falling
+back to `~/.config/sane-graph-edit/session.properties`) whenever
+you open, close, or save a file — and one last time on window
+close. On the next launch, those files are reopened automatically
+and the tab that was active last time becomes active again.
+Untitled tabs don't participate — there's no stable identifier to
+restore them from.
+
+Every 30 seconds, any dirty tab is flushed to
+`$XDG_CACHE_HOME/sane-graph-edit/backups/` (defaults to
+`~/.cache/sane-graph-edit/backups/`) as a plain DOT file. The
+filename is `f-<hash>.dot` where the hash is derived from the
+source file's absolute path, or `u-<uuid>.dot` for untitled tabs.
+Saving or closing a tab deletes its backup. **The backup
+directory is a crash-safety net, not an undo log** — if the
+editor crashes or the machine loses power, find the `.dot` file
+in `backups/`, rename it into place, and you're back up. If
+nothing bad happens, the directory stays small and transient.
+
 ### Keyboard — tabs
 
 | Key                | Action                                               |

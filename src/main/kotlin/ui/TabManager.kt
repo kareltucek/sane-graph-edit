@@ -1,7 +1,9 @@
 package ui
 
+import DotGraphLoader
 import Graph
 import graph_tools.Plotter
+import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JOptionPane
 import javax.swing.JTabbedPane
@@ -22,11 +24,33 @@ import javax.swing.event.ChangeListener
  * than removing it, so the window always has something to show and
  * the user never ends up staring at a blank frame.
  */
-class TabManager(private val window: Window) {
+class TabManager(
+    /**
+     * Public so [GraphView.writeTo] can reach the window's
+     * [AutosaveManager] to drop stale backups after a successful
+     * save. Nothing else in this class relies on the window beyond
+     * the `JOptionPane` parenting and title-refresh hook.
+     */
+    val window: Window,
+    /**
+     * Injectable session store so tests can swap in a temp-file
+     * backed instance. Production uses [Session.default].
+     */
+    private val session: Session = Session.default,
+) {
 
     val tabbedPane: JTabbedPane = JTabbedPane()
 
     private val views: MutableList<GraphView> = mutableListOf()
+
+    /**
+     * Iterate every open view. Exposed for [AutosaveManager]'s
+     * periodic flush — other callers should prefer [current] or
+     * the tabbed pane's APIs.
+     */
+    fun forEachView(action: (GraphView) -> Unit) {
+        views.forEach(action)
+    }
 
     /**
      * The currently active view, or `null` if there are no tabs
@@ -42,24 +66,70 @@ class TabManager(private val window: Window) {
         get() = views[tabbedPane.selectedIndex]
 
     init {
-        // Open with exactly one empty tab. The window will point
-        // Plotter.t at this view's transform before the first paint.
-        newTab()
+        // Tabs are populated by bootstrap() after construction —
+        // this used to open an empty tab directly, but bootstrap()
+        // is smarter about restoring the previous session first.
         tabbedPane.addChangeListener(ChangeListener { onChanged() })
+    }
+
+    /**
+     * Restore the previous session (if any) or create a single
+     * empty tab so the window always has something to show.
+     * Called once by [Window] after `this` is fully constructed.
+     *
+     * Missing or un-parseable session files are treated as "no
+     * session" — we never want a corrupted state file to block
+     * startup. Individual session entries that fail to load
+     * (deleted since last run, parse error) are skipped with a
+     * stderr warning.
+     */
+    fun bootstrap() {
+        val snap = session.load()
+        for (path in snap.files) {
+            if (!Files.exists(path)) {
+                System.err.println("sane-graph-edit: session file $path no longer exists, skipping")
+                continue
+            }
+            try {
+                val g = DotGraphLoader.loadFromFile(path.toString())
+                newTab(graph = g, path = path, persistSession = false)
+            } catch (t: Throwable) {
+                System.err.println("sane-graph-edit: failed to restore $path: ${t.message}")
+            }
+        }
+        if (views.isEmpty()) {
+            newTab(persistSession = false)
+        }
+        // Restore the previously active tab by matching its file
+        // path; if it's no longer among the open tabs, leave the
+        // JTabbedPane's default (index 0).
+        snap.activeFile
+            ?.let { wanted -> views.indexOfFirst { it.currentFile == wanted } }
+            ?.takeIf { it >= 0 }
+            ?.let { tabbedPane.selectedIndex = it }
     }
 
     /**
      * Add a new tab holding [graph] (defaults to empty) associated
      * with [path] (nullable for an untitled document) and switch to
      * it. Returns the created view.
+     *
+     * [persistSession] can be set to false during session restore
+     * to avoid re-writing session.properties once per restored tab.
+     * All user-initiated paths leave it at the default `true`.
      */
-    fun newTab(graph: Graph = Graph(), path: Path? = null): GraphView {
+    fun newTab(
+        graph: Graph = Graph(),
+        path: Path? = null,
+        persistSession: Boolean = true,
+    ): GraphView {
         val gv = GraphView(initialGraph = graph, initialFile = path)
         gv.tabManager = this
         gv.onStateChange = { refreshTab(gv) }
         views.add(gv)
         tabbedPane.addTab(gv.title, gv)
         tabbedPane.selectedIndex = views.size - 1
+        if (persistSession) saveSession()
         return gv
     }
 
@@ -76,12 +146,16 @@ class TabManager(private val window: Window) {
         if (views.size == 1) {
             // Never leave the window with zero tabs. Reset the
             // remaining slot to a fresh empty document instead.
+            window.autosave.deleteBackup(gv)
             gv.clearToEmpty()
+            saveSession()
             return true
         }
 
         views.removeAt(idx)
         tabbedPane.remove(idx)
+        window.autosave.deleteBackup(gv)
+        saveSession()
         return true
     }
 
@@ -149,6 +223,22 @@ class TabManager(private val window: Window) {
         window.refreshTitle()
         gv.graphCanvas.requestFocusInWindow()
         gv.repaint()
+    }
+
+    /**
+     * Flush the current tab set to `session.properties`. Called
+     * on tab open/close/save and on window close — anywhere the
+     * persisted "what was open last time" answer could change.
+     *
+     * Untitled tabs are intentionally omitted: there's no stable
+     * identifier to restore them from, and their in-flight work
+     * is already protected by [AutosaveManager] writing to
+     * `u-<uuid>.dot` in the backups directory.
+     */
+    fun saveSession() {
+        val files = views.mapNotNull { it.currentFile }
+        val active = currentOrNull?.currentFile
+        session.save(Session.Snapshot(files = files, activeFile = active))
     }
 
     /**

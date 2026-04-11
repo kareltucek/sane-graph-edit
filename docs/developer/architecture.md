@@ -395,6 +395,32 @@ in the selection + reference point for paste positioning). Paste
 commits a `CompositeCommand(AddNodesCommand + AddEdgesCommand)`
 so it's undoable.
 
+### Session persistence & autosave
+
+Two separate on-disk stores, both XDG-compliant via
+`ui/XdgPaths.kt`:
+
+- `ui/Session.kt` persists the list of file-backed tabs and the
+  active tab to
+  `$XDG_CONFIG_HOME/sane-graph-edit/session.properties`.
+  `TabManager.bootstrap()` reads it at startup and reopens every
+  file (skipping ones that have moved or fail to parse).
+  `TabManager.saveSession()` flushes it on tab open/close/save
+  and on window close.
+- `ui/AutosaveManager.kt` runs a daemon `Timer` every 30s that
+  writes every dirty `GraphView` to
+  `$XDG_CACHE_HOME/sane-graph-edit/backups/` as a plain DOT
+  file. The backup filename is a truncated SHA-1 of the absolute
+  source path (`f-<hash>.dot`) or a per-tab UUID for untitled
+  tabs (`u-<uuid>.dot`). Saving a tab or closing it deletes the
+  backup. Pure path logic lives in `BackupPaths` so unit tests
+  can exercise it without a tab manager.
+
+Neither component is load-bearing: session failure at startup
+degrades to "empty tab", backup failure at runtime is swallowed.
+The design goal is "helpful when it works, invisible when it
+doesn't".
+
 ## What is *not* in the box
 
 Items currently missing and planned under `tasks/`:

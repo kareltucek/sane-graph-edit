@@ -14,6 +14,7 @@ import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import java.awt.geom.AffineTransform
 import java.nio.file.Path
+import java.util.UUID
 import javax.swing.JComponent
 import javax.swing.JFrame
 import javax.swing.JLayeredPane
@@ -112,6 +113,17 @@ class GraphView(
      * e.g. in unit tests.
      */
     var tabManager: TabManager? = null
+
+    /**
+     * Opaque per-tab identifier used as the autosave-backup
+     * filename for untitled tabs (tabs with a file hash their
+     * path instead — see [BackupPaths]). Stable for the tab's
+     * entire lifetime, even if it gets saved and so starts using
+     * the file-hash key; holding on to the UUID means
+     * `deleteBackup` can clean up a pre-save untitled backup
+     * during a save-as.
+     */
+    val autosaveId: String = UUID.randomUUID().toString()
 
     init {
         attachHistoryListener()
@@ -245,9 +257,13 @@ class GraphView(
     private fun writeTo(path: Path): Boolean {
         return try {
             DotGraphLoader.saveToFile(g, path.toString())
+            // Drop any pre-save backup (untitled UUID or stale path
+            // hash) now that the source file is authoritative.
+            tabManager?.window?.autosave?.deleteBackup(this)
             currentFile = path
             isDirty = false
             onStateChange()
+            tabManager?.saveSession()
             true
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
@@ -274,6 +290,7 @@ class GraphView(
             onStateChange()
             boundScreen()
             repaint()
+            tabManager?.saveSession()
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
                 this,
@@ -382,23 +399,36 @@ class GraphView(
 
 /**
  * Top-level application window. Holds a [TabManager] that swaps
- * between [GraphView]s. The title bar shows the active tab's
- * document name plus the app name.
+ * between [GraphView]s and an [AutosaveManager] that writes
+ * crash-safety backups of every dirty tab to
+ * `$XDG_CACHE_HOME/sane-graph-edit/backups`.
+ *
+ * Startup restores the previous session from
+ * `$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (if any):
+ * every file that was open last time is reopened in a tab, and the
+ * tab that was active last time becomes active again.
  *
  * Close-on-dirty: overrides the default `EXIT_ON_CLOSE` so that a
  * [java.awt.event.WindowAdapter] can intercept the close event and
  * prompt Save / Discard / Cancel for every dirty tab before letting
- * the process exit.
+ * the process exit. On a confirmed close the session is flushed
+ * one last time and the autosave timer is cancelled.
  */
 class Window(title: String) : JFrame() {
     val tabManager: TabManager = TabManager(this)
+    val autosave: AutosaveManager = AutosaveManager(tabManager)
 
     init {
-        // Point the renderer's transform at the first (and only) tab
-        // so the canvas's initial paint lands on the right view
-        // transform. Tab switches rewire this in TabManager.onChanged.
+        // Populate the tab bar from the persisted session — or, if
+        // none exists, create a single empty tab so the window has
+        // something to show.
+        tabManager.bootstrap()
+        // Point the renderer's transform at the active tab so the
+        // canvas's initial paint lands on the right view transform.
+        // Tab switches rewire this in TabManager.onChanged.
         Plotter.t = tabManager.current.viewTransform
         createUI(title)
+        autosave.start()
     }
 
     /** Update the frame title to reflect the active tab's document state. */
@@ -411,11 +441,14 @@ class Window(title: String) : JFrame() {
         setTitle(title)
         add(tabManager.tabbedPane)
 
-        // Intercept close so we can prompt for each dirty tab.
+        // Intercept close so we can prompt for each dirty tab, flush
+        // the session, and stop the autosave timer before exiting.
         defaultCloseOperation = DO_NOTHING_ON_CLOSE
         addWindowListener(object : WindowAdapter() {
             override fun windowClosing(e: WindowEvent) {
                 if (tabManager.confirmCloseAll()) {
+                    tabManager.saveSession()
+                    autosave.stop()
                     dispose()
                     System.exit(0)
                 }
