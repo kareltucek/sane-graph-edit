@@ -1,53 +1,50 @@
-# Revival roadmap
+# Roadmap
 
-This document tracks the plan to bring `sane-graph-edit` from its
-"long forgotten changes" state to a publishable 0.1 release.
+Task files in this directory, numbered in order of execution.
+Each file is self-contained: goal, design, touch points, open
+questions. Check the status line at the top of each file.
 
-Each numbered item has a dedicated file in this directory with a
-detailed design and checklist. Check those for the actual plans.
+## Done
 
-## Order of work
+| #   | Task                          | File                  |
+|-----|-------------------------------|-----------------------|
+| 001 | Undo / redo                   | [001-undo.md]         |
+| 002 | File open / save UI           | [002-file-ui.md]      |
+| 003 | Tabs + cross-tab copy/paste   | [003-tabs.md]         |
 
-The ordering below reflects a dependency chain: earlier items unblock
-later ones, and each step leaves the project in a runnable state.
+## Pending
 
-1. **Gradle build** — *done*
-2. **Developer docs** — *done* (`docs/developer/architecture.md`)
-3. **Undo / redo** — *done*
-4. **File UI** — *done* (`JFileChooser`, dirty tracking, last-dir
-   memory, close-on-dirty prompt)
-5. **Tabs + cross-tab copy/paste** — *done* (`JTabbedPane`,
-   per-tab graph/history/transform/file, `Ctrl+T`/`Ctrl+W`/`Ctrl+Tab`,
-   `Ctrl+C/X/V` clipboard)
-6. **[SVG exporter](svg-export.md)** — the web-friendly angle. The
-   renderer already speaks `Graphics2D`; a thin SVG-writing
-   `Graphics2D` subclass, or a direct walk over the graph using the
-   same primitives the `Plotter` uses, gets us scriptable export.
-7. **README + user docs** — done alongside each feature.
+| #   | Task                          | File                  |
+|-----|-------------------------------|-----------------------|
+| 004 | SVG exporter                  | [004-svg-export.md]   |
 
-## Non-goals for 0.1
+## Planned
 
-- Kotlin/JS port or browser frontend. The user clarified: publishing
-  SVG to a personal server for phone viewing is enough.
-- Tests for the renderer or input layer. Tests for pure graph logic
-  (selection math, closure computation, DOT round-tripping) are in
-  scope, Swing-level tests are not.
-- Refactoring `GraphMouseListener` (the file itself carries a
-  `// Todo: refactor this!` note). Cleanup is tempting, but out of
-  scope for the revival — it works, and rewriting input handling is a
-  separate project.
+| #   | Task                              | File                      |
+|-----|-----------------------------------|---------------------------|
+| 005 | Port UI to Compose Multiplatform  | [005-compose-port.md]     |
+| 006 | Markdown editing in node labels   | [006-markdown-editing.md] |
 
-## Open questions deferred to implementation time
+## Ordering rationale
 
-- **Coalescing for undo:** dragging a node emits one mutation per
-  mouse-move. We don't want each pixel in the undo stack. See
-  `undo.md` for the proposal (time-window coalescing on the active
-  command).
-- **Edge identity for undo:** `Edge.equals` is currently identity.
-  Adding undo means we need to be able to *re*-insert an edge we
-  removed. Keeping identity equality is fine as long as the undo
-  entry holds the *same* `Edge` object.
-- **SVG text vs geometry:** we can emit `<text>` elements (small,
-  selectable, depends on viewer fonts) or convert text to paths
-  (large, pixel-perfect, viewer-independent). Default to `<text>`
-  with a font fallback; revisit if fonts don't match.
+- **004 before 005**: SVG export is pure model→file, doesn't
+  touch the UI, and ships a user-visible feature. Doing it while
+  Swing is still the UI means fewer moving parts.
+- **005 before 006**: Markdown rendering requires
+  `AnnotatedString` / rich-text layout, which Swing can't do
+  well. Compose is the prerequisite.
+- **006 last**: it's a stretch feature. The editor is fully
+  usable without it.
+
+## Also done (not in numbered tasks)
+
+These were handled as standalone commits rather than dedicated
+task plans:
+
+- Gradle (Kotlin DSL) build + wrapper
+- Developer documentation + mermaid architecture diagrams
+- README with install instructions + keybinding reference
+- Session persistence (`~/.config/sane-graph-edit/`)
+- Autosave backups (`~/.cache/sane-graph-edit/backups/`)
+- AppImage + jpackage packaging
+- Makefile
