@@ -54,6 +54,28 @@ class KeyMapper(
     /** The currently active GraphView — set by the key listener before feeding keys. */
     var activeView: GraphView? = null
 
+    // --- macro registers ---
+
+    /** Named registers: single char → recorded key sequence. */
+    val registers = mutableMapOf<Char, String>()
+
+    /**
+     * Macro recording state:
+     * - `null` → not recording
+     * - a Char → recording into that register
+     */
+    private var recordingRegister: Char? = null
+    private val recordingBuffer = StringBuilder()
+
+    /** True while waiting for the register-name key after `q` or `@`. */
+    private var waitingForRegisterAction: Char? = null  // 'q' or '@'
+
+    /** True if currently recording a macro. */
+    val isRecording: Boolean get() = recordingRegister != null
+
+    /** True if replaying a macro (suppresses recording to avoid feedback loops). */
+    private var replaying: Boolean = false
+
     // --- public API ---
 
     fun map(lhs: String, rhs: String, recursive: Boolean = false) {
@@ -69,12 +91,86 @@ class KeyMapper(
         mappings.clear()
     }
 
+    // --- macro recording/replay ---
+
+    private fun startRecording(register: Char) {
+        recordingRegister = register
+        recordingBuffer.clear()
+    }
+
+    private fun stopRecording() {
+        val reg = recordingRegister ?: return
+        registers[reg] = recordingBuffer.toString()
+        recordingRegister = null
+        recordingBuffer.clear()
+    }
+
+    /**
+     * Replay a register's key sequence through the full pipeline
+     * (mappings + defaults). This is recursive by design: a macro
+     * replays keystrokes as if the user typed them, so user
+     * remappings apply inside macros.
+     */
+    private fun replayRegister(register: Char) {
+        val sequence = registers[register]
+        if (sequence.isNullOrEmpty()) return
+        replaying = true
+        try {
+            val tokens = KeyNotation.tokenize(sequence)
+            for (tok in tokens) {
+                feedKey(tok)
+            }
+        } finally {
+            replaying = false
+        }
+    }
+
     /**
      * Feed a single key notation (like `"e"`, `"<C-s>"`,
      * `"<Space>"`) into the mapper. Call this from the key
      * listener for every keypress.
      */
     fun feedKey(key: String) {
+        // --- Macro prefix keys: q and @ ---
+        // If we're waiting for a register name after q or @,
+        // consume this key as the register name.
+        val waitAction = waitingForRegisterAction
+        if (waitAction != null) {
+            waitingForRegisterAction = null
+            val reg = key.firstOrNull()
+            if (reg != null && reg.isLetterOrDigit()) {
+                when (waitAction) {
+                    'q' -> startRecording(reg)
+                    '@' -> replayRegister(reg)
+                }
+            }
+            return
+        }
+
+        // `q` toggles recording. If recording, stop. If not
+        // recording, wait for the next key as register name.
+        if (key == "q") {
+            if (isRecording) {
+                stopRecording()
+            } else {
+                waitingForRegisterAction = 'q'
+            }
+            return
+        }
+
+        // `@` starts replay — wait for the register name.
+        if (key == "@") {
+            waitingForRegisterAction = '@'
+            return
+        }
+
+        // --- Normal dispatch ---
+        // If recording, capture this key (unless we're inside
+        // a replay, to avoid feedback loops).
+        if (isRecording && !replaying) {
+            recordingBuffer.append(key)
+        }
+
         cancelTimer()
         val accumulated = pending + key
         resolveAccumulated(accumulated)
