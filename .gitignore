@@ -20,3 +20,6 @@ build/
 
 # Ignore dev save files in repo root
 /dot.dot
+
+# AppImage output copied to repo root by ./gradlew appimage
+/*.AppImage

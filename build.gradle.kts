@@ -170,9 +170,20 @@ tasks.register<Exec>("appimage") {
         .firstOrNull { File(it).exists() }
         ?: "appimagetool"  // fall back to PATH lookup
 
+    val appImageFile = outputDir.resolve("sane-graph-edit-$ver-x86_64.AppImage")
+    val shortcutFile = project.file("sane-graph-edit.AppImage")
+
     executable = appimagetool
-    args(appDir.absolutePath, outputDir.resolve("sane-graph-edit-$ver-x86_64.AppImage").absolutePath)
+    args(appDir.absolutePath, appImageFile.absolutePath)
 
     // appimagetool needs ARCH set for the filename convention
     environment("ARCH", "x86_64")
+
+    doLast {
+        // Copy to the repo root under a stable name so it's easy to
+        // find without remembering the version string.
+        appImageFile.copyTo(shortcutFile, overwrite = true)
+        shortcutFile.setExecutable(true)
+        println("AppImage ready: ${shortcutFile.absolutePath}")
+    }
 }
