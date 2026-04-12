@@ -20,6 +20,10 @@ class CommandBar(
     private val graphView: GraphView,
 ) : JTextField() {
 
+    private val history = mutableListOf<String>()
+    private var historyIndex = -1
+    private var savedInput = ""
+
     init {
         isVisible = false
         addKeyListener(object : KeyListener {
@@ -35,11 +39,43 @@ class CommandBar(
                         close()
                         e.consume()
                     }
+                    KeyEvent.VK_UP -> {
+                        historyUp()
+                        e.consume()
+                    }
+                    KeyEvent.VK_DOWN -> {
+                        historyDown()
+                        e.consume()
+                    }
                 }
             }
 
             override fun keyReleased(e: KeyEvent) {}
         })
+    }
+
+    private fun historyUp() {
+        if (history.isEmpty()) return
+        if (historyIndex == -1) {
+            savedInput = text
+            historyIndex = history.size - 1
+        } else if (historyIndex > 0) {
+            historyIndex--
+        } else return
+        text = history[historyIndex]
+        caretPosition = text.length
+    }
+
+    private fun historyDown() {
+        if (historyIndex == -1) return
+        if (historyIndex < history.size - 1) {
+            historyIndex++
+            text = history[historyIndex]
+        } else {
+            historyIndex = -1
+            text = savedInput
+        }
+        caretPosition = text.length
     }
 
     /**
@@ -49,6 +85,8 @@ class CommandBar(
      */
     fun open(prefix: String = ":") {
         text = prefix
+        historyIndex = -1
+        savedInput = ""
         isVisible = true
         requestFocusInWindow()
         // Position at bottom of GraphView
@@ -71,6 +109,11 @@ class CommandBar(
 
     private fun execute() {
         val line = text.trim()
+        if (line.isNotEmpty() && (history.isEmpty() || history.last() != line)) {
+            history.add(line)
+        }
+        historyIndex = -1
+        savedInput = ""
         close()
 
         if (line.isEmpty()) return
