@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=sane-graph-edit
+Comment=Keyboard-driven graph editor for Graphviz DOT files
+Exec=sane-graph-edit
+Icon=sane-graph-edit
+Categories=Graphics;Development;
+Terminal=false

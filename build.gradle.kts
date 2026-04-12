@@ -105,3 +105,64 @@ tasks.register<Exec>("jpackage") {
         "--java-options", "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
     )
 }
+
+// ---------- AppImage: single self-contained .AppImage file ----------
+//
+// Usage:
+//   ./gradlew appimage
+//
+// Requires appimagetool on $PATH (or at ~/.local/bin/appimagetool).
+// Install:
+//   wget -O ~/.local/bin/appimagetool \
+//     https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+//   chmod +x ~/.local/bin/appimagetool
+//
+// Output: build/dist/sane-graph-edit-<version>-x86_64.AppImage
+tasks.register<Exec>("appimage") {
+    group = "distribution"
+    description = "Builds a self-contained .AppImage via appimagetool."
+    dependsOn("jpackage")
+
+    val jpackageOut = layout.buildDirectory.dir("dist/sane-graph-edit").get().asFile
+    val appDir = layout.buildDirectory.dir("appimage-staging").get().asFile
+    val outputDir = layout.buildDirectory.dir("dist").get().asFile
+    val ver = project.version.toString().removeSuffix("-SNAPSHOT")
+    val packagingDir = project.file("packaging")
+
+    doFirst {
+        // Build the AppDir structure expected by appimagetool:
+        //   AppDir/
+        //     AppRun              (entry-point script)
+        //     sane-graph-edit.desktop
+        //     sane-graph-edit.png (icon)
+        //     bin/, lib/          (from jpackage output)
+        if (appDir.exists()) appDir.deleteRecursively()
+        appDir.mkdirs()
+
+        // Copy the full jpackage tree (launcher + JRE + jars)
+        jpackageOut.copyRecursively(appDir, overwrite = true)
+
+        // Layer the AppImage metadata on top
+        packagingDir.resolve("AppRun").copyTo(appDir.resolve("AppRun"), overwrite = true)
+        appDir.resolve("AppRun").setExecutable(true)
+        packagingDir.resolve("sane-graph-edit.desktop")
+            .copyTo(appDir.resolve("sane-graph-edit.desktop"), overwrite = true)
+        // Use the icon jpackage generated, or fall back to a placeholder
+        val icon = jpackageOut.resolve("lib/sane-graph-edit.png")
+        if (icon.exists()) {
+            icon.copyTo(appDir.resolve("sane-graph-edit.png"), overwrite = true)
+        }
+    }
+
+    // Find appimagetool — check PATH and the common ~/.local/bin location
+    val home = System.getProperty("user.home")
+    val appimagetool = listOf("/usr/bin/appimagetool", "/usr/local/bin/appimagetool", "$home/.local/bin/appimagetool")
+        .firstOrNull { File(it).exists() }
+        ?: "appimagetool"  // fall back to PATH lookup
+
+    executable = appimagetool
+    args(appDir.absolutePath, outputDir.resolve("sane-graph-edit-$ver-x86_64.AppImage").absolutePath)
+
+    // appimagetool needs ARCH set for the filename convention
+    environment("ARCH", "x86_64")
+}

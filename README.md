@@ -44,7 +44,34 @@ A single self-contained `.jar` you can copy to any machine with
 JDK 21+. Rename it, put it on a USB stick, alias it in your
 shell — whatever works.
 
-### Native app-image (no Java dependency, ~160 MB)
+### AppImage (recommended for Linux, ~54 MB, no Java dependency)
+
+```sh
+./gradlew appimage
+```
+
+Produces a single self-contained
+`build/dist/sane-graph-edit-<version>-x86_64.AppImage` file.
+`chmod +x` it and run — no installation needed, no Java needed on
+the target machine.
+
+```sh
+chmod +x build/dist/sane-graph-edit-*-x86_64.AppImage
+./build/dist/sane-graph-edit-*-x86_64.AppImage
+```
+
+Requires
+[appimagetool](https://github.com/AppImage/appimagetool) on
+`$PATH` or at `~/.local/bin/appimagetool`:
+
+```sh
+mkdir -p ~/.local/bin
+wget -O ~/.local/bin/appimagetool \
+  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+chmod +x ~/.local/bin/appimagetool
+```
+
+### Native app directory (no Java dependency, ~160 MB)
 
 ```sh
 ./gradlew jpackage
@@ -59,7 +86,7 @@ apps. The user does **not** need Java installed.
 # run it directly
 build/dist/sane-graph-edit/bin/sane-graph-edit
 
-# or install system-wide
+# or install system-wide (also available via `make install`)
 sudo cp -r build/dist/sane-graph-edit /opt/
 sudo ln -sf /opt/sane-graph-edit/bin/sane-graph-edit /usr/local/bin/sane-graph-edit
 ```

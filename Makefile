@@ -11,11 +11,12 @@
 #   make test       - run unit tests
 #   make jar        - build the fat jar (~2 MB, needs JDK 21+ to run)
 #   make package    - build a native app-image via jpackage (~160 MB, no Java needed)
+#   make appimage   - build a single .AppImage file (~54 MB, no Java needed)
 #   make deb        - build a .deb installer
 #   make rpm        - build a .rpm installer
 #   make install    - install the native app-image to PREFIX (default /usr/local)
 #   make uninstall  - remove what `make install` put in place
-#   make release    - clean build + test + fat jar + native app-image
+#   make release    - clean build + test + fat jar + AppImage
 #   make clean      - remove all build artefacts
 
 PREFIX     ?= /usr/local
@@ -24,7 +25,7 @@ BINLINK    := $(PREFIX)/bin/sane-graph-edit
 GRADLE     := ./gradlew
 BUILD_DIST := build/dist/sane-graph-edit
 
-.PHONY: all run test jar package deb rpm install uninstall release clean
+.PHONY: all run test jar package appimage deb rpm install uninstall release clean
 
 # --- primary targets ---
 
@@ -44,6 +45,9 @@ jar:
 
 package:
 	$(GRADLE) jpackage
+
+appimage:
+	$(GRADLE) appimage
 
 deb:
 	$(GRADLE) jpackage -Ptype=deb
@@ -71,11 +75,11 @@ uninstall:
 release: clean
 	$(GRADLE) build
 	$(GRADLE) fatJar
-	$(GRADLE) jpackage
+	$(GRADLE) appimage
 	@echo ""
 	@echo "Release artefacts:"
 	@echo "  Fat jar:    build/libs/sane-graph-edit-*-all.jar"
-	@echo "  App image:  $(BUILD_DIST)/"
+	@echo "  AppImage:   build/dist/sane-graph-edit-*-x86_64.AppImage"
 	@echo ""
 
 # --- housekeeping ---
