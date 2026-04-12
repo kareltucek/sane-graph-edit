@@ -35,7 +35,7 @@ Vim has two kinds:
   overwhelmingly recommends.
 
 **Takeaway:** default to non-recursive. Call it `map` (not
-`noremap` — our users aren't vim experts who know the difference).
+`noremap` — our users aren't vim experts who know the difference, but also do accept noremap).
 Offer `remap` for the rare recursive case, with a warning in the
 docs.
 
@@ -92,22 +92,31 @@ commands that are also prefixes. Vim users live with it; our users
 might find 1000ms too sluggish for a visual editor where `g`
 (grab) should feel instant.
 
-**Options:**
+**Resolution rule:** when a key is pressed, the mapper checks
+whether it is a **prefix** of any longer mapping:
 
-1. **Shorter timeout** (e.g., 300ms). Snappier, but harder to hit
-   the follow-up key in time.
-2. **No timeout for mappings where the prefix has no standalone
-   meaning.** If `g` alone is unbound, `gt` resolves instantly
-   (no ambiguity). If `g` IS bound, apply the timeout. This
-   requires the mapper to know whether a prefix has a binding.
-3. **Explicit leader key.** Reserve a key (e.g., `,` or `\`) as
-   the "leader" that starts all multi-key sequences. `g` stays
-   instant as "grab"; `,t` / `,T` are tab navigation. No timeout
-   needed because the leader itself does nothing.
+- **Not a prefix of anything longer** → resolve immediately.
+  No wait, no latency. E.g., `d` mapped to "delete" and nothing
+  starts with `d...` → pressing `d` fires instantly.
+- **IS a prefix of a longer mapping** (e.g., `g` is pressed and
+  `gt` exists) → start a timer (`timeoutlen`, default 500ms).
+  If a follow-up key arrives and completes a longer mapping,
+  fire that. If the timer expires: fire `g`'s standalone binding
+  if it has one, or discard as incomplete if it doesn't.
 
-Option 3 is simplest and avoids the timeout UX problem entirely.
-Option 2 is the most vim-faithful. **Recommend option 2 with a
-configurable `timeoutlen` defaulting to 500ms.**
+Consequences:
+
+- Keys that aren't prefixes (the vast majority) are instant.
+- Keys that ARE prefixes of multi-key sequences incur a small
+  delay — the cost of supporting `gt`-style combos.
+- A "leader key" (e.g., `,`) that has no standalone binding and
+  is only ever a prefix never triggers the timeout — it waits
+  indefinitely for the follow-up, since there's nothing to fire
+  on expiry. Users who prefer this style can `map ,t next-tab`
+  and `,` becomes a no-latency prefix.
+
+`timeoutlen` is configurable via `set timeoutlen=500` in the
+init file or the `:` bar.
 
 ### Recursive expansion pitfall
 
@@ -122,6 +131,8 @@ Vim detects this (max recursion depth, default 1000) and errors.
 We should too, if we ever support recursive mappings. But if we
 default to non-recursive `map`, this can't happen — the RHS is
 always resolved against built-in commands only.
+
+We should not support recursive mappings for now. We should accept `remap`, but interpret it as a noremap and throw a warning.
 
 ### The init file
 

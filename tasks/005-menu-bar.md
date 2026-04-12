@@ -1,4 +1,4 @@
-# 005 — Standard menu bar
+F# 005 — Standard menu bar
 
 > **Status: pending.** Can be done immediately (Swing) or deferred
 > to the Compose port. Swing implementation is straightforward
