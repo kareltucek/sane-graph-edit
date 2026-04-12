@@ -27,12 +27,15 @@ GRADLE     := ./gradlew
 BUILD_DIST := build/dist/sane-graph-edit
 FAT_JAR    := build/libs/sane-graph-edit-*-all.jar
 
-.PHONY: all run run-jar test jar package appimage deb rpm install uninstall release clean
+.PHONY: all compile run run-jar test jar package appimage deb rpm install uninstall release clean
 
 # --- primary targets ---
 
 all: test
 	$(GRADLE) build
+
+compile:
+	$(GRADLE) compileKotlin
 
 run:
 	$(GRADLE) run

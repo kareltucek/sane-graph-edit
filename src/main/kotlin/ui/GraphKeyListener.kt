@@ -18,13 +18,7 @@ import graph_tools.RemoveNodesCommand
 import graph_tools.StyleNodesCommand
 import graph_tools.UnhideCommand
 import utils.Vector2
-import ui.GraphKeyListener.impl.copySelection
-import ui.GraphKeyListener.impl.cutSelection
-import ui.GraphKeyListener.impl.pasteClipboard
-import ui.GraphKeyListener.impl.selectAll
-import ui.GraphKeyListener.impl.editNode
-import ui.GraphKeyListener.impl.executeCommand
-import ui.GraphKeyListener.impl.unselectAll
+// Stale impl imports removed — dispatch now goes through KeyMapper + CommandRegistry
 import utils.Utils.orElse
 import utils.Utils.toUnit
 import java.awt.event.KeyEvent
@@ -34,163 +28,68 @@ import java.awt.event.KeyListener
 /**
  * Top-level keyboard handler for the canvas.
  *
- * Two dispatch paths:
+ * Delegates to the shared [KeyMapper] for all dispatch. Two AWT
+ * entry points feed key notations into the mapper:
  *
- *   - `keyPressed` handles modifier-driven shortcuts (Ctrl+S save,
- *     Ctrl+O open, Ctrl+A select all, Escape deselect, Space edit).
- *     These need the raw key code because the char form drops the
- *     modifier.
+ *   - `keyPressed` handles modifier combos (Ctrl+S → `<C-s>`) and
+ *     special keys (Escape → `<Esc>`, Space → `<Space>`).
+ *   - `keyTyped` handles plain characters (`e`, `E`, `v`, etc.).
  *
- *   - `keyTyped` forwards plain character keys to
- *     [impl.executeCommand], a big single-character dispatch table for
- *     the editor's text-editor-style commands (`e` for edge, `v` for
- *     new+edge, `d` for delete, `o` for layout, etc.).
+ * The mapper resolves each notation against user mappings first,
+ * then built-in defaults, and calls [CommandRegistry.execute] to
+ * run the action.
  *
- * Full command reference is at `Constants.helpCommands` and in
- * `docs/developer/architecture.md`.
+ * The `impl` object below holds the command implementations — pure
+ * functions that take a [GraphView] and mutate the graph. They're
+ * registered into [CommandRegistry] at startup and are not called
+ * directly from the key dispatch anymore.
  */
 class GraphKeyListener(
     val graphView: GraphView,
 ) : KeyListener {
+
     override fun keyTyped(e: KeyEvent) {
-        val used = executeCommand(e.keyChar.toString(), graphView)
-        if (used) {
+        // Ctrl combos produce control chars (0x01 for Ctrl+A, etc.)
+        // that were already handled in keyPressed. Skip them.
+        val notation = KeyNotation.fromKeyTyped(e.keyChar) ?: return
+
+        // ':' opens the command bar instead of feeding into the mapper
+        if (notation == ":") {
+            graphView.commandBar?.open(":")
             e.consume()
+            return
         }
-    }
-
-    override fun keyPressed(e: KeyEvent) {
-        when {
-            // --- History: redo via Ctrl+R. The plain-character
-            // counterparts `u` (undo) and `r` (redo) come in through
-            // `keyTyped` → `executeCommand`.
-            e.keyCode == VK_R && e.isControlDown -> {
-                graphView.g.history.redo()
-                graphView.g.needsRecomputing(graphView.g.nodes)
-                graphView.repaint()
-            }
-
-            // --- Files: save, save-as, open, new.
-            e.keyCode == VK_S && e.isControlDown && e.isShiftDown -> {
-                graphView.saveFileAs()
-            }
-            e.keyCode == VK_S && e.isControlDown -> {
-                graphView.saveFile()
-            }
-            e.keyCode == VK_O && e.isControlDown -> {
-                graphView.openFile()
-                graphView.repaint()
-            }
-            e.keyCode == VK_N && e.isControlDown -> {
-                // Ctrl+N opens a brand-new tab. Ctrl+T is an alias,
-                // offered because editors split on which shortcut
-                // means "new" vs "new tab".
-                graphView.tabManager?.newTab()
-            }
-
-            // --- SVG export.
-            e.keyCode == VK_E && e.isControlDown && e.isShiftDown -> {
-                graphView.exportSelection()
-            }
-            e.keyCode == VK_E && e.isControlDown -> {
-                graphView.exportSvg()
-            }
-
-            // --- Tabs: create, close, cycle. Ctrl+Tab traversal is
-            // handled here instead of via Swing's focus-cycle
-            // machinery because we want the behaviour even when
-            // focus is on the canvas (which normally swallows Tab).
-            e.keyCode == VK_T && e.isControlDown -> {
-                graphView.tabManager?.newTab()
-            }
-            e.keyCode == VK_W && e.isControlDown -> {
-                graphView.tabManager?.closeCurrent()
-            }
-            e.keyCode == VK_TAB && e.isControlDown && e.isShiftDown -> {
-                graphView.tabManager?.selectPrevious()
-            }
-            e.keyCode == VK_TAB && e.isControlDown -> {
-                graphView.tabManager?.selectNext()
-            }
-            e.keyCode == VK_PAGE_DOWN && e.isControlDown -> {
-                graphView.tabManager?.selectNext()
-            }
-            e.keyCode == VK_PAGE_UP && e.isControlDown -> {
-                graphView.tabManager?.selectPrevious()
-            }
-
-            // --- Clipboard.
-            e.keyCode == VK_C && e.isControlDown -> {
-                copySelection(graphView)
-            }
-            e.keyCode == VK_X && e.isControlDown -> {
-                cutSelection(graphView)
-            }
-            e.keyCode == VK_V && e.isControlDown -> {
-                pasteClipboard(graphView)
-            }
-
-            e.keyCode == VK_A && e.isControlDown -> {
-                selectAll(graphView)
-            }
-
-            e.keyCode == VK_ESCAPE -> {
-                unselectAll(graphView)
-            }
-
-            e.keyCode == VK_SPACE -> {
-                editNode(graphView, e.isShiftDown)
-            }
+        // '/' and '?' open the command bar in search mode
+        if (notation == "/" || notation == "?") {
+            graphView.commandBar?.open(notation)
+            e.consume()
+            return
         }
+
+        val mapper = graphView.keyMapper ?: return
+        mapper.activeView = graphView
+        mapper.feedKey(notation)
         e.consume()
     }
 
+    override fun keyPressed(e: KeyEvent) {
+        val notation = KeyNotation.fromKeyPressed(e) ?: return
+
+        val mapper = graphView.keyMapper ?: return
+        mapper.activeView = graphView
+        mapper.feedKey(notation)
+        e.consume()
+    }
 
     override fun keyReleased(e: KeyEvent) {}
 
+    /**
+     * Command implementations. Each method is a `(GraphView) -> Unit`
+     * registered into [CommandRegistry] at startup by
+     * [registerAllCommands]. The old hardcoded dispatch table is gone;
+     * the mapper + registry replace it.
+     */
     object impl {
-        fun executeCommand(oneCommand: String, graphView: GraphView): Boolean {
-            val used: Unit? = when (oneCommand) {
-                "e" -> drawEdge(graphView, true)
-                "E" -> drawEdge(graphView, false)
-                "v" -> drawNodeWithEdge(graphView, forwardEdge = true, append = false)
-                "V" -> drawNodeWithEdge(graphView, forwardEdge = false, append = false)
-                "a" -> drawNodeWithEdge(graphView, forwardEdge = true, append = true)
-                "A" -> drawNodeWithEdge(graphView, forwardEdge = false, append = true)
-                "c" -> clearEdges(graphView)
-                "d" -> deleteNode(graphView, false)
-                "D" -> deleteNode(graphView, true)
-                "o" -> optimize(graphView, false)
-                "O" -> optimize(graphView, true)
-                "t" -> selectClosure(graphView, true)
-                "T" -> selectClosure(graphView, false)
-                "l" -> selectLinked(graphView, true)
-                "L" -> selectLinked(graphView, false)
-                "w" -> unselectOldestGen(graphView, true)
-                "W" -> unselectOldestGen(graphView, false)
-                "0" -> boundScreen(graphView)
-                "1" -> centerScreen(graphView)
-                "f" -> pasteFormat(graphView)
-                "F" -> copyFormat(graphView)
-                "u" -> undo(graphView)
-                "r" -> redo(graphView)
-                "i" -> invertSelection(graphView)
-                "h" -> hideSelected(graphView)
-                "H" -> unhideOneLevel(graphView)
-                "g" -> grab(graphView)
-                "G" -> executeMacro(graphView, "tw0").toUnit()
-//                "G" -> executeMacro(graphView, "TW0").toUnit()
-                else -> null
-            }
-            return used != null
-        }
-
-        fun executeMacro(graphView: GraphView, commandSequence: String): Boolean {
-            return commandSequence
-                .chunked(1)
-                .map { executeCommand(it, graphView) }
-                .fold(true) { a, b -> a && b }
-        }
 
 
         fun copyFormat(graphView: GraphView) {

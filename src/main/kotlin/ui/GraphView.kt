@@ -116,6 +116,22 @@ class GraphView(
     var tabManager: TabManager? = null
 
     /**
+     * Shared key mapper. Set by [Window] at startup after
+     * [registerAllCommands] populates the [CommandRegistry].
+     * All tabs share the same mapper (same bindings), but the
+     * mapper's [KeyMapper.activeView] is set to the current
+     * GraphView before each key feed.
+     */
+    var keyMapper: KeyMapper? = null
+
+    /**
+     * The command bar (`:` / `/` / `?`). Set after construction
+     * because it needs a reference back to this view. Null in
+     * unit tests.
+     */
+    var commandBar: CommandBar? = null
+
+    /**
      * Opaque per-tab identifier used as the autosave-backup
      * filename for untitled tabs (tabs with a file hash their
      * path instead — see [BackupPaths]). Stable for the tab's
@@ -463,10 +479,19 @@ class GraphView(
  * flushed one last time and the autosave timer is cancelled.
  */
 class Window(title: String) : JFrame() {
+    val keyMapper: KeyMapper = KeyMapper(KeyMapper.defaultBindings())
     val tabManager: TabManager = TabManager(this)
     val autosave: AutosaveManager = AutosaveManager(tabManager)
 
     init {
+        // Register all commands before anything else — the mapper
+        // and the : bar both need the registry populated.
+        registerAllCommands()
+        keyMapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
+
+        // Load the user's init file (key mappings, settings).
+        keyMapper.loadInitFile(XdgPaths.appConfigDir.resolve("init"))
+
         // Populate the tab bar from the persisted session — or,
         // if none exists, create a single empty tab so the
         // window has something to show.

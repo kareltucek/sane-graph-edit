@@ -136,6 +136,11 @@ class TabManager(
     ): GraphView {
         val gv = GraphView(initialGraph = graph, initialFile = path)
         gv.tabManager = this
+        gv.keyMapper = window.keyMapper
+        gv.commandBar = CommandBar(gv).also { bar ->
+            gv.add(bar)
+            gv.setLayer(bar, 2)  // above canvas (0) and editor/picker (1)
+        }
         gv.onStateChange = { refreshTab(gv) }
         views.add(gv)
         tabbedPane.addTab(gv.title, gv)
