@@ -114,4 +114,24 @@ fun registerAllCommands() {
     r.register("close-tab") { it.tabManager?.closeCurrent() }
     r.register("next-tab") { it.tabManager?.selectNext() }
     r.register("prev-tab") { it.tabManager?.selectPrevious() }
+
+    // Search navigation
+    r.register("search-next") { gv ->
+        val ss = gv.searchState
+        val dir = if (ss.forward) 1 else -1
+        val node = if (dir > 0) ss.next() else ss.prev()
+        if (node != null) {
+            gv.g.cleanSelect(setOf(node))
+            gv.centerScreen()
+        }
+    }
+    r.register("search-prev") { gv ->
+        val ss = gv.searchState
+        val dir = if (ss.forward) 1 else -1
+        val node = if (dir > 0) ss.prev() else ss.next()
+        if (node != null) {
+            gv.g.cleanSelect(setOf(node))
+            gv.centerScreen()
+        }
+    }
 }

@@ -131,6 +131,9 @@ class GraphView(
      */
     var commandBar: CommandBar? = null
 
+    /** Search state: last confirmed query, results, n/N cursor. */
+    val searchState: SearchState = SearchState()
+
     /**
      * Opaque per-tab identifier used as the autosave-backup
      * filename for untitled tabs (tabs with a file hash their

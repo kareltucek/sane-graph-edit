@@ -528,6 +528,10 @@ class KeyMapper(
             "u" to "undo",
             "r" to "redo",
 
+            // Search navigation
+            "n" to "search-next",
+            "N" to "search-prev",
+
             // Movement
             "g" to "grab",
             "G" to "subgraph-focus",
