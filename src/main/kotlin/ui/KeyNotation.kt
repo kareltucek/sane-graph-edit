@@ -88,6 +88,10 @@ object KeyNotation {
      * Rules:
      * - `<...>` is a single token (e.g., `<C-s>`, `<CR>`)
      * - Everything else is one token per character
+     *
+     * Angle-bracket tokens are normalized to canonical casing so
+     * that `<ESC>`, `<esc>`, `<Escape>` all produce `<Esc>`, and
+     * modifiers are always uppercase (`<c-s>` → `<C-s>`).
      */
     fun tokenize(sequence: String): List<String> {
         val tokens = mutableListOf<String>()
@@ -96,7 +100,7 @@ object KeyNotation {
             if (sequence[i] == '<') {
                 val end = sequence.indexOf('>', i)
                 if (end >= 0) {
-                    tokens.add(sequence.substring(i, end + 1))
+                    tokens.add(normalizeAngleBracket(sequence.substring(i, end + 1)))
                     i = end + 1
                 } else {
                     // Malformed <, treat as literal
@@ -109,6 +113,41 @@ object KeyNotation {
             }
         }
         return tokens
+    }
+
+    /**
+     * Normalize a `<...>` token to canonical casing.
+     * Modifiers (`C`, `S`) become uppercase; the key name is
+     * mapped through [canonicalKeyName] so `<ESC>`, `<esc>`,
+     * `<Escape>` all become `<Esc>`.
+     */
+    fun normalizeAngleBracket(token: String): String {
+        if (!token.startsWith("<") || !token.endsWith(">")) return token
+        val inner = token.removeSurrounding("<", ">")
+        val parts = inner.split("-").toMutableList()
+        // Modifiers to uppercase
+        for (j in 0 until parts.size - 1) {
+            parts[j] = parts[j].uppercase()
+        }
+        // Key name to canonical form
+        parts[parts.size - 1] = canonicalKeyName(parts.last())
+        return "<${parts.joinToString("-")}>"
+    }
+
+    private fun canonicalKeyName(name: String): String = when (name.lowercase()) {
+        "esc", "escape" -> "Esc"
+        "cr", "enter", "return" -> "CR"
+        "space" -> "Space"
+        "tab" -> "Tab"
+        "pgdn", "pagedown" -> "PgDn"
+        "pgup", "pageup" -> "PgUp"
+        "bs", "backspace" -> "BS"
+        "del", "delete" -> "Del"
+        "up" -> "Up"
+        "down" -> "Down"
+        "left" -> "Left"
+        "right" -> "Right"
+        else -> name  // preserve case for letters (C-s vs C-S)
     }
 
     // --- internal helpers ---

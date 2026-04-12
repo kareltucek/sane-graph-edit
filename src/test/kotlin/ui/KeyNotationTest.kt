@@ -113,6 +113,43 @@ class KeyNotationTest {
         assertNull(KeyNotation.fromKeyTyped('\u0001'))
     }
 
+    // --- normalization ---
+
+    @Test
+    fun `tokenize normalizes ESC variants`() {
+        assertEquals(listOf("<Esc>"), KeyNotation.tokenize("<ESC>"))
+        assertEquals(listOf("<Esc>"), KeyNotation.tokenize("<esc>"))
+        assertEquals(listOf("<Esc>"), KeyNotation.tokenize("<Escape>"))
+    }
+
+    @Test
+    fun `tokenize normalizes CR variants`() {
+        assertEquals(listOf("<CR>"), KeyNotation.tokenize("<cr>"))
+        assertEquals(listOf("<CR>"), KeyNotation.tokenize("<Enter>"))
+        assertEquals(listOf("<CR>"), KeyNotation.tokenize("<Return>"))
+    }
+
+    @Test
+    fun `tokenize normalizes modifier casing`() {
+        assertEquals(listOf("<C-s>"), KeyNotation.tokenize("<c-s>"))
+        assertEquals(listOf("<C-S-z>"), KeyNotation.tokenize("<c-s-z>"))
+    }
+
+    @Test
+    fun `tokenize preserves letter case in key name`() {
+        // <C-s> and <C-S> should stay distinct
+        assertEquals(listOf("<C-s>"), KeyNotation.tokenize("<C-s>"))
+        assertEquals(listOf("<C-S>"), KeyNotation.tokenize("<C-S>"))
+    }
+
+    @Test
+    fun `mixed sequence with non-canonical notation normalizes`() {
+        assertEquals(
+            listOf("t", "w", "0", "<Esc>"),
+            KeyNotation.tokenize("tw0<ESC>"),
+        )
+    }
+
     // --- round-trip: tokenize then parse ---
 
     @Test
