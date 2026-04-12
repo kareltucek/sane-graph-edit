@@ -26,6 +26,12 @@ questions. Check the status line at the top of each file.
 | 006 | Port UI to Compose Multiplatform  | [006-compose-port.md]     |
 | 007 | Markdown editing in node labels   | [007-markdown-editing.md] |
 
+## Backlog
+
+| #   | Task                              | File                      |
+|-----|-----------------------------------|---------------------------|
+| 008 | User stories (vim keys, search, macros, …) | [008-user-stories.md] |
+
 ## Ordering rationale
 
 - **004 before 005**: the menu bar includes Export SVG / Export
