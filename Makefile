@@ -7,7 +7,8 @@
 #
 # Targets:
 #   make            - compile + test
-#   make run        - launch the editor
+#   make run        - launch the editor (via Gradle)
+#   make run-jar    - build fat jar + launch it directly (faster startup)
 #   make test       - run unit tests
 #   make jar        - build the fat jar (~2 MB, needs JDK 21+ to run)
 #   make package    - build a native app-image via jpackage (~160 MB, no Java needed)
@@ -24,8 +25,9 @@ APPDIR     := $(PREFIX)/lib/sane-graph-edit
 BINLINK    := $(PREFIX)/bin/sane-graph-edit
 GRADLE     := ./gradlew
 BUILD_DIST := build/dist/sane-graph-edit
+FAT_JAR    := build/libs/sane-graph-edit-*-all.jar
 
-.PHONY: all run test jar package appimage deb rpm install uninstall release clean
+.PHONY: all run run-jar test jar package appimage deb rpm install uninstall release clean
 
 # --- primary targets ---
 
@@ -34,6 +36,9 @@ all: test
 
 run:
 	$(GRADLE) run
+
+run-jar: jar
+	java -jar $(FAT_JAR)
 
 test:
 	$(GRADLE) test
