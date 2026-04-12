@@ -12,58 +12,124 @@ Three interrelated features:
    canvas for running commands by name.
 2. **Named commands** — every editor action gets a canonical string
    name, forming the command vocabulary.
-3. **Key mappings** — keys (or key sequences) are bound to command
-   names. Mappings are overridable via an init file.
+3. **Key mappings** — keys (or key sequences) map to other key
+   sequences. Mappings are overridable via an init file.
 
 Together, these let the user remap any key, compose multi-key
 sequences, and script the editor from a vimrc-like config file.
 
-## How vim does it (and what to learn from)
+## How vim does it
 
-### Mappings
+### The RHS is always a key sequence
 
-Vim has two kinds:
+In vim, the right-hand side of every mapping is a **key sequence**,
+not a command name. If you want to invoke a named command, you
+spell out the keystrokes that open the command bar and type the
+command:
 
-- **`map lhs rhs`** — recursive. When `lhs` is pressed, vim
-  expands `rhs` and then checks the result for *further*
-  mappings. This is powerful (you can chain mappings) but
-  dangerous: `map j gj` + `map gj j` → infinite loop.
+```vim
+nnoremap gt :tabnew<CR>
+```
 
-- **`noremap lhs rhs`** — non-recursive. When `lhs` is pressed,
-  vim expands `rhs` using only built-in commands, ignoring all
-  user mappings. Safe, predictable, and what the vim community
-  overwhelmingly recommends.
+The RHS is literally `:` `t` `a` `b` `n` `e` `w` `<CR>`. Vim
+replays those keys as if the user typed them: `:` opens the
+command line, the letters type "tabnew", `<CR>` executes it.
 
-**Takeaway:** default to non-recursive. Call it `map` (not
-`noremap` — our users aren't vim experts who know the difference, but also do accept noremap).
-Offer `remap` for the rare recursive case, with a warning in the
-docs.
+We adopt the same model. **Keys all the way down.** Command
+names live in the `:` bar, not in the mapping layer.
+
+### Two tables, two resolution phases
+
+- **`defaults`** — built-in, maps key sequences to command names.
+  Hardcoded at startup, not directly visible to the user.
+  `{"u": "undo", "d": "delete", "<C-s>": "save", ...}`
+
+- **`mappings`** — user-defined (from init file or `:map`), maps
+  key sequences to key sequences.
+  `{"z": "u", "gt": ":next-tab<CR>"}`
+
+Resolution:
+
+```
+press key K
+  1. look up K in mappings
+     → found RHS: replay RHS as key sequence
+       - map (non-recursive): replay through defaults only
+       - remap (recursive): replay through mappings + defaults
+     → not found: fall through
+  2. look up K in defaults
+     → found command name: execute via CommandRegistry
+     → not found: ignore
+```
+
+Example — `map z u` (non-recursive):
+press `z` → mappings: `z→u` → replay `u` through defaults only
+→ defaults: `u→undo` → execute.
+
+Example — `remap a b` + `remap b c` (recursive):
+press `a` → mappings: `a→b` → replay `b` through mappings+defaults
+→ mappings: `b→c` → replay `c` through mappings+defaults
+→ no mapping for `c` → defaults: `c→clear-edges` → execute.
+
+Example — mapping to a named command:
+```
+map gt :next-tab<CR>
+```
+press `g`, `t` → mappings: `gt→:next-tab<CR>` → replay
+`:` → opens command bar
+`n`, `e`, `x`, `t`, `-`, `t`, `a`, `b` → typed into bar
+`<CR>` → executes `next-tab` via CommandRegistry.
+
+### map vs remap vs noremap
+
+| Command    | Behaviour     | Notes |
+|------------|---------------|-------|
+| `map`      | non-recursive | RHS replayed through `defaults` only. Safe default. |
+| `noremap`  | non-recursive | Alias for `map`. Accepted for vim muscle memory. |
+| `remap`    | recursive     | RHS replayed through `mappings` + `defaults`. Powerful but can loop. |
+
+`map` = `noremap` = safe. `remap` = recursive = your footgun,
+your problem.
+
+Recursive expansion has a max depth (default 1000). If exceeded,
+the mapping is aborted and a warning is printed. This prevents
+`remap a b` + `remap b a` from hanging the editor.
+
+### Macro registers are always recursive
+
+When `@a` replays a macro register, the recorded key sequence
+is fed through the full pipeline (mappings + defaults), same as
+`remap`. This matches vim: a macro replays keystrokes as if the
+user typed them, and user mappings apply inside macros.
+
+The distinction is:
+
+- **`map`/`noremap`**: the key-binding layer. Non-recursive.
+  You're telling the editor "when I press X, pretend I pressed
+  Y, and resolve Y against built-ins only."
+- **`remap`**: same layer, but Y is resolved through both
+  user mappings and built-ins. Rare, dangerous, available.
+- **Macro registers** (`@a`): the automation layer. Always
+  recursive. You recorded a sequence of keystrokes, and replay
+  should behave as if you typed them again — including any
+  remappings you've configured.
 
 ### Mode-specific mappings
 
-Vim has separate mapping tables per mode (`nmap` for normal, `imap`
-for insert, `vmap` for visual, etc.). sane-graph-edit has:
+Vim has separate mapping tables per mode (`nmap`, `imap`, `vmap`).
+sane-graph-edit has:
 
-- **Canvas mode** — the main editing mode. All single-key commands
-  live here.
-- **Node-edit mode** — text input in the popup editor. Keys are
-  literal text, not commands.
+- **Canvas mode** — the main editing mode. Single-key commands.
+- **Node-edit mode** — text input in the popup editor.
 - **Style-picker mode** — mouse clicks on colour/shape buttons.
-  No key dispatch.
-- **Command-mode** (new) — typing in the `:` bar. Keys are literal
-  text except Enter (execute) and Escape (dismiss).
+- **Command-mode** (new) — typing in the `:` bar.
 
-Mappings should apply in **canvas mode only**. The other modes are
-modal overlays where keys have their natural meaning. No `imap`
-equivalent needed — the node editor is a standard text field.
+Mappings apply in **canvas mode only**. The other modes are modal
+overlays where keys have their natural meaning.
 
 ### Key notation
 
-Vim uses `<C-x>` for Ctrl+x, `<S-x>` for Shift+x, `<CR>` for
-Enter, `<Esc>` for Escape, `<Space>`, `<Tab>`, etc.
-
-We should adopt the same notation (it's well-known and
-unambiguous):
+Adopted from vim (well-known, unambiguous):
 
 | Notation    | Meaning          |
 |-------------|------------------|
@@ -78,26 +144,12 @@ unambiguous):
 
 ### Multi-key sequences and timeouts
 
-If `g` is mapped to "grab" and `gt` is mapped to "next-tab", a
-keypress of `g` is ambiguous: the user might be about to press `t`
-(completing `gt`) or they might want `g` alone.
-
-Vim solves this with **`timeoutlen`** (default 1000ms): after `g`,
-wait up to `timeoutlen` ms for a follow-up key. If one arrives and
-matches a longer mapping, use that; if the timer expires, fire the
-single-key mapping.
-
-This works but introduces perceptible latency on single-key
-commands that are also prefixes. Vim users live with it; our users
-might find 1000ms too sluggish for a visual editor where `g`
-(grab) should feel instant.
-
-**Resolution rule:** when a key is pressed, the mapper checks
-whether it is a **prefix** of any longer mapping:
+When a key is pressed, the mapper checks whether it is a
+**prefix** of any longer mapping:
 
 - **Not a prefix of anything longer** → resolve immediately.
-  No wait, no latency. E.g., `d` mapped to "delete" and nothing
-  starts with `d...` → pressing `d` fires instantly.
+  No wait, no latency. E.g., `d` mapped and nothing starts
+  with `d...` → pressing `d` fires instantly.
 - **IS a prefix of a longer mapping** (e.g., `g` is pressed and
   `gt` exists) → start a timer (`timeoutlen`, default 500ms).
   If a follow-up key arrives and completes a longer mapping,
@@ -112,66 +164,15 @@ Consequences:
 - A "leader key" (e.g., `,`) that has no standalone binding and
   is only ever a prefix never triggers the timeout — it waits
   indefinitely for the follow-up, since there's nothing to fire
-  on expiry. Users who prefer this style can `map ,t next-tab`
-  and `,` becomes a no-latency prefix.
+  on expiry.
 
-`timeoutlen` is configurable via `set timeoutlen=500` in the
-init file or the `:` bar.
-
-### Recursive expansion pitfall
-
-With recursive mappings, the user can accidentally create:
-
-```
-remap a b
-remap b a    → infinite loop on pressing 'a'
-```
-
-Vim detects this (max recursion depth, default 1000) and errors.
-We should too, if we ever support recursive mappings. But if we
-default to non-recursive `map`, this can't happen — the RHS is
-always resolved against built-in commands only.
-
-We should not support recursive mappings for now. We should accept `remap`, but interpret it as a noremap and throw a warning.
-
-### The init file
-
-Vim's `.vimrc` is a full scripting language (vimscript, or lua in
-neovim). We don't need that. A line-oriented config file is
-enough:
-
-```
-# ~/.config/sane-graph-edit/init
-# Comments start with #. Blank lines ignored.
-
-# Remap keys
-map gt next-tab
-map gT prev-tab
-map U redo
-map <C-z> undo
-map <C-S-z> redo
-
-# Set options
-set timeoutlen=500
-
-# Execute a command on startup (e.g., open a specific file)
-# exec open /home/karel/graphs/main.dot
-```
-
-Syntax: `map <keys> <command-name>`, `set <option>=<value>`,
-`# comment`. One command per line. No conditionals, no loops, no
-functions. If we ever need scripting, that's a post-Compose-port
-project.
-
-The file is read once at startup, after the session is restored.
-`:source <path>` reloads it (or loads a different one).
+`timeoutlen` is configurable via `set timeoutlen=500`.
 
 ## Architecture
 
 ### CommandRegistry
 
-A singleton that maps command names (strings) to executable
-actions.
+Maps command names (strings) to executable actions.
 
 ```kotlin
 object CommandRegistry {
@@ -183,8 +184,7 @@ object CommandRegistry {
 }
 ```
 
-Every `impl.*` method gets registered with a canonical name at
-startup:
+Every `impl.*` method gets registered with a canonical name:
 
 ```
 "undo"              → impl.undo
@@ -213,176 +213,189 @@ startup:
 
 ### KeyMapper
 
-Holds the key→command mapping table and a pending-key state
-machine for multi-key sequences.
+Two tables + pending-key state machine.
 
 ```kotlin
 class KeyMapper {
-    // The mapping table. Key sequences are stored as strings
-    // like "g", "gt", "<C-s>".
-    private val mappings: MutableMap<String, String>
-
-    // Default (built-in) mappings, set at construction.
-    // User mappings override these.
+    // Built-in: key sequence → command name.
     private val defaults: Map<String, String>
 
-    fun map(keys: String, command: String)
+    // User-defined: key sequence → key sequence.
+    // Populated from init file and :map commands.
+    private val mappings: MutableMap<String, Mapping>
+
+    data class Mapping(val rhs: String, val recursive: Boolean)
+
+    fun map(keys: String, rhs: String, recursive: Boolean = false)
     fun unmap(keys: String)
-    fun resolve(keys: String): Resolution
-    // Resolution = Resolved(command), Pending, NoMatch
+
+    // Returns Resolved(commandName), Pending, or NoMatch.
+    fun resolve(pendingKeys: String): Resolution
 }
 ```
 
-`GraphKeyListener` changes from a hardcoded dispatch table to
-delegating to `KeyMapper.resolve()`:
+Resolution flow on each keypress:
 
 ```
 keyTyped 'g' → mapper.resolve("g")
-  → Pending (because "gt" also exists)
-  → start timeout
-  → if 't' arrives before timeout: mapper.resolve("gt") → Resolved("next-tab")
-  → if timeout expires: mapper.resolve("g") → Resolved("grab")
+  → "g" is a prefix of "gt" → Pending
+  → start timeout (500ms)
+  → 't' arrives → mapper.resolve("gt")
+    → mappings: "gt" → ":next-tab<CR>" (non-recursive)
+    → replay ":next-tab<CR>" through defaults
+    → ':' opens command bar, "next-tab" typed, <CR> executes
+  OR timeout expires → mapper.resolve("g") (standalone)
+    → defaults: "g" → "grab" → execute
 ```
 
 ### CommandLine (the `:` bar)
 
-A text input widget (currently `JTextField`, later a Compose
-`TextField`) that appears at the bottom of the canvas when the
-user presses `:`.
+A text input at the bottom of the canvas. Opens on `:`, `/`, or
+`?`. Dismissed by `<Esc>` or `<CR>` (execute).
 
-Supported commands in the bar:
+| Input       | Action                                 |
+|-------------|----------------------------------------|
+| `:w`        | save                                   |
+| `:w <path>` | save-as to path                        |
+| `:q`        | close tab (prompt if dirty)            |
+| `:wq`       | save then close tab                    |
+| `:q!`       | close tab without saving               |
+| `:e <path>` | open file                              |
+| `:map`      | add a non-recursive key mapping        |
+| `:noremap`  | alias for `:map`                       |
+| `:remap`    | add a recursive key mapping            |
+| `:unmap`    | remove a key mapping                   |
+| `:set`      | set an option (`timeoutlen`, etc.)     |
+| `:source`   | execute an init file                   |
+| `/<query>`  | search forward (delegates to search)   |
+| `?<query>`  | search backward                        |
 
-| Command              | Action                                 |
-|----------------------|----------------------------------------|
-| `:w`                 | save                                   |
-| `:w <path>`          | save-as to path                        |
-| `:q`                 | close tab (prompt if dirty)            |
-| `:wq`                | save then close tab                    |
-| `:q!`                | close tab without saving               |
-| `:e <path>`          | open file                              |
-| `:map <keys> <cmd>`  | add a key mapping                      |
-| `:unmap <keys>`      | remove a key mapping                   |
-| `:set <opt>=<val>`   | set an option                          |
-| `:source <path>`     | execute an init file                   |
-| `/<query>`           | search forward (delegates to search)   |
-| `?<query>`           | search backward                        |
+Tab-completion on command names uses `CommandRegistry.list()`.
 
-Tab-completion on command names uses
-`CommandRegistry.list()`.
+### The init file
+
+`~/.config/sane-graph-edit/init`. Read once at startup, after
+session restore.
+
+```
+# Comments start with #. Blank lines ignored.
+
+# Non-recursive (safe, default)
+map gt :next-tab<CR>
+map gT :prev-tab<CR>
+map <C-z> u
+map <C-S-z> U
+
+# Recursive (your footgun, your problem)
+remap x d
+
+# noremap is an alias for map
+noremap z u
+
+# Options
+set timeoutlen=500
+```
+
+Syntax: one command per line. Same commands as the `:` bar.
+No conditionals, no loops, no functions.
+
+`:source <path>` reloads it (or loads a different file).
 
 ## Default key map
 
-The current hardcoded dispatch table becomes the default mapping:
+The current hardcoded dispatch table becomes the `defaults`
+table. These map key sequences to command names and are not
+user-visible as "mappings" — they're the terminal resolution
+layer.
 
 ```
 # Structural edits
-e       edge-forward
-E       edge-backward
-v       new-node-edge-forward
-V       new-node-edge-backward
-a       append-forward
-A       append-backward
-c       clear-edges
-d       delete
-D       delete-reconnect
-o       optimize
-O       optimize-restrict
+e       → edge-forward
+E       → edge-backward
+v       → new-node-edge-forward
+V       → new-node-edge-backward
+a       → append-forward
+A       → append-backward
+c       → clear-edges
+d       → delete
+D       → delete-reconnect
+o       → optimize
+O       → optimize-restrict
 
 # Selection & navigation
-i       invert-selection
-t       select-closure-forward
-T       select-closure-backward
-l       select-linked-forward
-L       select-linked-backward
-w       unselect-oldest-forward
-W       unselect-oldest-backward
-0       bound-screen
-1       center-screen
-<Space> edit-node
-<S-Space> select-and-edit-node
+i       → invert-selection
+t       → select-closure-forward
+T       → select-closure-backward
+l       → select-linked-forward
+L       → select-linked-backward
+w       → unselect-oldest-forward
+W       → unselect-oldest-backward
+0       → bound-screen
+1       → center-screen
+<Space> → edit-node
+<S-Space> → select-and-edit-node
 
 # Filtering
-h       hide
-H       unhide
+h       → hide
+H       → unhide
 
 # Style
-f       paste-format
-F       copy-format
+f       → paste-format
+F       → copy-format
 
 # History
-u       undo
-r       redo
+u       → undo
+r       → redo
 
 # Movement
-g       grab
-G       macro:tw0
+g       → grab
 
 # Modifier-based
-<C-s>   save
-<C-S-s> save-as
-<C-o>   open
-<C-n>   new-tab
-<C-t>   new-tab
-<C-w>   close-tab
-<C-e>   export-svg
-<C-S-e> export-selection
-<C-Tab> next-tab
-<C-S-Tab> prev-tab
-<C-a>   select-all
-<C-c>   copy
-<C-x>   cut
-<C-v>   paste
-<C-r>   redo
-<Esc>   deselect
+<C-s>   → save
+<C-S-s> → save-as
+<C-o>   → open
+<C-n>   → new-tab
+<C-t>   → new-tab
+<C-w>   → close-tab
+<C-e>   → export-svg
+<C-S-e> → export-selection
+<C-Tab> → next-tab
+<C-S-Tab> → prev-tab
+<C-a>   → select-all
+<C-c>   → copy
+<C-x>   → cut
+<C-v>   → paste
+<C-r>   → redo
+<Esc>   → deselect
 ```
 
-The user's init file can override any of these.
+The user's init file adds to or overrides the `mappings` table
+(key→key). The `defaults` table (key→command) is immutable.
 
 ## Design decisions (resolved)
 
-1. **`map` = non-recursive.** The safe thing gets the obvious
-   name. `remap` exists for the rare case where you need
-   recursion. Opposite to vim's convention, but vim's convention
-   is universally regretted.
+1. **RHS of mappings is always a key sequence.** Not a command
+   name. To invoke a command by name, spell out the keystrokes:
+   `map gt :next-tab<CR>`. This matches vim exactly and avoids
+   the ambiguity of "is `put` a command name or p+u+t?".
 
-2. **Timeout = 500ms** (`set timeoutlen=500`). Configurable via
-   `:set` and the init file. If a key is a prefix of a longer
-   mapping AND has its own binding, the mapper waits 500ms for a
-   follow-up key. If the key has no standalone binding, the
-   mapper waits indefinitely (no ambiguity → no latency).
+2. **`map` = `noremap` = non-recursive.** The safe thing gets
+   the obvious name. `noremap` accepted as alias for vim muscle
+   memory.
 
-3. **`:` bar is minimal.** `:w`, `:q`, `:wq`, `:q!`, `:e`,
-   `:map`, `:unmap`, `:set`, `:source`, `/`, `?`. Canvas-mode
-   keys do the heavy lifting. Commands that take arguments (like
-   `:e <path>`) accept them as trailing text after the command
-   word. No argument parsing beyond whitespace splitting.
+3. **`remap` = recursive.** Supported, with max recursion depth
+   1000. Available for users who know what they're doing.
 
-4. **Init file: `~/.config/sane-graph-edit/init`** (XDG). No
-   dotfile fallback.
+4. **Macro registers are always recursive.** Replaying a macro
+   feeds each key through the full pipeline (mappings + defaults)
+   as if the user typed it. This is the vim model.
 
-5. **Key sequences for macros, not command names.** `"tw0"` is
-   terse and the user knows what it does because they composed
-   it from the keys they already use. Yes, remapping `t` would
-   break a macro that uses `t` — that's the user's problem and
-   matches vim's behaviour exactly. The alternative (command
-   names) is too verbose for something meant to be recorded live.
+5. **Timeout = 500ms** (`set timeoutlen=500`). Only applies when
+   a pressed key is a prefix of a longer mapping. Configurable.
 
-6. **`map` is non-recursive; macro registers ARE recursive.**
-   This is the key distinction:
-   - `map gt next-tab` — when `g` then `t` is pressed, execute
-     the built-in `next-tab` command directly. The RHS is a
-     command name resolved against `CommandRegistry`, NOT fed
-     back through the key mapper. No expansion loop possible.
-   - `@a` (replay macro register `a`) — the register contains a
-     key sequence like `"tw0"`. Replay feeds each key back
-     through the mapper (so user remappings apply to the keys
-     inside the macro). This is recursive by design: the macro
-     was recorded as keys, and it should behave as if the user
-     pressed those keys again.
+6. **`:` bar is minimal.** `:w`, `:q`, `:map`, `:set`, `:source`,
+   `/`, `?`. Canvas-mode keys do the heavy lifting.
 
-   This is exactly how vim works: mappings resolve to actions,
-   macros replay keystrokes.
+7. **Init file: `~/.config/sane-graph-edit/init`** (XDG).
 
-7. **Conflict resolution: last write wins.** If the init file
-   has two `map d ...` lines, the second one takes effect. Same
-   as vim.
+8. **Conflict resolution: last write wins.**
