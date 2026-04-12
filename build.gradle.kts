@@ -84,6 +84,10 @@ tasks.register<Exec>("jpackage") {
     val jpackageBin = javaHome.resolve("bin/jpackage")
 
     doFirst {
+        // jpackage refuses to overwrite an existing output directory,
+        // so wipe it before each run.
+        val existing = outputDir.resolve("sane-graph-edit")
+        if (existing.exists()) existing.deleteRecursively()
         outputDir.mkdirs()
     }
 
