@@ -94,8 +94,12 @@ object Constants {
           Space       - edit text of last active node
           Shift+Space - replace selection with last active, then edit
 
+        Filtering
+          h - hide everything NOT in selection
+          H - unhide one level (undo the last h)
+
         View
-          0 - fit view to all nodes (or to selection if any)
+          0 - fit view to all visible (or to selection)
           1 - centre view on selection
     """.trimIndent()
 

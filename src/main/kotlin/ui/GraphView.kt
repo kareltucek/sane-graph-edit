@@ -312,7 +312,9 @@ class GraphView(
             ?.removeSuffix(".dot")?.plus(".svg")
             ?: "untitled.svg"
         val path = FileOps.exportSvgDialog(this, baseName) ?: return
-        writeExport(path, SvgWriter.write(g))
+        // Export only visible nodes so hidden nodes stay hidden in the SVG.
+        val visible = g.nodes.filter { it.isVisible }.toSet()
+        writeExport(path, SvgWriter.write(g, visible))
     }
 
     /**
@@ -394,20 +396,22 @@ class GraphView(
     }
 
     fun centerScreen() {
+        val visible = g.nodes.filter { it.isVisible }
         val center =
             g.selectedNodes
                 .takeIf { it.isNotEmpty() }
-                .orElse(g.nodes)
+                .orElse(visible)
                 .let { GraphTools.computeCenterOfMass(it) }
 
         setViewTo(center, 1.0)
     }
 
     fun boundScreen() {
+        val visible = g.nodes.filter { it.isVisible }
         val box =
             g.selectedNodes
                 .takeIf { it.isNotEmpty() }
-                .orElse(g.nodes)
+                .orElse(visible)
                 .let { GraphTools.computeBoundingBox(it) }
 
         box?.let { r ->

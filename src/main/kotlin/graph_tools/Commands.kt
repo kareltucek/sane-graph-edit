@@ -311,3 +311,39 @@ class SetSizeCommand(
         }
     }
 }
+
+/**
+ * Hide: increment [Node.cache.hideLevel] on every node in
+ * [affected] (the nodes that were NOT in the selection when
+ * `h` was pressed). Nodes already hidden get buried deeper
+ * (their level goes from N to N+1), which is how successive
+ * hides stack.
+ */
+class HideCommand(
+    private val affected: List<Node>,
+) : Command {
+    override fun redo() {
+        affected.forEach { it.cache.hideLevel++ }
+    }
+
+    override fun undo() {
+        affected.forEach { it.cache.hideLevel-- }
+    }
+}
+
+/**
+ * Unhide: decrement [Node.cache.hideLevel] on every node in
+ * [affected] (nodes that had hideLevel > 0 when `H` was
+ * pressed). One `H` undoes one layer of hiding.
+ */
+class UnhideCommand(
+    private val affected: List<Node>,
+) : Command {
+    override fun redo() {
+        affected.forEach { it.cache.hideLevel-- }
+    }
+
+    override fun undo() {
+        affected.forEach { it.cache.hideLevel++ }
+    }
+}

@@ -148,7 +148,9 @@ These require the corresponding packaging tools (`dpkg-deb` /
 | `t` / `T`  | Add the forward / backward reachable closure to selection |
 | `l` / `L`  | Add one generation of neighbours (forward / backward)     |
 | `w` / `W`  | Remove the "oldest" generation of the current selection   |
-| `0`        | Fit view to all nodes (or to selection if any)            |
+| `h`        | Hide everything NOT in the selection (levelled)           |
+| `H`        | Unhide one level (undo the most recent `h`)               |
+| `0`        | Fit view to all visible (or to selection if any)          |
 | `1`        | Centre view on selection                                  |
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |

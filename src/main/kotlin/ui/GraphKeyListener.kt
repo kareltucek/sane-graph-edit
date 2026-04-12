@@ -9,12 +9,14 @@ import graph_tools.Command
 import graph_tools.Edge
 import graph_tools.GraphTools
 import graph_tools.GraphTools.computeClosure
+import graph_tools.HideCommand
 import graph_tools.LayoutOptimizer
 import graph_tools.MoveNodesCommand
 import graph_tools.Node
 import graph_tools.RemoveEdgesCommand
 import graph_tools.RemoveNodesCommand
 import graph_tools.StyleNodesCommand
+import graph_tools.UnhideCommand
 import utils.Vector2
 import ui.GraphKeyListener.impl.copySelection
 import ui.GraphKeyListener.impl.cutSelection
@@ -172,6 +174,8 @@ class GraphKeyListener(
                 "F" -> copyFormat(graphView)
                 "u" -> undo(graphView)
                 "r" -> redo(graphView)
+                "h" -> hideUnselected(graphView)
+                "H" -> unhideOneLevel(graphView)
                 "g" -> grab(graphView)
                 "G" -> executeMacro(graphView, "tw0").toUnit()
 //                "G" -> executeMacro(graphView, "TW0").toUnit()
@@ -221,6 +225,35 @@ class GraphKeyListener(
         fun redo(graphView: GraphView) {
             graphView.g.history.redo()
             graphView.g.needsRecomputing(graphView.g.nodes)
+            graphView.repaint()
+        }
+
+        /**
+         * Hide everything NOT in the current selection. Increments
+         * hideLevel on ALL non-selected nodes — including already-
+         * hidden ones, so successive hides stack (a node hidden
+         * twice needs two unhides to reappear).
+         *
+         * No-op if the selection is empty (hiding everything would
+         * leave nothing to work with).
+         */
+        fun hideUnselected(graphView: GraphView) {
+            val sel = graphView.g.selectedNodes
+            if (sel.isEmpty()) return
+            val affected = graphView.g.nodes.filter { it !in sel }
+            if (affected.isEmpty()) return
+            graphView.g.commit(HideCommand(affected))
+            graphView.repaint()
+        }
+
+        /**
+         * Unhide one level: decrement hideLevel on every node where
+         * it's > 0. One `H` undoes the effect of one `h`.
+         */
+        fun unhideOneLevel(graphView: GraphView) {
+            val affected = graphView.g.nodes.filter { it.cache.hideLevel > 0 }
+            if (affected.isEmpty()) return
+            graphView.g.commit(UnhideCommand(affected))
             graphView.repaint()
         }
 
@@ -366,10 +399,11 @@ class GraphKeyListener(
         }
 
         fun selectAll(graphView: GraphView) {
-            if (graphView.g.selectedNodes.size == graphView.g.nodes.size) {
+            val visible = graphView.g.nodes.filter { it.isVisible }.toSet()
+            if (graphView.g.selectedNodes == visible) {
                 graphView.g.cleanSelect(setOf())
             } else {
-                graphView.g.cleanSelect(graphView.g.nodes)
+                graphView.g.cleanSelect(visible)
             }
             graphView.repaint()
         }

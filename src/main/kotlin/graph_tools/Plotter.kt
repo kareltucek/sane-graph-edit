@@ -70,11 +70,13 @@ object Plotter {
     fun drawGraph(g2d: Graphics2D, g: Graph) {
         g2d.paint = defaultBgColor
         g2d.stroke = thinStroke
-        g.edges.forEach { drawEdge(g2d, it) }
+        g.edges
+            .filter { it.src.isVisible && it.dst.isVisible }
+            .forEach { drawEdge(g2d, it) }
         g2d.stroke = thinStroke
-        g.nodes.forEach {
-            drawNode(g2d, it, g.selectedNodes.contains(it))
-        }
+        g.nodes
+            .filter { it.isVisible }
+            .forEach { drawNode(g2d, it, g.selectedNodes.contains(it)) }
     }
 
     fun drawSelectionBox(g2d: Graphics2D, ul: Vector2, br: Vector2) {

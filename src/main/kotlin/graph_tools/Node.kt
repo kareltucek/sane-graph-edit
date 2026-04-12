@@ -28,8 +28,22 @@ class Node(
         var shapeBounds: Vector2 = Vector2.Zero,
         var shape: NodeShapeImpl = NodeShape.Rectangle.impl,
         var font: FontData? = null,
-        var lines: List<String> = emptyList()
+        var lines: List<String> = emptyList(),
+        /**
+         * Filtering / hide level. 0 = visible. Each `h` command
+         * increments this on every non-selected node (even already
+         * hidden ones); each `H` decrements all nodes where it's >0.
+         * The level acts as a stack counter: two hides followed by
+         * one unhide restores only the second hide's victims.
+         *
+         * View state only — not serialised to DOT, lost on file
+         * load (all nodes start visible).
+         */
+        var hideLevel: Int = 0,
     )
+
+    /** True when this node should be drawn and is clickable. */
+    val isVisible: Boolean get() = cache.hideLevel == 0
 
     class NodeAttributes(
         var name: String = "",

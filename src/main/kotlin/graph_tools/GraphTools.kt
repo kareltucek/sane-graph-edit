@@ -38,6 +38,7 @@ object GraphTools {
                 }
             }
             .filter { !root.contains(it) }
+            .filter { it.isVisible }
             .toSet()
     }
 
