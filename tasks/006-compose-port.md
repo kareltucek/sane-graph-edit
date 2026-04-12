@@ -1,4 +1,4 @@
-# 005 — Port UI from Swing to Compose Multiplatform
+# 006 — Port UI from Swing to Compose Multiplatform
 
 > **Status: planned.** This is the next significant rework. All
 > preceding tasks (undo, file UI, tabs, SVG export) should be

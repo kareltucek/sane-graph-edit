@@ -17,23 +17,29 @@ questions. Check the status line at the top of each file.
 | #   | Task                          | File                  |
 |-----|-------------------------------|-----------------------|
 | 004 | SVG exporter                  | [004-svg-export.md]   |
+| 005 | Standard menu bar             | [005-menu-bar.md]     |
 
 ## Planned
 
 | #   | Task                              | File                      |
 |-----|-----------------------------------|---------------------------|
-| 005 | Port UI to Compose Multiplatform  | [005-compose-port.md]     |
-| 006 | Markdown editing in node labels   | [006-markdown-editing.md] |
+| 006 | Port UI to Compose Multiplatform  | [006-compose-port.md]     |
+| 007 | Markdown editing in node labels   | [007-markdown-editing.md] |
 
 ## Ordering rationale
 
-- **004 before 005**: SVG export is pure model→file, doesn't
-  touch the UI, and ships a user-visible feature. Doing it while
-  Swing is still the UI means fewer moving parts.
-- **005 before 006**: Markdown rendering requires
+- **004 before 005**: the menu bar includes Export SVG / Export
+  Selection items that depend on the SVG exporter. Can be
+  implemented in parallel (menu items greyed out until 004
+  lands), but cleaner to do 004 first.
+- **005 before 006**: the menu bar is small Swing work that
+  ships immediately. If we defer it to the Compose port, it's
+  free (Compose has `MenuBar` built in), but the Swing editor
+  benefits from it now.
+- **006 before 007**: Markdown rendering requires
   `AnnotatedString` / rich-text layout, which Swing can't do
   well. Compose is the prerequisite.
-- **006 last**: it's a stretch feature. The editor is fully
+- **007 last**: it's a stretch feature. The editor is fully
   usable without it.
 
 ## Also done (not in numbered tasks)

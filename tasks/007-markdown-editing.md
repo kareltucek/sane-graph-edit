@@ -1,6 +1,6 @@
-# 006 — Markdown editing support in node labels
+# 007 — Markdown editing support in node labels
 
-> **Status: future.** Depends on 005 (Compose port) — Compose's
+> **Status: future.** Depends on 006 (Compose port) — Compose's
 > `AnnotatedString` / `RichTextEditor` ecosystem makes this
 > feasible; Swing's `JTextArea` does not.
 
