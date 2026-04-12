@@ -534,6 +534,8 @@ class KeyMapper(
 
             // Movement
             "g" to "grab",
+            "gt" to "next-tab",
+            "gT" to "prev-tab",
             "G" to "subgraph-focus",
 
             // Modifier-based
