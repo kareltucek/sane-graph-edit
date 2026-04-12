@@ -57,8 +57,21 @@ object SvgWriter {
         val br = box.br + Vector2(MARGIN, MARGIN)
         val size = br - ul
 
+        // Explicit width/height in addition to viewBox. Some viewers
+        // (notably Firefox) cap zoom relative to the "intrinsic size"
+        // of the SVG; without width/height, intrinsic size = viewport
+        // size and you hit a ~500% ceiling quickly. A large explicit
+        // size makes the base render bigger so the zoom ceiling is
+        // effectively unreachable. We scale so the longer axis is
+        // 4000px — large enough that 500% of it is 20000px, more than
+        // any screen can show.
+        val scaleFactor = 4000.0 / maxOf(size.x, size.y)
+        val w = size.x * scaleFactor
+        val h = size.y * scaleFactor
+
         val sb = StringBuilder()
         sb.appendLine("""<svg xmlns="http://www.w3.org/2000/svg"""")
+        sb.appendLine("""     width="${fmt(w)}" height="${fmt(h)}"""")
         sb.appendLine("""     viewBox="${fmt(ul.x)} ${fmt(ul.y)} ${fmt(size.x)} ${fmt(size.y)}"""")
         sb.appendLine("""     font-family="sans-serif">""")
 
