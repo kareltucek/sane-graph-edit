@@ -19,19 +19,69 @@ Buildable, runnable, but rough around the edges. See
 [`docs/developer/architecture.md`](docs/developer/architecture.md) for
 the code-level picture.
 
-## Build & run
+## Install & run
 
-You need a JDK 21 (or newer — the toolchain is set to 21). Everything
-else comes from Gradle.
+### Quick start (requires JDK 21+)
 
 ```sh
-./gradlew run            # launch the editor
-./gradlew build          # compile + test + assemble
-./gradlew fatJar         # build/libs/sane-graph-edit-<v>-all.jar
+git clone git@github.com:kareltucek/sane-graph-edit.git
+cd sane-graph-edit
+./gradlew run
 ```
 
-Then `java -jar build/libs/sane-graph-edit-*-all.jar` to run the fat
-jar on a machine without Gradle.
+Gradle downloads the right Kotlin compiler via the JVM toolchain
+config; you only need a JDK 21 (or newer) on your `$PATH` or
+managed by [sdkman](https://sdkman.io/).
+
+### Fat jar (portable, ~2 MB)
+
+```sh
+./gradlew fatJar
+java -jar build/libs/sane-graph-edit-*-all.jar
+```
+
+A single self-contained `.jar` you can copy to any machine with
+JDK 21+. Rename it, put it on a USB stick, alias it in your
+shell — whatever works.
+
+### Native app-image (no Java dependency, ~160 MB)
+
+```sh
+./gradlew jpackage
+```
+
+Produces `build/dist/sane-graph-edit/` — a directory containing a
+native `bin/sane-graph-edit` launcher and a bundled JRE. Copy the
+whole directory to `/opt`, `~/bin`, or wherever you keep local
+apps. The user does **not** need Java installed.
+
+```sh
+# run it directly
+build/dist/sane-graph-edit/bin/sane-graph-edit
+
+# or install system-wide
+sudo cp -r build/dist/sane-graph-edit /opt/
+sudo ln -sf /opt/sane-graph-edit/bin/sane-graph-edit /usr/local/bin/sane-graph-edit
+```
+
+For a `.deb` or `.rpm` installer instead of a plain directory:
+
+```sh
+./gradlew jpackage -Ptype=deb   # Debian/Ubuntu (.deb)
+./gradlew jpackage -Ptype=rpm   # Fedora/RHEL (.rpm)
+```
+
+These require the corresponding packaging tools (`dpkg-deb` /
+`rpmbuild`) to be installed.
+
+### Development
+
+```sh
+./gradlew build          # compile + test + assemble
+./gradlew test           # run unit tests only
+./gradlew fatJar         # rebuild the fat jar
+./gradlew jpackage       # rebuild the native app-image
+```
 
 ## Using it
 

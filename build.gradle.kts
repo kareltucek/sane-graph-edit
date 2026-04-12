@@ -52,3 +52,52 @@ tasks.register<Jar>("fatJar") {
     })
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
+
+// ---------- jpackage: native app-image or installer ----------
+//
+// Usage:
+//   ./gradlew jpackage              -- app-image (directory with launcher + bundled JRE)
+//   ./gradlew jpackage -Ptype=deb   -- Debian .deb package
+//   ./gradlew jpackage -Ptype=rpm   -- RPM package
+//
+// Output lands in build/dist/.
+// Requires JDK 21+ (ships jpackage) and, for deb/rpm, the
+// corresponding packaging tools (dpkg-deb / rpmbuild).
+tasks.register<Exec>("jpackage") {
+    group = "distribution"
+    description = "Builds a native app-image (or installer) via jpackage."
+    dependsOn("fatJar")
+
+    val fatJarFile = tasks.named<Jar>("fatJar").get().archiveFile.get().asFile
+    val outputDir = layout.buildDirectory.dir("dist").get().asFile
+    val pkgType = project.findProperty("type")?.toString() ?: "app-image"
+
+    // Resolve the jpackage binary from the same toolchain Gradle
+    // uses for compilation, so we don't accidentally pick up a
+    // system JDK that's too old.
+    val javaHome = javaToolchains
+        .launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+        .get()
+        .metadata
+        .installationPath
+        .asFile
+    val jpackageBin = javaHome.resolve("bin/jpackage")
+
+    doFirst {
+        outputDir.mkdirs()
+    }
+
+    executable = jpackageBin.absolutePath
+    args(
+        "--input", fatJarFile.parentFile.absolutePath,
+        "--main-jar", fatJarFile.name,
+        "--main-class", application.mainClass.get(),
+        "--name", "sane-graph-edit",
+        "--app-version", project.version.toString().removeSuffix("-SNAPSHOT"),
+        "--type", pkgType,
+        "--dest", outputDir.absolutePath,
+        // Swing needs a few JVM flags on newer JDKs to avoid
+        // warnings; pass them through to the native launcher.
+        "--java-options", "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+    )
+}
