@@ -1,72 +1,50 @@
 # Roadmap
 
 Task files in this directory, numbered in order of execution.
-Each file is self-contained: goal, design, touch points, open
-questions. Check the status line at the top of each file.
+Done tasks live under `done/`. Feature specs under `features/`
+(done features under `done/features/`).
 
 ## Done
 
-| #   | Task                          | File                  |
-|-----|-------------------------------|-----------------------|
-| 001 | Undo / redo                   | [001-undo.md]         |
-| 002 | File open / save UI           | [002-file-ui.md]      |
-| 003 | Tabs + cross-tab copy/paste   | [003-tabs.md]         |
-| 004 | SVG exporter                  | [004-svg-export.md]   |
+| Task                          | File                              |
+|-------------------------------|-----------------------------------|
+| Undo / redo                   | `done/001-undo.md`                |
+| File open / save UI           | `done/002-file-ui.md`             |
+| Tabs + cross-tab copy/paste   | `done/003-tabs.md`                |
+| SVG exporter                  | `done/004-svg-export.md`          |
+| Graph filtering (h/H)         | `done/features/hide-filter.md`    |
+| Command mode + key mappings   | `done/features/command-mode.md`   |
+| Macro registers (q/@)         | `done/features/macro-registers.md`|
 
 ## Pending
 
-| #   | Task                          | File                  |
-|-----|-------------------------------|-----------------------|
-| 005 | Standard menu bar             | [005-menu-bar.md]     |
+| Task                          | File                              |
+|-------------------------------|-----------------------------------|
+| Standard menu bar             | `005-menu-bar.md`                 |
 
 ## Planned
 
-| #   | Task                              | File                      |
-|-----|-----------------------------------|---------------------------|
-| 006 | Port UI to Compose Multiplatform  | [006-compose-port.md]     |
-| 007 | Markdown editing in node labels   | [007-markdown-editing.md] |
+| Task                              | File                          |
+|-----------------------------------|-------------------------------|
+| Port UI to Compose Multiplatform  | `006-compose-port.md`         |
+| Markdown editing in node labels   | `007-markdown-editing.md`     |
 
 ## Feature backlog
 
-Individual feature specs live in `tasks/features/`. Each is a
-standalone file with status, description, and open questions.
-
-| File                     | Status  | Summary                                |
-|--------------------------|---------|----------------------------------------|
-| `command-mode.md`        | design  | `:` bar, named commands, key mappings, init file |
-| `yank-paste.md`          | backlog | vim-style y/p/d clipboard bindings     |
-| `optimizer-anchor.md`    | backlog | layout optimizer should not move anchor |
-| `pull-children.md`       | backlog | pull children nodes to parent          |
-| `mirror-rotate.md`       | backlog | mirror/rotate selection                |
-| `dotlike-extension.md`   | backlog | save as .dotlike instead of .dot       |
-| `pin-node.md`            | backlog | always-visible node at any zoom        |
-| `tab-navigation.md`      | backlog | gt/gT/gg vim-style tab switching       |
-| `subdivide-edges.md`     | backlog | inverse of D: insert hub into edges    |
-| `macro-registers.md`     | backlog | q/@ record and replay macros           |
-| `search.md`              | backlog | /query, ?query, n, N node search       |
-| `hide-filter.md`         | done    | h/H levelled hide/unhide               |
-| `undo-rebinding.md`      | backlog | u/U/Ctrl+Z, free r                     |
-
-## Ordering rationale
-
-- **004 before 005**: the menu bar includes Export SVG / Export
-  Selection items that depend on the SVG exporter. Can be
-  implemented in parallel (menu items greyed out until 004
-  lands), but cleaner to do 004 first.
-- **005 before 006**: the menu bar is small Swing work that
-  ships immediately. If we defer it to the Compose port, it's
-  free (Compose has `MenuBar` built in), but the Swing editor
-  benefits from it now.
-- **006 before 007**: Markdown rendering requires
-  `AnnotatedString` / rich-text layout, which Swing can't do
-  well. Compose is the prerequisite.
-- **007 last**: it's a stretch feature. The editor is fully
-  usable without it.
+| File                         | Summary                                |
+|------------------------------|----------------------------------------|
+| `features/yank-paste.md`    | vim-style y/p/d clipboard bindings     |
+| `features/optimizer-anchor.md` | layout optimizer should not move anchor |
+| `features/pull-children.md`  | pull children nodes to parent          |
+| `features/mirror-rotate.md`  | mirror/rotate selection                |
+| `features/dotlike-extension.md` | save as .dotlike instead of .dot    |
+| `features/pin-node.md`       | always-visible node at any zoom        |
+| `features/tab-navigation.md` | gt/gT/gg vim-style tab switching       |
+| `features/subdivide-edges.md`| inverse of D: insert hub into edges    |
+| `features/search.md`         | /query, ?query, n, N node search       |
+| `features/undo-rebinding.md` | u/U/Ctrl+Z, free r                     |
 
 ## Also done (not in numbered tasks)
-
-These were handled as standalone commits rather than dedicated
-task plans:
 
 - Gradle (Kotlin DSL) build + wrapper
 - Developer documentation + mermaid architecture diagrams
@@ -75,3 +53,4 @@ task plans:
 - Autosave backups (`~/.cache/sane-graph-edit/backups/`)
 - AppImage + jpackage packaging
 - Makefile
+- Invert selection (`i`)
