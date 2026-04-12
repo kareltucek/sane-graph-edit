@@ -233,4 +233,4 @@ one keystroke each.
 
 See [LICENCE](LICENCE) if present, otherwise ask the author. Code is
 by Karel Tuček — the in-app help calls out
-`github.com/kareltucek/saneGraphEdit`.
+`github.com/kareltucek/sane-graph-edit`.

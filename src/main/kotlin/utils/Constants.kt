@@ -103,7 +103,7 @@ object Constants {
         Created by Karel Tuček.
 
         Code is freely available at
-        github.com/kareltucek/saneGraphEdit.
+        github.com/kareltucek/sane-graph-edit
     """.trimIndent()
 
     val helpFile = """
