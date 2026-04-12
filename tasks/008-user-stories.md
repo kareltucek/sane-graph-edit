@@ -249,9 +249,12 @@ snapshots".
 
 **Implementation sketch:**
 
-- `Node.attributes.hideLevel: Int` (default 0). Serialise as a
-  custom DOT attribute (`hideLevel=N`) so it round-trips; omit
-  when 0.
+- `Node.cache.hideLevel: Int` (default 0). This is view state,
+  not graph data — it should NOT be serialised to DOT (opening
+  someone else's file shouldn't inherit their current filter).
+  Lives on `NodeCache` alongside `textBounds`, `shapeBounds`,
+  etc. Lost on file load (all nodes start visible), which is the
+  right default.
 - Plotter: skip drawing nodes/edges where `hideLevel > 0`.
 - `Clicker.selectClickedNode`: ignore hidden nodes (can't click
   what you can't see).
