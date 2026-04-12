@@ -276,3 +276,28 @@ snapshots".
 - What about edges that cross the visible/hidden boundary? If
   A is visible and B is hidden, the A→B edge disappears. That's
   the expected behaviour — you asked to see only the selection.
+
+---
+
+## Undo/redo rebinding
+
+Current bindings: `u` = undo, `r` = redo, `Ctrl+R` = redo.
+
+Problems:
+- No `Ctrl+Z` / `Ctrl+Shift+Z` — the standard pair that every
+  other app uses. Users who don't read the help graph will try
+  `Ctrl+Z` and nothing will happen.
+- `r` is a valuable single-key slot. Freeing it opens it for
+  other commands (e.g., rotate, or a future use).
+
+**New bindings:**
+
+| Key            | Action |
+|----------------|--------|
+| `u`            | undo (keep — matches vim) |
+| `U`            | redo (shift of undo key; replaces `r`) |
+| `Ctrl+Z`       | undo (standard; add back) |
+| `Ctrl+Shift+Z` | redo (standard; add back) |
+| `Ctrl+R`       | redo (keep for muscle memory) |
+
+`r` becomes unbound and available for reassignment.
