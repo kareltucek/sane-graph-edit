@@ -95,8 +95,10 @@ object Constants {
           Shift+Space - replace selection with last active, then edit
 
         Filtering
-          h - hide everything NOT in selection
+          i - invert selection (among visible nodes)
+          h - hide the selected nodes
           H - unhide one level (undo the last h)
+              (use 'ih' = invert then hide to keep only selection)
 
         View
           0 - fit view to all visible (or to selection)

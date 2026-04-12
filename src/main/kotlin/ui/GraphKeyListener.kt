@@ -174,7 +174,8 @@ class GraphKeyListener(
                 "F" -> copyFormat(graphView)
                 "u" -> undo(graphView)
                 "r" -> redo(graphView)
-                "h" -> hideUnselected(graphView)
+                "i" -> invertSelection(graphView)
+                "h" -> hideSelected(graphView)
                 "H" -> unhideOneLevel(graphView)
                 "g" -> grab(graphView)
                 "G" -> executeMacro(graphView, "tw0").toUnit()
@@ -229,20 +230,43 @@ class GraphKeyListener(
         }
 
         /**
-         * Hide everything NOT in the current selection. Increments
-         * hideLevel on ALL non-selected nodes — including already-
-         * hidden ones, so successive hides stack (a node hidden
-         * twice needs two unhides to reappear).
+         * Invert the selection among visible nodes: visible nodes
+         * that were selected become unselected, visible nodes that
+         * were unselected become selected. Hidden nodes are
+         * untouched.
          *
-         * No-op if the selection is empty (hiding everything would
-         * leave nothing to work with).
+         * Useful as a prefix to `h`: select what you want to KEEP,
+         * press `i` to flip, then `h` to hide the (now-selected)
+         * clutter.
          */
-        fun hideUnselected(graphView: GraphView) {
-            val sel = graphView.g.selectedNodes
+        fun invertSelection(graphView: GraphView) {
+            val visible = graphView.g.nodes.filter { it.isVisible }.toSet()
+            val inverted = visible - graphView.g.selectedNodes
+            graphView.g.cleanSelect(inverted)
+            graphView.repaint()
+        }
+
+        /**
+         * Hide the selected nodes. Increments hideLevel on every
+         * selected node — including nodes already hidden (which
+         * get buried deeper), so successive hides stack and need
+         * one `H` each to unwind.
+         *
+         * After hiding, the selection is cleared (hidden nodes
+         * shouldn't stay selected — you can't interact with what
+         * you can't see).
+         *
+         * Compose with `i` (invert selection) for the inverse
+         * workflow: select what you want to KEEP, press `ih` to
+         * invert-then-hide.
+         *
+         * No-op if the selection is empty.
+         */
+        fun hideSelected(graphView: GraphView) {
+            val sel = graphView.g.selectedNodes.toList()
             if (sel.isEmpty()) return
-            val affected = graphView.g.nodes.filter { it !in sel }
-            if (affected.isEmpty()) return
-            graphView.g.commit(HideCommand(affected))
+            graphView.g.commit(HideCommand(sel))
+            graphView.g.unselectAll(sel)
             graphView.repaint()
         }
 

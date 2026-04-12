@@ -148,7 +148,8 @@ These require the corresponding packaging tools (`dpkg-deb` /
 | `t` / `T`  | Add the forward / backward reachable closure to selection |
 | `l` / `L`  | Add one generation of neighbours (forward / backward)     |
 | `w` / `W`  | Remove the "oldest" generation of the current selection   |
-| `h`        | Hide everything NOT in the selection (levelled)           |
+| `i`        | Invert selection (among visible nodes)                     |
+| `h`        | Hide the selected nodes (levelled; use `ih` to keep only selection) |
 | `H`        | Unhide one level (undo the most recent `h`)               |
 | `0`        | Fit view to all visible (or to selection if any)          |
 | `1`        | Centre view on selection                                  |
