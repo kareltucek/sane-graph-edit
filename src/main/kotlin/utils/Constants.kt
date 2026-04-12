@@ -114,6 +114,8 @@ object Constants {
           Ctrl+O       - open
           Ctrl+S       - save
           Ctrl+Shift+S - save as
+          Ctrl+E       - export SVG
+          Ctrl+Shift+E - export selection as SVG
 
         Tabs
           Ctrl+N / Ctrl+T           - new tab
@@ -129,8 +131,9 @@ object Constants {
     val helpTodo = """
         Todo
         ====
-        - svg export
+        - menu bar
         - port to compose multiplatform
+        - markdown editing in nodes
         - cfg parser
         - styles (y,p)
         - folding?

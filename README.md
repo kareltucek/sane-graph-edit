@@ -174,7 +174,7 @@ keystroke), style / shape / size changes, and layout-optimiser runs.
 Selection changes and view transforms are not tracked — they're
 navigation, not data.
 
-### Keyboard — files
+### Keyboard — files & export
 
 | Key             | Action                                                 |
 |-----------------|--------------------------------------------------------|
@@ -182,6 +182,8 @@ navigation, not data.
 | `Ctrl+S`        | Save — writes to the current file, prompts on first save |
 | `Ctrl+Shift+S`  | Save As — always prompts                               |
 | `Ctrl+N`        | New tab                                                |
+| `Ctrl+E`        | Export graph as SVG                                    |
+| `Ctrl+Shift+E`  | Export only the selected nodes as SVG                  |
 
 On close, the editor prompts Save / Discard / Cancel for every
 unsaved tab. Last-used open/save directories are remembered in

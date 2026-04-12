@@ -1,4 +1,8 @@
-# SVG exporter
+# 004 — SVG exporter
+
+> **Status: done.** `export/SvgWriter.kt`, wired via `Ctrl+E` /
+> `Ctrl+Shift+E` through `GraphView.exportSvg()` /
+> `.exportSelection()` and `FileOps.exportSvgDialog()`.
 
 ## Goal
 

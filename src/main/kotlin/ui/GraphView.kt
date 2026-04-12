@@ -1,6 +1,7 @@
 package ui
 
 import Graph
+import export.SvgWriter
 import graph_tools.GraphTools
 import graph_tools.Node
 import graph_tools.Plotter
@@ -296,6 +297,45 @@ class GraphView(
                 this,
                 "Could not open $path:\n${t.message}",
                 "Open error",
+                JOptionPane.ERROR_MESSAGE,
+            )
+        }
+    }
+
+    /**
+     * Export the full graph as SVG. Prompts for a file path via
+     * the save dialog; default filename matches the current DOT
+     * file with a `.svg` extension.
+     */
+    fun exportSvg() {
+        val baseName = currentFile?.fileName?.toString()
+            ?.removeSuffix(".dot")?.plus(".svg")
+            ?: "untitled.svg"
+        val path = FileOps.exportSvgDialog(this, baseName) ?: return
+        writeExport(path, SvgWriter.write(g))
+    }
+
+    /**
+     * Export only the selected nodes (and edges between them) as
+     * SVG. Falls back to full-graph export if nothing is selected.
+     */
+    fun exportSelection() {
+        val sel = g.selectedNodes.takeIf { it.isNotEmpty() }
+        val baseName = currentFile?.fileName?.toString()
+            ?.removeSuffix(".dot")?.plus("-selection.svg")
+            ?: "selection.svg"
+        val path = FileOps.exportSvgDialog(this, baseName) ?: return
+        writeExport(path, SvgWriter.write(g, sel))
+    }
+
+    private fun writeExport(path: java.nio.file.Path, content: String) {
+        try {
+            java.nio.file.Files.writeString(path, content)
+        } catch (t: Throwable) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Could not export to $path:\n${t.message}",
+                "Export error",
                 JOptionPane.ERROR_MESSAGE,
             )
         }

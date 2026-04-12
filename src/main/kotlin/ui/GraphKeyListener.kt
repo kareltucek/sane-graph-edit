@@ -86,6 +86,14 @@ class GraphKeyListener(
                 graphView.tabManager?.newTab()
             }
 
+            // --- SVG export.
+            e.keyCode == VK_E && e.isControlDown && e.isShiftDown -> {
+                graphView.exportSelection()
+            }
+            e.keyCode == VK_E && e.isControlDown -> {
+                graphView.exportSvg()
+            }
+
             // --- Tabs: create, close, cycle. Ctrl+Tab traversal is
             // handled here instead of via Swing's focus-cycle
             // machinery because we want the behaviour even when

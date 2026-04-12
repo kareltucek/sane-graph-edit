@@ -11,12 +11,12 @@ questions. Check the status line at the top of each file.
 | 001 | Undo / redo                   | [001-undo.md]         |
 | 002 | File open / save UI           | [002-file-ui.md]      |
 | 003 | Tabs + cross-tab copy/paste   | [003-tabs.md]         |
+| 004 | SVG exporter                  | [004-svg-export.md]   |
 
 ## Pending
 
 | #   | Task                          | File                  |
 |-----|-------------------------------|-----------------------|
-| 004 | SVG exporter                  | [004-svg-export.md]   |
 | 005 | Standard menu bar             | [005-menu-bar.md]     |
 
 ## Planned
