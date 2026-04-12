@@ -139,8 +139,18 @@ tasks.register<Exec>("appimage") {
         if (appDir.exists()) appDir.deleteRecursively()
         appDir.mkdirs()
 
-        // Copy the full jpackage tree (launcher + JRE + jars)
+        // Copy the full jpackage tree (launcher + JRE + jars).
+        // Kotlin's copyRecursively does NOT preserve POSIX permissions,
+        // so we restore +x on executables and shared libs below —
+        // without this the squashfs mount is read-only and the
+        // native launcher fails with "Permission denied".
         jpackageOut.copyRecursively(appDir, overwrite = true)
+
+        // Restore execute bits that copyRecursively dropped.
+        appDir.resolve("bin/sane-graph-edit").setExecutable(true)
+        appDir.walk()
+            .filter { it.extension == "so" || it.name in listOf("jspawnhelper", "jexec") }
+            .forEach { it.setExecutable(true) }
 
         // Layer the AppImage metadata on top
         packagingDir.resolve("AppRun").copyTo(appDir.resolve("AppRun"), overwrite = true)
