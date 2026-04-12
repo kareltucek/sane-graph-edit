@@ -26,11 +26,26 @@ questions. Check the status line at the top of each file.
 | 006 | Port UI to Compose Multiplatform  | [006-compose-port.md]     |
 | 007 | Markdown editing in node labels   | [007-markdown-editing.md] |
 
-## Backlog
+## Feature backlog
 
-| #   | Task                              | File                      |
-|-----|-----------------------------------|---------------------------|
-| 008 | User stories (vim keys, search, macros, …) | [008-user-stories.md] |
+Individual feature specs live in `tasks/features/`. Each is a
+standalone file with status, description, and open questions.
+
+| File                     | Status  | Summary                                |
+|--------------------------|---------|----------------------------------------|
+| `command-mode.md`        | design  | `:` bar, named commands, key mappings, init file |
+| `yank-paste.md`          | backlog | vim-style y/p/d clipboard bindings     |
+| `optimizer-anchor.md`    | backlog | layout optimizer should not move anchor |
+| `pull-children.md`       | backlog | pull children nodes to parent          |
+| `mirror-rotate.md`       | backlog | mirror/rotate selection                |
+| `dotlike-extension.md`   | backlog | save as .dotlike instead of .dot       |
+| `pin-node.md`            | backlog | always-visible node at any zoom        |
+| `tab-navigation.md`      | backlog | gt/gT/gg vim-style tab switching       |
+| `subdivide-edges.md`     | backlog | inverse of D: insert hub into edges    |
+| `macro-registers.md`     | backlog | q/@ record and replay macros           |
+| `search.md`              | backlog | /query, ?query, n, N node search       |
+| `hide-filter.md`         | done    | h/H levelled hide/unhide               |
+| `undo-rebinding.md`      | backlog | u/U/Ctrl+Z, free r                     |
 
 ## Ordering rationale
 
