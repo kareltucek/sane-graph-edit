@@ -327,42 +327,51 @@ G       macro:tw0
 
 The user's init file can override any of these.
 
-## Open questions for discussion
+## Design decisions (resolved)
 
-1. **`map` vs `noremap` naming.** I recommend `map` = non-recursive
-   (safe default), `remap` = recursive. This is opposite to vim
-   (where `map` is recursive). Is the vim convention too ingrained
-   in your muscle memory to reverse?
+1. **`map` = non-recursive.** The safe thing gets the obvious
+   name. `remap` exists for the rare case where you need
+   recursion. Opposite to vim's convention, but vim's convention
+   is universally regretted.
 
-2. **Timeout value.** 500ms is a guess. Too short and you can't hit
-   multi-key sequences; too long and single-key commands that are
-   prefixes feel laggy. Vim defaults to 1000ms. What feels right
-   for a visual editor where you want instant feedback?
+2. **Timeout = 500ms** (`set timeoutlen=500`). Configurable via
+   `:set` and the init file. If a key is a prefix of a longer
+   mapping AND has its own binding, the mapper waits 500ms for a
+   follow-up key. If the key has no standalone binding, the
+   mapper waits indefinitely (no ambiguity → no latency).
 
-3. **Leader key vs timeout.** An explicit leader key (e.g., `,`)
-   eliminates the timeout problem entirely but adds one keystroke
-   to every multi-key sequence. Vim supports both (leader key AND
-   timeout). Should we?
+3. **`:` bar is minimal.** `:w`, `:q`, `:wq`, `:q!`, `:e`,
+   `:map`, `:unmap`, `:set`, `:source`, `/`, `?`. Canvas-mode
+   keys do the heavy lifting. Commands that take arguments (like
+   `:e <path>`) accept them as trailing text after the command
+   word. No argument parsing beyond whitespace splitting.
 
-4. **`:` mode scope.** Should `:` commands be able to take
-   arguments beyond simple key/value? E.g., `:delete` (delete
-   selected), `:select /regex/` (select nodes matching pattern).
-   Or keep it minimal (`:w`, `:q`, `:map`, `:set`) and let the
-   canvas-mode commands do the heavy lifting?
+4. **Init file: `~/.config/sane-graph-edit/init`** (XDG). No
+   dotfile fallback.
 
-5. **Init file location.** `~/.config/sane-graph-edit/init` matches
-   XDG. Alternatively, `~/.sanegrapheditrc` matches the vim
-   convention of a dotfile in `$HOME`. Or both (XDG first, fall
-   back to dotfile)?
+5. **Key sequences for macros, not command names.** `"tw0"` is
+   terse and the user knows what it does because they composed
+   it from the keys they already use. Yes, remapping `t` would
+   break a macro that uses `t` — that's the user's problem and
+   matches vim's behaviour exactly. The alternative (command
+   names) is too verbose for something meant to be recorded live.
 
-6. **Conflict resolution.** If the init file maps `d` to something
-   and a later init-file line maps `d` to something else, last
-   write wins (like vim). Confirm?
+6. **`map` is non-recursive; macro registers ARE recursive.**
+   This is the key distinction:
+   - `map gt next-tab` — when `g` then `t` is pressed, execute
+     the built-in `next-tab` command directly. The RHS is a
+     command name resolved against `CommandRegistry`, NOT fed
+     back through the key mapper. No expansion loop possible.
+   - `@a` (replay macro register `a`) — the register contains a
+     key sequence like `"tw0"`. Replay feeds each key back
+     through the mapper (so user remappings apply to the keys
+     inside the macro). This is recursive by design: the macro
+     was recorded as keys, and it should behave as if the user
+     pressed those keys again.
 
-7. **What about the current `executeMacro` mechanism?** It runs
-   a string like `"tw0"` character by character through the
-   dispatch table. With the new system, a macro would be a named
-   command whose body is a command sequence. Should macro strings
-   use command names (`"select-closure-forward unselect-oldest-forward bound-screen"`) or
-   key sequences (`"tw0"`)? Key sequences are terser but break if
-   the user remaps `t`.
+   This is exactly how vim works: mappings resolve to actions,
+   macros replay keystrokes.
+
+7. **Conflict resolution: last write wins.** If the init file
+   has two `map d ...` lines, the second one takes effect. Same
+   as vim.
