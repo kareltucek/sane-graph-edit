@@ -72,8 +72,8 @@ object Constants {
           f - paste style onto selected nodes
 
         History
-          u          - undo
-          r / Ctrl+R - redo
+          u / Ctrl+Z       - undo
+          U / Ctrl+Shift+Z - redo (Ctrl+R also works)
     """.trimIndent()
 
     val helpSelection = """

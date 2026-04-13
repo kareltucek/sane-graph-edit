@@ -187,10 +187,10 @@ Flags:
 
 ### Keyboard — history
 
-| Key            | Action                                                  |
-|----------------|---------------------------------------------------------|
-| `u`            | Undo the last mutation                                  |
-| `r` or `Ctrl+R`| Redo                                                    |
+| Key                   | Action                                           |
+|-----------------------|--------------------------------------------------|
+| `u` or `Ctrl+Z`       | Undo the last mutation                           |
+| `U`, `Ctrl+Shift+Z`, or `Ctrl+R` | Redo                                  |
 
 Undo covers every user-visible change: spawning / deleting nodes,
 adding / removing edges, moving nodes (one step per drag, not per

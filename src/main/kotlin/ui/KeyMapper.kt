@@ -653,7 +653,7 @@ class KeyMapper(
 
             // History
             "u" to "undo",
-            "r" to "redo",
+            "U" to "redo",
 
             // Search navigation
             "n" to "search-next",
@@ -682,6 +682,8 @@ class KeyMapper(
             "<C-c>" to "copy",
             "<C-x>" to "cut",
             "<C-v>" to "paste",
+            "<C-z>" to "undo",
+            "<C-S-z>" to "redo",
             "<C-r>" to "redo",
             "<Esc>" to "deselect",
         )

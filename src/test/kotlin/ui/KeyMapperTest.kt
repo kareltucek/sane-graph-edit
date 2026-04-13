@@ -74,7 +74,7 @@ class KeyMapperTest {
         // Every letter command from the original dispatch table
         for (key in listOf("e", "E", "v", "V", "a", "A", "c", "d", "D",
             "o", "O", "i", "t", "T", "l", "L", "w", "W", "f", "F",
-            "u", "r", "g", "G", "h", "H")) {
+            "u", "U", "g", "G", "h", "H")) {
             assertTrue(key in defaults, "missing default for '$key'")
         }
     }
