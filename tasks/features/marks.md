@@ -51,26 +51,37 @@ Deferred — start with just `'a`.
 
 ## Data model
 
-On `NodeAttributes`:
+Two storage locations, picked by mark case:
 
 ```kotlin
+// NodeAttributes: persistent (a-z). Wait — actually uppercase.
 class NodeAttributes(
     ...
-    var marks: String = "",  // concatenated letters, e.g. "abf"
+    var marks: String = "",  // concatenated UPPERCASE letters, e.g. "ABF"
+    ...
+)
+
+// NodeCache: transient session marks (a-z).
+data class NodeCache(
+    ...
+    var sessionMarks: String = "",  // concatenated lowercase letters
     ...
 )
 ```
 
 A string rather than a `Set<Char>` because:
 
-- It round-trips through DOT as a simple text attribute.
-- It's short (at most 52 chars for a-z + A-Z).
+- It round-trips through DOT as a simple text attribute (for
+  `marks`).
+- It's short (at most 26 chars for either case).
 - Helper methods `hasMark(c)`, `addMark(c)`, `removeMark(c)`
-  encapsulate the set semantics.
+  encapsulate the set semantics. The helpers route to the right
+  storage based on `c.isUpperCase()`.
 
 ### DOT serialization
 
-In `Node.retrieveAttributes()`:
+Only the persistent `marks` field touches DOT. In
+`Node.retrieveAttributes()`:
 
 ```kotlin
 "marks" to attributes.marks.takeIf { it.isNotEmpty() }
@@ -82,20 +93,31 @@ In `Node.applyAttribute()`:
 "marks" -> attributes.marks = r
 ```
 
-Round-trips verbatim through the existing parser — no new
-special-case logic.
+`sessionMarks` lives on `NodeCache`, never serialised — same
+policy as `hideLevel`.
 
-### What about A-Z (global marks)?
+### Lowercase vs uppercase: persistence
 
-In vim, lowercase marks are local (per file) and uppercase are
-global (across files). For this editor, local marks via
-`Node.attributes.marks` work because they're stored in the
-graph. Global marks would need separate persistence and cross-
-graph navigation.
+Two separate slot spaces, distinguished by case:
 
-**For v1**: support a-z only. A-Z is a natural extension (same
-syntax, different storage) and can be added later if a use case
-appears.
+- **Lowercase a-z** — session-only. Lost on save/load. Useful
+  for transient markers ("hold this set while I navigate").
+  Stored on `Node.cache` (transient) — the same place
+  `hideLevel` lives.
+- **Uppercase A-Z** — persistent. Saved to and loaded from the
+  DOT file via `Node.attributes`. Useful for named subsets you
+  want to come back to days later, and the input that the
+  headless `-e` mode operates on (see `cli-headless.md`).
+
+So `ma` and `mA` set different marks; `'a` and `'A` recall
+different sets. The notation is the same, only the storage
+location differs.
+
+The user types lowercase by default (faster, no shift). When
+they want a mark to persist, they use uppercase as a deliberate
+"this matters" signal. Matches vim's intuition (uppercase = more
+durable) without using vim's exact split (vim's uppercase
+= cross-file, ours = persisted-in-file).
 
 ## Implementation sketch
 
@@ -139,23 +161,36 @@ function, registered via a callback like `commandExecutor`).
 
 ### Commands implementation
 
+Helpers on `Node` route based on case:
+
+```kotlin
+fun Node.getMarks(uppercase: Boolean): String =
+    if (uppercase) attributes.marks else cache.sessionMarks
+
+fun Node.setMarks(uppercase: Boolean, value: String) {
+    if (uppercase) attributes.marks = value
+    else cache.sessionMarks = value
+}
+```
+
+Commands operate on whichever storage the mark letter selects:
+
 ```kotlin
 fun setMark(gv: GraphView, mark: Char) {
+    val upper = mark.isUpperCase()
     val sel = gv.g.selectedNodes
-    // Build an undoable command: for each node, record before/after
-    val affected = gv.g.nodes
-        .map { it to it.attributes.marks }
-        .toMap()
-    val newMarks = gv.g.nodes.associateWith { n ->
-        if (n in sel) addChar(n.attributes.marks, mark)
-        else removeChar(n.attributes.marks, mark)
+    val before = gv.g.nodes.associateWith { it.getMarks(upper) }
+    val after = gv.g.nodes.associateWith { n ->
+        if (n in sel) addChar(n.getMarks(upper), mark)
+        else removeChar(n.getMarks(upper), mark)
     }
-    gv.g.commit(SetMarksCommand(gv.g, affected, newMarks))
+    gv.g.commit(SetMarksCommand(gv.g, upper, before, after))
 }
 
 fun recallMark(gv: GraphView, mark: Char) {
+    val upper = mark.isUpperCase()
     val nodes = gv.g.nodes
-        .filter { it.isVisible && it.attributes.marks.contains(mark) }
+        .filter { it.isVisible && it.getMarks(upper).contains(mark) }
         .toSet()
     gv.g.cleanSelect(nodes)
     gv.repaint()
@@ -163,9 +198,9 @@ fun recallMark(gv: GraphView, mark: Char) {
 ```
 
 New command `SetMarksCommand` in `graph_tools/Commands.kt`:
-before/after maps of `Node → String`, undo/redo swaps them.
-Recall is not undoable (selection changes aren't undoable in
-general — matches the existing policy).
+before/after maps of `Node → String` plus an `uppercase` flag
+so undo/redo writes to the right storage. Recall is not
+undoable (selection changes aren't, by existing policy).
 
 ### Multi-key prefix in KeyMapper
 
@@ -185,9 +220,9 @@ private var waitingForRegister: RegisterAction? = null
 - **Invalid register letters.** What if the user types `m<Esc>`
   or `mA`? Ignore silently, like the macro code does for
   non-alphanumeric after `q`.
-- **Case.** Treat `ma` and `mA` as the same mark? Or separate?
-  Separate — lets us add uppercase global marks later without
-  conflict.
+- **Case.** Resolved: separate — lowercase = transient
+  session-only, uppercase = persisted to DOT. See "Lowercase
+  vs uppercase: persistence" above.
 - **Visual indicator of which nodes are marked?** Not for v1.
   A user who needs to see marks can open the DOT file in a text
   editor.

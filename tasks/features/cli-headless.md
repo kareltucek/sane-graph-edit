@@ -13,7 +13,7 @@ Example invocation:
 
 ```sh
 sane-graph-edit input.dot -e "'a" -e ":export-selection /tmp/a.svg"
-sane-graph-edit input.dot -e "'b" -e ":export-selection /tmp/b.svg"
+sane-graph-edit input.dot -e "'b:export-selection /tmp/b.svg<Enter>"
 ```
 
 ## Argument syntax
@@ -24,36 +24,40 @@ Follow vim's conventions:
 sane-graph-edit [options] [file]
 ```
 
-| Option          | Meaning                                               |
-|-----------------|-------------------------------------------------------|
-| `-e '<keys>'`   | Execute key sequence, then exit (unless `-u` given). Multiple `-e` allowed; executed in order. |
-| `-c '<cmd>'`    | Execute a `:` command (without leading `:`). Shorthand for `-e ':<cmd><CR>'`. Multiple `-c` allowed. |
-| `-u`            | After executing `-e`/`-c`, stay open with a window (interactive mode). Default: exit. |
-| `[file]`        | File to load before executing commands. If omitted, starts with an empty graph. |
-| `-h`, `--help`  | Print usage and exit.                                 |
+| Option         | Meaning                                                                                                                                                                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `-e '<keys>'`  | Execute a key sequence, then exit (unless `-u` given). Multiple `-e` allowed; executed in order. The argument is whatever you would type in the editor — single keys, multi-key combos, `:command<Enter>` lines, mark recalls, anything. |
+| `-u`           | After executing `-e`, stay open with a window (interactive mode). Default: exit.                                                                                                                                                         |
+| `[file]`       | File to load before executing commands. If omitted, starts with an empty graph.                                                                                                                                                          |
+| `-h`, `--help` | Print usage and exit.                                                                                                                                                                                                                    |
 
-With no `-e` or `-c`, the editor opens its window as today. The
-headless path is opt-in.
+With no `-e`, the editor opens its window as today. The headless
+path is opt-in.
 
 ### Examples
 
 ```sh
 # Open a file and export it, no window
-sane-graph-edit main.dot -e ":export main.svg<CR>"
+sane-graph-edit main.dot -e ":export main.svg<Enter>"
 
-# Shorter with -c
-sane-graph-edit main.dot -c "export main.svg"
+# Combine multiple actions in one -e
+sane-graph-edit main.dot -e "'a:export-selection a-only.svg<Enter>"
 
-# Select mark 'a', then export that selection
-sane-graph-edit main.dot -e "'a" -c "export-selection a-only.svg"
+# Or split across multiple -e flags
+sane-graph-edit main.dot -e "'a" -e ":export-selection a-only.svg<Enter>"
 
-# Chain: hide non-marked nodes, then export
-sane-graph-edit main.dot -e "'aih" -c "export out.svg"
-# (recall mark a → invert selection → hide → export)
+# Chain: recall mark a, invert selection, hide, export
+sane-graph-edit main.dot -e "'aih:export out.svg<Enter>"
 
 # Open a file interactively after pre-configuring
-sane-graph-edit main.dot -u -c "set timeoutlen=300"
+sane-graph-edit main.dot -u -e ":set timeoutlen=300<Enter>"
 ```
+
+The `-e` argument is a key sequence in the same notation used by
+`map`, macros, and the rest of the editor — there's no separate
+"command" concept. `:cmd<Enter>` is just a key sequence that
+starts with `:`, the same way `'a` is a key sequence that starts
+with `'`. The `KeyMapper` handles both uniformly.
 
 ## Headless execution model
 
