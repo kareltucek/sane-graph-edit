@@ -1,0 +1,9 @@
+digraph g {
+  n0 [label="Keep"; pos="0,0!"; marks="A"];
+  n1 [label="Skip"; pos="200,0!"];
+  n2 [label="Keep2"; pos="0,100!"; marks="A"];
+  n3 [label="Other"; pos="200,100!"; marks="B"];
+  n0 -> n1;
+  n0 -> n2;
+  n2 -> n3;
+}

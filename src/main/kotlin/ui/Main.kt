@@ -48,6 +48,13 @@ data class CliArgs(
     val help: Boolean = false,
 )
 
+/** Expand a leading `~/` to the user's home directory. */
+fun expandHome(path: String): String = when {
+    path == "~" -> System.getProperty("user.home")
+    path.startsWith("~/") -> System.getProperty("user.home") + path.substring(1)
+    else -> path
+}
+
 /**
  * Parse argv into a [CliArgs]. Hand-rolled, no dependencies.
  * Recognises:
@@ -114,11 +121,12 @@ File:
 fun runHeadless(file: String?, execs: List<String>): Int {
     System.setProperty("java.awt.headless", "true")
 
-    val graph = if (file != null) {
+    val resolvedFile = file?.let(::expandHome)
+    val graph = if (resolvedFile != null) {
         try {
-            DotGraphLoader.loadFromFile(file)
+            DotGraphLoader.loadFromFile(resolvedFile)
         } catch (t: Throwable) {
-            System.err.println("sane-graph-edit: could not open '$file': ${t.message}")
+            System.err.println("sane-graph-edit: could not open '$resolvedFile': ${t.message}")
             return 1
         }
     } else {
@@ -137,7 +145,7 @@ fun runHeadless(file: String?, execs: List<String>): Int {
     // TabManager, no AutosaveManager). The view still allocates
     // Swing components under the hood; with java.awt.headless=true
     // those don't try to open a display.
-    val view = GraphView(initialGraph = graph, initialFile = file?.let { java.nio.file.Paths.get(it) })
+    val view = GraphView(initialGraph = graph, initialFile = resolvedFile?.let { java.nio.file.Paths.get(it) })
     view.keyMapper = mapper
     mapper.activeView = view
 
@@ -171,6 +179,6 @@ fun main(args: Array<String>) {
 
     // Interactive path (possibly with initial -e commands to
     // replay after the window is up).
-    EventQueue.invokeLater { createAndShowGUI(cli.file) }
+    EventQueue.invokeLater { createAndShowGUI(cli.file?.let(::expandHome)) }
     // TODO: honour -e -u combination (replay keys after window opens).
 }

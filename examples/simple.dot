@@ -1,0 +1,5 @@
+digraph g {
+  n0 [label="Hello"; pos="0,0!"];
+  n1 [label="World"; pos="200,0!"];
+  n0 -> n1;
+}

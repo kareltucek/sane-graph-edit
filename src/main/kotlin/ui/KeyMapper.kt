@@ -426,6 +426,25 @@ class KeyMapper(
     }
 
     /**
+     * Resolve a path argument from a command-bar line. Expands a
+     * leading `~/` to the user's home directory and converts the
+     * result to an absolute [java.nio.file.Path]. Shells normally
+     * expand `~` before invoking us, but `~` typed inside the
+     * in-app `:` bar (or inside a `-e` argument that's quoted at
+     * the shell level) arrives literally — so we expand it
+     * ourselves.
+     */
+    private fun resolvePath(raw: String): java.nio.file.Path {
+        val trimmed = raw.trim()
+        val expanded = when {
+            trimmed == "~" -> System.getProperty("user.home")
+            trimmed.startsWith("~/") -> System.getProperty("user.home") + trimmed.substring(1)
+            else -> trimmed
+        }
+        return java.nio.file.Paths.get(expanded)
+    }
+
+    /**
      * Execute a command-bar line. Config commands (`map`, `set`,
      * `source`, etc.) work without a [GraphView]; graph commands
      * (`:w`, `:q`, `:e`, named commands) require one and are
@@ -474,7 +493,7 @@ class KeyMapper(
             }
             "source" -> {
                 if (args != null) {
-                    loadInitFile(java.nio.file.Paths.get(args.trim()))
+                    loadInitFile(resolvePath(args))
                 }
                 return
             }
@@ -486,7 +505,7 @@ class KeyMapper(
             "w" -> {
                 if (args != null) {
                     try {
-                        DotGraphLoader.saveToFile(gv.g, args)
+                        DotGraphLoader.saveToFile(gv.g, resolvePath(args).toString())
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :w failed: ${t.message}")
                     }
@@ -508,7 +527,7 @@ class KeyMapper(
                     try {
                         val visible = gv.g.nodes.filter { it.isVisible }.toSet()
                         java.nio.file.Files.writeString(
-                            java.nio.file.Paths.get(args),
+                            resolvePath(args),
                             export.SvgWriter.write(gv.g, visible),
                         )
                     } catch (t: Throwable) {
@@ -524,7 +543,7 @@ class KeyMapper(
                     try {
                         val sel = gv.g.selectedNodes.takeIf { it.isNotEmpty() }
                         java.nio.file.Files.writeString(
-                            java.nio.file.Paths.get(args),
+                            resolvePath(args),
                             export.SvgWriter.write(gv.g, sel),
                         )
                     } catch (t: Throwable) {
@@ -537,8 +556,9 @@ class KeyMapper(
             "e" -> {
                 if (args != null) {
                     try {
-                        val loaded = DotGraphLoader.loadFromFile(args)
-                        gv.tabManager?.newTab(graph = loaded, path = java.nio.file.Paths.get(args))
+                        val resolved = resolvePath(args)
+                        val loaded = DotGraphLoader.loadFromFile(resolved.toString())
+                        gv.tabManager?.newTab(graph = loaded, path = resolved)
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :e failed: ${t.message}")
                     }
