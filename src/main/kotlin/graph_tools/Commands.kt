@@ -313,6 +313,27 @@ class SetSizeCommand(
 }
 
 /**
+ * Apply a mark update to a set of nodes. Captures each node's
+ * previous mark string so undo restores per-node state. The
+ * [uppercase] flag selects which storage to mutate (persistent
+ * `attributes.marks` vs transient `cache.sessionMarks`).
+ */
+class SetMarksCommand(
+    private val graph: Graph,
+    private val uppercase: Boolean,
+    private val before: Map<Node, String>,
+    private val after: Map<Node, String>,
+) : Command {
+    override fun redo() {
+        after.forEach { (n, m) -> n.setMarks(uppercase, m) }
+    }
+
+    override fun undo() {
+        before.forEach { (n, m) -> n.setMarks(uppercase, m) }
+    }
+}
+
+/**
  * Hide: increment [Node.cache.hideLevel] on every node in
  * [affected] (the nodes that were NOT in the selection when
  * `h` was pressed). Nodes already hidden get buried deeper

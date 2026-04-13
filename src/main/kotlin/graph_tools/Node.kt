@@ -40,10 +40,32 @@ class Node(
          * load (all nodes start visible).
          */
         var hideLevel: Int = 0,
+        /**
+         * Session-only marks (lowercase a-z). Concatenated letters,
+         * e.g. `"abf"`. View state, not serialised to DOT — lost on
+         * save/load.
+         */
+        var sessionMarks: String = "",
     )
 
     /** True when this node should be drawn and is clickable. */
     val isVisible: Boolean get() = cache.hideLevel == 0
+
+    /**
+     * Get the mark string for [mark]'s case: uppercase reads
+     * persistent [NodeAttributes.marks], lowercase reads transient
+     * [NodeCache.sessionMarks].
+     */
+    fun getMarks(uppercase: Boolean): String =
+        if (uppercase) attributes.marks else cache.sessionMarks
+
+    fun setMarks(uppercase: Boolean, value: String) {
+        if (uppercase) attributes.marks = value else cache.sessionMarks = value
+    }
+
+    /** True if this node carries [mark] in the appropriate storage. */
+    fun hasMark(mark: Char): Boolean =
+        getMarks(mark.isUpperCase()).contains(mark)
 
     class NodeAttributes(
         var name: String = "",
@@ -51,6 +73,12 @@ class Node(
         var bg: Color? = null,
         var fg: Color? = null,
         var nodeScale: Double? = null,
+        /**
+         * Persistent marks (uppercase A-Z). Concatenated letters,
+         * e.g. `"ABF"`. Round-trips through DOT as a custom
+         * `marks="..."` attribute.
+         */
+        var marks: String = "",
         var other: MutableMap<String, String?> = mutableMapOf(),
     ) {
         constructor(text: String, style: NodeStyle) : this(
@@ -87,6 +115,7 @@ class Node(
             "fillcolor" -> attributes.bg = Utils.fromHexString(r)
             "color" -> attributes.fg = Utils.fromHexString(r)
             "label" -> attributes.text = r
+            "marks" -> attributes.marks = r
             "fontsize" -> attributes.nodeScale = log(r.toDouble()/Plotter.defaultFontSize, Constants.fontSizeZoomCoef)
             "pos" -> r
                 .replace("!", "")
@@ -107,6 +136,7 @@ class Node(
             "color" to attributes.fg?.toHexString(),
             "fontsize" to attributes.nodeScale?.let { pow(Constants.fontSizeZoomCoef, it)*Plotter.defaultFontSize }?.toNiceString(),
             "label" to attributes.text,
+            "marks" to attributes.marks.takeIf { it.isNotEmpty() },
             "pos" to "${position.x.toNiceString()},${position.y.toNiceString()}!",
         ).filterNotNull() + attributes.other.filterNotNull()
     }

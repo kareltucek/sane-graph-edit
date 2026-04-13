@@ -181,6 +181,53 @@ class GraphKeyListener(
         }
 
         /**
+         * Set mark [mark] to the current selection. Every node
+         * in the selection gains the mark; every node not in the
+         * selection loses it (so the mark exactly names the
+         * current selection afterwards). Case of [mark] picks
+         * between persistent (uppercase → attributes.marks) and
+         * transient (lowercase → cache.sessionMarks) storage.
+         *
+         * Undoable via [graph_tools.SetMarksCommand]. No-op if
+         * nothing changes.
+         */
+        fun setMark(graphView: GraphView, mark: Char) {
+            if (!mark.isLetter()) return
+            val g = graphView.g
+            val upper = mark.isUpperCase()
+            val sel = g.selectedNodes
+            val before = g.nodes.associateWith { it.getMarks(upper) }
+            val after = g.nodes.associateWith { n ->
+                val old = n.getMarks(upper)
+                if (n in sel) {
+                    if (old.contains(mark)) old else (old + mark).toCharArray().sorted().joinToString("")
+                } else {
+                    if (old.contains(mark)) old.replace(mark.toString(), "") else old
+                }
+            }
+            if (before != after) {
+                g.commit(graph_tools.SetMarksCommand(g, upper, before, after))
+            }
+            graphView.repaint()
+        }
+
+        /**
+         * Replace the selection with all visible nodes carrying
+         * [mark]. Hidden marked nodes are skipped (you can't
+         * select what you can't see). Not undoable — selection
+         * changes aren't, per existing policy.
+         */
+        fun recallMark(graphView: GraphView, mark: Char) {
+            if (!mark.isLetter()) return
+            val g = graphView.g
+            val marked = g.nodes
+                .filter { it.isVisible && it.hasMark(mark) }
+                .toSet()
+            g.cleanSelect(marked)
+            graphView.repaint()
+        }
+
+        /**
          * Snapshot the current selection to the process-global
          * [Clipboard] as a [NodeFragment]. Clones the nodes so
          * subsequent mutations to the source graph don't touch the

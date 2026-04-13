@@ -100,6 +100,12 @@ object Constants {
           H - unhide one level (undo the last h)
               (use 'ih' = invert then hide to keep only selection)
 
+        Marks
+          ma..mz - save selection under mark a..z (session only)
+          mA..mZ - save selection under mark A..Z (persisted to file)
+          'a..'z - recall mark a..z
+          'A..'Z - recall mark A..Z
+
         View
           0 - fit view to all visible (or to selection)
           1 - centre view on selection

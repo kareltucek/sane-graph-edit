@@ -491,6 +491,8 @@ class Window(title: String) : JFrame() {
         // and the : bar both need the registry populated.
         registerAllCommands()
         keyMapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
+        keyMapper.markSetter = { gv, letter -> GraphKeyListener.impl.setMark(gv, letter) }
+        keyMapper.markRecaller = { gv, letter -> GraphKeyListener.impl.recallMark(gv, letter) }
 
         // Load the user's init file (key mappings, settings).
         keyMapper.loadInitFile(XdgPaths.appConfigDir.resolve("init"))

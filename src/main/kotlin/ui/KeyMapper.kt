@@ -67,14 +67,25 @@ class KeyMapper(
     private var recordingRegister: Char? = null
     private val recordingBuffer = StringBuilder()
 
-    /** True while waiting for the register-name key after `q` or `@`. */
-    private var waitingForRegisterAction: Char? = null  // 'q' or '@'
+    /**
+     * Prefix actions waiting for a letter: `q` records a macro,
+     * `@` replays one, `m` sets a mark, `'` recalls a mark. Null
+     * when no prefix is active.
+     */
+    private enum class PrefixAction { RecordMacro, ReplayMacro, SetMark, RecallMark }
+    private var waitingForPrefix: PrefixAction? = null
 
     /** True if currently recording a macro. */
     val isRecording: Boolean get() = recordingRegister != null
 
     /** True if replaying a macro (suppresses recording to avoid feedback loops). */
     private var replaying: Boolean = false
+
+    /** Callback for setting a mark on the current selection. Set by Window. */
+    var markSetter: ((GraphView, Char) -> Unit)? = null
+
+    /** Callback for recalling a mark. Set by Window. */
+    var markRecaller: ((GraphView, Char) -> Unit)? = null
 
     // --- public API ---
 
@@ -131,17 +142,19 @@ class KeyMapper(
      * listener for every keypress.
      */
     fun feedKey(key: String) {
-        // --- Macro prefix keys: q and @ ---
-        // If we're waiting for a register name after q or @,
-        // consume this key as the register name.
-        val waitAction = waitingForRegisterAction
-        if (waitAction != null) {
-            waitingForRegisterAction = null
-            val reg = key.firstOrNull()
-            if (reg != null && reg.isLetterOrDigit()) {
-                when (waitAction) {
-                    'q' -> startRecording(reg)
-                    '@' -> replayRegister(reg)
+        // --- Prefix keys: q, @, m, ' (single quote) ---
+        // If we're waiting for a letter after a prefix key,
+        // consume this key as the action target.
+        val prefix = waitingForPrefix
+        if (prefix != null) {
+            waitingForPrefix = null
+            val letter = key.firstOrNull()
+            if (letter != null && letter.isLetterOrDigit() && key.length == 1) {
+                when (prefix) {
+                    PrefixAction.RecordMacro -> startRecording(letter)
+                    PrefixAction.ReplayMacro -> replayRegister(letter)
+                    PrefixAction.SetMark -> activeView?.let { markSetter?.invoke(it, letter) }
+                    PrefixAction.RecallMark -> activeView?.let { markRecaller?.invoke(it, letter) }
                 }
             }
             return
@@ -153,14 +166,26 @@ class KeyMapper(
             if (isRecording) {
                 stopRecording()
             } else {
-                waitingForRegisterAction = 'q'
+                waitingForPrefix = PrefixAction.RecordMacro
             }
             return
         }
 
         // `@` starts replay — wait for the register name.
         if (key == "@") {
-            waitingForRegisterAction = '@'
+            waitingForPrefix = PrefixAction.ReplayMacro
+            return
+        }
+
+        // `m` sets a mark — wait for the register letter.
+        if (key == "m") {
+            waitingForPrefix = PrefixAction.SetMark
+            return
+        }
+
+        // `'` recalls a mark — wait for the register letter.
+        if (key == "'") {
+            waitingForPrefix = PrefixAction.RecallMark
             return
         }
 
