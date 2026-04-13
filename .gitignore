@@ -17,6 +17,7 @@ build/
 # Local / OS
 *.local
 .DS_Store
+.obsidian/
 
 # Ignore dev save files in repo root
 /dot.dot
