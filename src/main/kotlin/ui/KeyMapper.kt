@@ -464,6 +464,9 @@ class KeyMapper(
                     if (mapParts.size == 2) {
                         map(mapParts[0], mapParts[1], recursive = false)
                     }
+                } else {
+                    // :map with no args → list current bindings
+                    showHelpText(formatBindings())
                 }
                 return
             }
@@ -519,6 +522,18 @@ class KeyMapper(
                 if (CommandRegistry.execute("save", gv)) {
                     CommandRegistry.execute("close-tab", gv)
                 }
+            }
+            "help" -> {
+                // :help        — all registered commands
+                // :help keys   — current key bindings
+                val what = args?.trim() ?: ""
+                val text = when (what) {
+                    "", "commands" -> formatCommandList()
+                    "keys", "map", "bindings" -> formatBindings()
+                    else -> "sane-graph-edit: unknown :help topic '$what'\n" +
+                        "Known topics: commands (default), keys"
+                }
+                showHelpText(text)
             }
             "export" -> {
                 // :export <path> — write the whole graph as SVG.
@@ -610,6 +625,140 @@ class KeyMapper(
     private fun cancelTimer() {
         pendingTimer?.stop()
         pendingTimer = null
+    }
+
+    // --- help / bindings formatters ---
+
+    /**
+     * Format the full command-name registry as a two-column
+     * alphabetical list, one line per command. Used by `:help`.
+     */
+    private fun formatCommandList(): String {
+        val names = CommandRegistry.list()
+        val sb = StringBuilder()
+        sb.appendLine("Available commands (use in :bar or in mappings):")
+        sb.appendLine()
+        // Two-column layout. Left half in alphabetical order.
+        val half = (names.size + 1) / 2
+        val left = names.take(half)
+        val right = names.drop(half)
+        val colWidth = (names.maxOfOrNull { it.length } ?: 0) + 4
+        for (i in left.indices) {
+            val l = left[i].padEnd(colWidth)
+            val r = right.getOrNull(i) ?: ""
+            sb.append("  ").append(l).append(r).append('\n')
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Format all active key bindings (defaults merged with user
+     * mappings) grouped by shape:
+     *
+     *  - Lowercase+Uppercase letter pairs (a|A, b|B, …)
+     *  - Digits
+     *  - Symbols and prefix keys
+     *  - Ctrl / Ctrl+Shift combos
+     *  - Multi-key sequences
+     *
+     * Unbound slots in the letter-pair section are shown as
+     * `(unbound)` so the user can see what's free.
+     */
+    private fun formatBindings(): String {
+        val sb = StringBuilder()
+
+        // Hardcoded prefix keys in feedKey — not in defaults.
+        val prefixKeyLabels = mapOf(
+            "q" to "(record macro q<reg>)",
+            "@" to "(replay macro @<reg>)",
+            "m" to "(set mark m<reg>)",
+            "'" to "(recall mark '<reg>)",
+            ":" to "(open command bar)",
+            "/" to "(search forward)",
+            "?" to "(search backward)",
+        )
+
+        // Resolve effective binding: user mapping wins, then
+        // defaults, then the hardcoded prefix-key table. Return
+        // null if none match.
+        fun effective(key: String): String? {
+            val userMapping = mappings[key]
+            if (userMapping != null) return "→ ${userMapping.rhs}" +
+                if (userMapping.recursive) "  [recursive]" else ""
+            val def = defaults[key]
+            if (def != null) return def
+            return prefixKeyLabels[key]
+        }
+
+        fun line(key: String, label: String = key, width: Int = 42): String {
+            val v = effective(key) ?: "(unbound)"
+            return "  $label  ${v}".padEnd(width)
+        }
+
+        sb.appendLine("Active key bindings (user mappings override defaults):")
+        sb.appendLine()
+        sb.appendLine("Letters (lowercase | uppercase):")
+        for (c in 'a'..'z') {
+            val lower = c.toString()
+            val upper = c.uppercaseChar().toString()
+            sb.append(line(lower, lower))
+            sb.append(line(upper, upper))
+            sb.append('\n')
+        }
+        sb.appendLine()
+        sb.appendLine("Digits:")
+        for (c in '0'..'9') {
+            sb.append(line(c.toString(), c.toString()))
+            sb.append('\n')
+        }
+
+        sb.appendLine()
+        sb.appendLine("Symbols and prefix keys:")
+        for (key in prefixKeyLabels.keys.sorted()) {
+            sb.append(line(key, key, width = 60))
+            sb.append('\n')
+        }
+
+        sb.appendLine()
+        sb.appendLine("Multi-key sequences, Ctrl combos, special keys:")
+        val everythingElse = (defaults.keys + mappings.keys).toSortedSet()
+            .filterNot { it.length == 1 && it[0].isLetterOrDigit() }
+        for (key in everythingElse) {
+            sb.append(line(key, key, width = 60))
+            sb.append('\n')
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Show [text] either in a popup dialog (GUI mode) or by
+     * printing to stdout (headless mode). Dispatches on whether
+     * `java.awt.headless` is true.
+     */
+    private fun showHelpText(text: String) {
+        val headless = java.awt.GraphicsEnvironment.isHeadless()
+        if (headless) {
+            print(text)
+            return
+        }
+        val gv = activeView ?: run { print(text); return }
+        javax.swing.SwingUtilities.invokeLater {
+            val area = javax.swing.JTextArea(text).apply {
+                font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12)
+                isEditable = false
+                caretPosition = 0
+            }
+            val scroll = javax.swing.JScrollPane(area).apply {
+                preferredSize = java.awt.Dimension(700, 500)
+            }
+            val owner = javax.swing.SwingUtilities.getWindowAncestor(gv)
+            javax.swing.JOptionPane.showMessageDialog(
+                owner,
+                scroll,
+                "sane-graph-edit: help",
+                javax.swing.JOptionPane.PLAIN_MESSAGE,
+            )
+        }
     }
 
     companion object {
