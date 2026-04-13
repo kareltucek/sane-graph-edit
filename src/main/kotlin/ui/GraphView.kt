@@ -481,7 +481,10 @@ class GraphView(
  * letting the process exit. On confirmed close the session is
  * flushed one last time and the autosave timer is cancelled.
  */
-class Window(title: String) : JFrame() {
+class Window(
+    title: String,
+    private val initialFile: String? = null,
+) : JFrame() {
     val keyMapper: KeyMapper = KeyMapper(KeyMapper.defaultBindings())
     val tabManager: TabManager = TabManager(this)
     val autosave: AutosaveManager = AutosaveManager(tabManager)
@@ -501,6 +504,17 @@ class Window(title: String) : JFrame() {
         // if none exists, create a single empty tab so the
         // window has something to show.
         tabManager.bootstrap()
+
+        // If the user passed a file argument, open it in a new tab
+        // on top of whatever the session restored.
+        initialFile?.let { path ->
+            try {
+                val loaded = DotGraphLoader.loadFromFile(path)
+                tabManager.newTab(graph = loaded, path = java.nio.file.Paths.get(path))
+            } catch (t: Throwable) {
+                System.err.println("sane-graph-edit: could not open '$path': ${t.message}")
+            }
+        }
         // Point the renderer's transform at the active tab so
         // the canvas's initial paint lands on the right view
         // transform. Tab switches rewire this in

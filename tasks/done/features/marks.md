@@ -218,7 +218,7 @@ private var waitingForRegister: RegisterAction? = null
 ## Open questions
 
 - **Invalid register letters.** What if the user types `m<Esc>`
-  or `mA`? Ignore silently, like the macro code does for
+  or `mA`? Resolved: Ignore silently, like the macro code does for
   non-alphanumeric after `q`.
 - **Case.** Resolved: separate — lowercase = transient
   session-only, uppercase = persisted to DOT. See "Lowercase
@@ -228,3 +228,4 @@ private var waitingForRegister: RegisterAction? = null
   editor.
 - **Displayed in help text.** Yes — add `m<letter>` and
   `'<letter>` to `Constants.helpSelection`.
+

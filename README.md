@@ -101,6 +101,28 @@ For a `.deb` or `.rpm` installer instead of a plain directory:
 These require the corresponding packaging tools (`dpkg-deb` /
 `rpmbuild`) to be installed.
 
+### Headless / scripting
+
+Run the editor without a window to automate exports and other
+batch operations:
+
+```sh
+# Export a DOT file to SVG, no window, no user interaction
+sane-graph-edit input.dot -e ':export output.svg<Enter>'
+
+# Recall a persistent mark (A-Z), then export just those nodes
+sane-graph-edit input.dot -e "'A" -e ':export-selection a.svg<Enter>'
+```
+
+Flags:
+- `-e '<keys>'` — execute a key sequence and exit. Repeatable.
+  The argument is whatever you'd type interactively:
+  `':export foo.svg<Enter>'`, `"'A"`, `'dih'`, anything.
+- `-u` — stay open with a window after running `-e`. Useful for
+  pre-configuring a session.
+- `[file]` — positional arg: DOT file to load on startup.
+- `-h`, `--help` — usage.
+
 ### Development
 
 ```sh

@@ -87,6 +87,22 @@ class KeyMapper(
     /** Callback for recalling a mark. Set by Window. */
     var markRecaller: ((GraphView, Char) -> Unit)? = null
 
+    /**
+     * When non-null, we're accumulating characters into a
+     * command-bar line (after `:` was fed). `<CR>` ends
+     * accumulation and dispatches via [executeCommandLine].
+     *
+     * Set in two situations:
+     *  - Headless `-e` replay where `:` is fed as a literal key
+     *    (no visual bar to open).
+     *  - Mapping RHS replay (see [replayRhs]).
+     *
+     * In interactive canvas mode, `:` is intercepted by the key
+     * listener and opens the real command bar before the key
+     * reaches the mapper, so this buffer is never used there.
+     */
+    private var commandBuffer: StringBuilder? = null
+
     // --- public API ---
 
     fun map(lhs: String, rhs: String, recursive: Boolean = false) {
@@ -142,6 +158,29 @@ class KeyMapper(
      * listener for every keypress.
      */
     fun feedKey(key: String) {
+        // --- Command-buffer mode (":..." in flight) ---
+        val buf = commandBuffer
+        if (buf != null) {
+            when (key) {
+                "<CR>" -> {
+                    commandBuffer = null
+                    val line = buf.toString().trim()
+                    if (line.isNotEmpty()) executeCommandLine(line)
+                }
+                "<Esc>" -> {
+                    // Cancel the buffered command
+                    commandBuffer = null
+                }
+                else -> {
+                    // Any other token: append its visible form.
+                    // Tokens are single chars or angle-bracket tokens.
+                    // Spaces come through as " ".
+                    buf.append(key)
+                }
+            }
+            return
+        }
+
         // --- Prefix keys: q, @, m, ' (single quote) ---
         // If we're waiting for a letter after a prefix key,
         // consume this key as the action target.
@@ -186,6 +225,16 @@ class KeyMapper(
         // `'` recalls a mark — wait for the register letter.
         if (key == "'") {
             waitingForPrefix = PrefixAction.RecallMark
+            return
+        }
+
+        // `:` enters command-buffer mode. Subsequent chars are
+        // appended until <CR>. Used by headless replay and by
+        // mapping RHSes that contain ":command<CR>". In interactive
+        // canvas mode the key listener intercepts `:` before it
+        // reaches the mapper, so this path only fires during replay.
+        if (key == ":") {
+            commandBuffer = StringBuilder()
             return
         }
 
@@ -450,6 +499,39 @@ class KeyMapper(
             "wq" -> {
                 if (CommandRegistry.execute("save", gv)) {
                     CommandRegistry.execute("close-tab", gv)
+                }
+            }
+            "export" -> {
+                // :export <path> — write the whole graph as SVG.
+                // No-path form falls back to the dialog (interactive only).
+                if (args != null) {
+                    try {
+                        val visible = gv.g.nodes.filter { it.isVisible }.toSet()
+                        java.nio.file.Files.writeString(
+                            java.nio.file.Paths.get(args),
+                            export.SvgWriter.write(gv.g, visible),
+                        )
+                    } catch (t: Throwable) {
+                        System.err.println("sane-graph-edit: :export failed: ${t.message}")
+                    }
+                } else {
+                    CommandRegistry.execute("export-svg", gv)
+                }
+            }
+            "export-selection" -> {
+                // :export-selection <path> — write only current selection.
+                if (args != null) {
+                    try {
+                        val sel = gv.g.selectedNodes.takeIf { it.isNotEmpty() }
+                        java.nio.file.Files.writeString(
+                            java.nio.file.Paths.get(args),
+                            export.SvgWriter.write(gv.g, sel),
+                        )
+                    } catch (t: Throwable) {
+                        System.err.println("sane-graph-edit: :export-selection failed: ${t.message}")
+                    }
+                } else {
+                    CommandRegistry.execute("export-selection", gv)
                 }
             }
             "e" -> {
