@@ -524,14 +524,13 @@ class KeyMapper(
                 }
             }
             "help" -> {
-                // :help        — all registered commands
-                // :help keys   — current key bindings
                 val what = args?.trim() ?: ""
                 val text = when (what) {
-                    "", "commands" -> formatCommandList()
+                    "" -> formatHelpOverview()
+                    "commands" -> formatCommandList()
                     "keys", "map", "bindings" -> formatBindings()
-                    else -> "sane-graph-edit: unknown :help topic '$what'\n" +
-                        "Known topics: commands (default), keys"
+                    else -> "sane-graph-edit: unknown :help topic '$what'\n\n" +
+                        formatHelpOverview()
                 }
                 showHelpText(text)
             }
@@ -630,15 +629,62 @@ class KeyMapper(
     // --- help / bindings formatters ---
 
     /**
-     * Format the full command-name registry as a two-column
-     * alphabetical list, one line per command. Used by `:help`.
+     * Top-level :help landing page: lists the available :help
+     * variants plus a pointer at the rest.
+     */
+    private fun formatHelpOverview(): String = """
+        sane-graph-edit :help
+
+        :help commands       List every registered command name
+                             (use as targets in the : bar or in
+                             `map` RHSes via :cmd<Enter>).
+        :help keys           List active key bindings, grouped by
+                             base letter. Empty slots are visible
+                             as headers with no entries.
+        :help map            Alias for :help keys.
+        :help bindings       Alias for :help keys.
+
+        :map                 With no arguments, same as :help keys.
+                             With arguments, adds a mapping (see
+                             :help commands → map / remap / unmap).
+
+        Dismiss this pane with Escape, Enter, or q.
+    """.trimIndent() + "\n"
+
+    /**
+     * Format the full command-name registry plus the built-in
+     * command-bar verbs (`:w`, `:map`, `:set`, …) as a two-column
+     * alphabetical list. Used by `:help commands`.
      */
     private fun formatCommandList(): String {
-        val names = CommandRegistry.list()
+        val registered = CommandRegistry.list()
+        // Built-in :bar verbs (handled inline in executeCommandLine,
+        // not registered in CommandRegistry).
+        val builtins = listOf(
+            "e <path>                — open file (new tab)",
+            "export <path>           — write graph as SVG to <path>",
+            "export-selection <path> — write selection as SVG",
+            "help [topic]            — this page (topic: commands, keys)",
+            "map <lhs> <rhs>         — add non-recursive key mapping",
+            "noremap <lhs> <rhs>     — alias for :map",
+            "q                       — close current tab",
+            "q!                      — close current tab, no prompt",
+            "remap <lhs> <rhs>       — add recursive key mapping",
+            "set <opt>=<val>         — change a setting (e.g. timeoutlen)",
+            "source <path>           — load commands from a file",
+            "unmap <lhs>             — remove a user mapping",
+            "w [<path>]              — save (to <path> if given)",
+            "wq                      — save then close tab",
+        )
         val sb = StringBuilder()
-        sb.appendLine("Available commands (use in :bar or in mappings):")
+        sb.appendLine("Command-bar built-ins (type after `:` and press Enter):")
         sb.appendLine()
-        // Two-column layout. Left half in alphabetical order.
+        for (entry in builtins) sb.append("  ").append(entry).append('\n')
+
+        sb.appendLine()
+        sb.appendLine("Registered command names (use as `:<name><Enter>` or in mapping RHSes):")
+        sb.appendLine()
+        val names = registered.sorted()
         val half = (names.size + 1) / 2
         val left = names.take(half)
         val right = names.drop(half)
@@ -652,17 +698,11 @@ class KeyMapper(
     }
 
     /**
-     * Format all active key bindings (defaults merged with user
-     * mappings) grouped by shape:
-     *
-     *  - Lowercase+Uppercase letter pairs (a|A, b|B, …)
-     *  - Digits
-     *  - Symbols and prefix keys
-     *  - Ctrl / Ctrl+Shift combos
-     *  - Multi-key sequences
-     *
-     * Unbound slots in the letter-pair section are shown as
-     * `(unbound)` so the user can see what's free.
+     * Format all active key bindings grouped by base slot:
+     * every letter a-z (with its variants: `a`, `A`, `<C-a>`,
+     * `<C-S-a>`), every digit, then prefix keys and other
+     * specials. Empty slots get a header with no entries so the
+     * user can see what's free at a glance.
      */
     private fun formatBindings(): String {
         val sb = StringBuilder()
@@ -678,62 +718,98 @@ class KeyMapper(
             "?" to "(search backward)",
         )
 
-        // Resolve effective binding: user mapping wins, then
-        // defaults, then the hardcoded prefix-key table. Return
-        // null if none match.
+        // Effective binding for a key (user mapping wins, then
+        // default, then prefix label). Null = truly unbound.
         fun effective(key: String): String? {
             val userMapping = mappings[key]
             if (userMapping != null) return "→ ${userMapping.rhs}" +
                 if (userMapping.recursive) "  [recursive]" else ""
-            val def = defaults[key]
-            if (def != null) return def
-            return prefixKeyLabels[key]
+            defaults[key]?.let { return it }
+            prefixKeyLabels[key]?.let { return it }
+            return null
         }
 
-        fun line(key: String, label: String = key, width: Int = 42): String {
-            val v = effective(key) ?: "(unbound)"
-            return "  $label  ${v}".padEnd(width)
+        // Classify each bound key to a slot. Returns:
+        //   - "a".."z" for letter slots (single chars or
+        //     angle-bracket tokens whose inner key is a letter)
+        //   - "0".."9" for digit slots
+        //   - multi-key sequences (more than one token) → first
+        //     token's slot (if letter/digit) else "multi"
+        //   - otherwise → "special"
+        fun slotFor(key: String): String {
+            val tokens = KeyNotation.tokenize(key)
+            if (tokens.size > 1) {
+                val first = slotFor(tokens[0])
+                if (first in "a".."z" || first in "0".."9") return first
+                return "multi"
+            }
+            val tok = tokens.single()
+            if (tok.length == 1) {
+                val ch = tok[0]
+                return when {
+                    ch.isLetter() -> ch.lowercaseChar().toString()
+                    ch.isDigit() -> ch.toString()
+                    else -> "special"
+                }
+            }
+            // Angle-bracket token: parse to get the key name.
+            val parsed = KeyNotation.parse(tok) ?: return "special"
+            val name = parsed.keyName
+            return when {
+                name.length == 1 && name[0].isLetter() -> name[0].lowercaseChar().toString()
+                name.length == 1 && name[0].isDigit() -> name.toString()
+                else -> "special"
+            }
         }
 
-        sb.appendLine("Active key bindings (user mappings override defaults):")
-        sb.appendLine()
-        sb.appendLine("Letters (lowercase | uppercase):")
+        // Collect all bound keys (defaults + mappings + hardcoded
+        // prefixes) and bucket by slot.
+        val allKeys = (defaults.keys + mappings.keys + prefixKeyLabels.keys).toSet()
+        val bySlot = mutableMapOf<String, MutableList<String>>()
+        for (key in allKeys) {
+            bySlot.getOrPut(slotFor(key)) { mutableListOf() }.add(key)
+        }
+        // Sort each slot's entries: plain char first, then
+        // uppercase, then angle-bracket tokens, ordered by length
+        // then lex.
+        val slotOrder = Comparator<String> { a, b ->
+            val la = a.length
+            val lb = b.length
+            if (la != lb) la.compareTo(lb) else a.compareTo(b)
+        }
+        for (list in bySlot.values) list.sortWith(slotOrder)
+
+        sb.appendLine("Active key bindings (user mappings override defaults; empty slots are free):")
+
+        fun emitSlot(header: String, keys: List<String>) {
+            sb.appendLine()
+            sb.append("- ").append(header).append(':').append('\n')
+            for (key in keys) {
+                val v = effective(key) ?: continue
+                sb.append("    ").append(key.padEnd(10)).append(' ').append(v).append('\n')
+            }
+        }
+
+        // Letters a-z — show every slot, even empty.
         for (c in 'a'..'z') {
-            val lower = c.toString()
-            val upper = c.uppercaseChar().toString()
-            sb.append(line(lower, lower))
-            sb.append(line(upper, upper))
-            sb.append('\n')
+            emitSlot(c.toString(), bySlot[c.toString()] ?: emptyList())
         }
-        sb.appendLine()
-        sb.appendLine("Digits:")
+        // Digits 0-9 — show every slot, even empty.
         for (c in '0'..'9') {
-            sb.append(line(c.toString(), c.toString()))
-            sb.append('\n')
+            emitSlot(c.toString(), bySlot[c.toString()] ?: emptyList())
         }
+        // Special (Esc, CR, Tab, symbols, …).
+        bySlot["special"]?.let { emitSlot("special", it) }
+        // Multi-key sequences that didn't start with a letter/digit.
+        bySlot["multi"]?.let { emitSlot("multi-key", it) }
 
-        sb.appendLine()
-        sb.appendLine("Symbols and prefix keys:")
-        for (key in prefixKeyLabels.keys.sorted()) {
-            sb.append(line(key, key, width = 60))
-            sb.append('\n')
-        }
-
-        sb.appendLine()
-        sb.appendLine("Multi-key sequences, Ctrl combos, special keys:")
-        val everythingElse = (defaults.keys + mappings.keys).toSortedSet()
-            .filterNot { it.length == 1 && it[0].isLetterOrDigit() }
-        for (key in everythingElse) {
-            sb.append(line(key, key, width = 60))
-            sb.append('\n')
-        }
         return sb.toString()
     }
 
     /**
-     * Show [text] either in a popup dialog (GUI mode) or by
-     * printing to stdout (headless mode). Dispatches on whether
-     * `java.awt.headless` is true.
+     * Show [text] in a bottom-docked message area (GUI mode)
+     * or print to stdout (headless mode). Falls back to stdout
+     * if the message area isn't available (e.g., unit tests).
      */
     private fun showHelpText(text: String) {
         val headless = java.awt.GraphicsEnvironment.isHeadless()
@@ -741,23 +817,11 @@ class KeyMapper(
             print(text)
             return
         }
-        val gv = activeView ?: run { print(text); return }
-        javax.swing.SwingUtilities.invokeLater {
-            val area = javax.swing.JTextArea(text).apply {
-                font = java.awt.Font(java.awt.Font.MONOSPACED, java.awt.Font.PLAIN, 12)
-                isEditable = false
-                caretPosition = 0
-            }
-            val scroll = javax.swing.JScrollPane(area).apply {
-                preferredSize = java.awt.Dimension(700, 500)
-            }
-            val owner = javax.swing.SwingUtilities.getWindowAncestor(gv)
-            javax.swing.JOptionPane.showMessageDialog(
-                owner,
-                scroll,
-                "sane-graph-edit: help",
-                javax.swing.JOptionPane.PLAIN_MESSAGE,
-            )
+        val msg = activeView?.messageArea
+        if (msg != null) {
+            msg.show(text)
+        } else {
+            print(text)
         }
     }
 

@@ -131,6 +131,13 @@ class GraphView(
      */
     var commandBar: CommandBar? = null
 
+    /**
+     * The message area that docks at the bottom for multi-line
+     * output from `:help`, `:map`, etc. Null in unit tests and in
+     * headless mode (those paths print to stdout instead).
+     */
+    var messageArea: MessageArea? = null
+
     /** Search state: last confirmed query, results, n/N cursor. */
     val searchState: SearchState = SearchState()
 

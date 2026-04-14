@@ -141,6 +141,10 @@ class TabManager(
             gv.add(bar)
             gv.setLayer(bar, 2)  // above canvas (0) and editor/picker (1)
         }
+        gv.messageArea = MessageArea(gv).also { msg ->
+            gv.add(msg)
+            gv.setLayer(msg, 2)
+        }
         gv.onStateChange = { refreshTab(gv) }
         views.add(gv)
         tabbedPane.addTab(gv.title, gv)
