@@ -1,15 +1,43 @@
 # sane-graph-edit
 
-A keyboard-driven desktop editor for small [Graphviz
-DOT](https://graphviz.org/doc/info/lang.html) graphs. Double-click to
-spawn nodes, hit `v`/`e` to connect them, drag to move, wheel to zoom,
-`Ctrl+S` to save. That's most of it.
+A act-by-keyboard move-by-mouse controlled, VIM-inspired desktop editor for small to medium graphs (thousands objects should be fine; no hardware acceleration). 
 
-The goal is **"text-editor ergonomics for graphs"**: no palettes, no
-menus to fight, no mouse round-trips. You can draft a tree or a
-dependency graph roughly as fast as you can describe it out loud.
+Meant for convenient information storage - like mind maps. Ergomy is the main goal. No fighting with cumbersome UI. You can draft a tree or a dependency graph roughly as fast as you can describe it out loud.
 
-Written in Kotlin + Swing, runs anywhere JDK 21 runs.
+Example of editing:
+
+- `v` or doubleclick to spawn a node.
+- `Space + <write> + escape` to edit a node.
+- `v` or `a` to create connected nodes.
+- `e` to connect node under mouse from selected node. `E` to connect in reverse direction.
+- ...
+
+Selecting:
+
+- Click to select, `Ctrl+click` to multi-select, `Ctrl+drag` to box-select.
+- Search-based: `/` , type, `enter`.
+- Hit `t` to select full subtree (of successors). `T` for predecessors.
+- `l` to add one generation of neighbours. `w` to remove the oldest generation
+- ...
+
+Registers, macros, mappings:
+
+- record vim macros with `q` + `<letter>` and replay with `@` + `<letter>`. 
+- map stuff `map gf tih0<Esc>` - gf hides everything except subtree of the current node and moves view to it.
+- `m<letter>` + `'<letter>` mark graph subsets .
+- some `:` commands.
+- headless mode.
+- ...
+
+Saves in a DOT-like format, but full compatibility is not our goal.
+
+Written in Kotlin + Swing, runs anywhere JDK 21 runs. (Yes, it *is* ugly, and hidpi support is bad.)
+
+Originally written by me in 2022, finished with a heavy help of Claude Code. 
+
+End of Human-written README. The rest is AI-generated, but I hope it's accurate and useful.
+
+------------------------------
 
 ## Status
 
