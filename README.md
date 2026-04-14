@@ -363,6 +363,6 @@ one keystroke each.
 
 ## Licence
 
-See [LICENCE](LICENCE) if present, otherwise ask the author. Code is
-by Karel Tuček — the in-app help calls out
-`github.com/kareltucek/sane-graph-edit`.
+Copyright (C) 2026 Karel Tuček
+
+Licensed under GNU GPLv3. 
