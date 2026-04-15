@@ -260,8 +260,28 @@ object LayoutOptimizer {
                         }
                 }
 
-                SpringTarget.MoveSelectedOnly -> g.findEddges(g.selectedNodes, g.selectedNodes)
-                    .flatMap { listOf(Triple(it.src, it.dst, it), Triple(it.dst, it.src, it)) }
+                SpringTarget.MoveSelectedOnly -> {
+                    // Include every edge incident to the selection,
+                    // including cross-boundary edges. Each triple
+                    // `(a, b, e)` produces a spring for `b` (the
+                    // "moving" end — second slot), so we emit one
+                    // triple per selected endpoint:
+                    //   • edge fully inside the selection → both
+                    //     endpoints get springs.
+                    //   • edge crossing the boundary → only the
+                    //     selected endpoint gets a spring; the
+                    //     unselected end stays anchored but still
+                    //     exerts a pull on its selected neighbour.
+                    val sel = g.selectedNodes
+                    g.edges
+                        .filter { it.src in sel || it.dst in sel }
+                        .flatMap { e ->
+                            listOfNotNull(
+                                Triple(e.dst, e.src, e).takeIf { e.src in sel },
+                                Triple(e.src, e.dst, e).takeIf { e.dst in sel },
+                            )
+                        }
+                }
 
                 else -> emptySet()
             }

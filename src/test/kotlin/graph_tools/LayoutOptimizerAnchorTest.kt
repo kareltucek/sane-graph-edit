@@ -54,6 +54,51 @@ class LayoutOptimizerAnchorTest {
     }
 
     @Test
+    fun `cross-boundary edges produce one spring for the selected end`() {
+        // Set-logic check: for an edge between a selected and
+        // an unselected node, the connected-edge-set should
+        // yield exactly one triple, positioning the selected
+        // node in the "moving" slot (second position). Edges
+        // fully inside the selection yield two triples (both
+        // endpoints move); edges fully outside yield zero.
+        val g = Graph()
+        val sel1 = Node("sel1", Vector2(0, 0))
+        val sel2 = Node("sel2", Vector2(100, 0))
+        val outside = Node("outside", Vector2(200, 0))
+        g.add(sel1); g.add(sel2); g.add(outside)
+
+        val edgeInside = Edge(sel1, sel2)
+        val edgeCrossingOut = Edge(sel2, outside)
+        val edgeCrossingIn = Edge(outside, sel1)
+        g.add(edgeInside); g.add(edgeCrossingOut); g.add(edgeCrossingIn)
+
+        g.cleanSelect(setOf(sel1, sel2))
+        val triples = LayoutOptimizer.impl.computeConnectedEdgeSet(
+            g, LayoutOptimizer.SpringTarget.MoveSelectedOnly,
+        ).toList()
+
+        // Inside edge (sel1 ↔ sel2): two triples, one per endpoint.
+        val insideTriples = triples.filter { it.third === edgeInside }
+        assertEquals(2, insideTriples.size, "inside edge should yield 2 triples")
+        assertEquals(setOf(sel1, sel2), insideTriples.map { it.second }.toSet(),
+            "both endpoints should appear as the moving (second) node")
+
+        // Out-crossing edge (sel2 → outside): one triple, sel2 moves.
+        val outCrossing = triples.filter { it.third === edgeCrossingOut }
+        assertEquals(1, outCrossing.size, "out-crossing edge should yield 1 triple")
+        assertEquals(sel2, outCrossing.single().second,
+            "the selected endpoint should be the moving node")
+        assertEquals(outside, outCrossing.single().first,
+            "the unselected endpoint should be the reference node")
+
+        // In-crossing edge (outside → sel1): one triple, sel1 moves.
+        val inCrossing = triples.filter { it.third === edgeCrossingIn }
+        assertEquals(1, inCrossing.size, "in-crossing edge should yield 1 triple")
+        assertEquals(sel1, inCrossing.single().second,
+            "the selected endpoint should be the moving node")
+    }
+
+    @Test
     fun `O with single selection still keeps anchors still`() {
         // restrict=true with size=1 — also an "only selected
         // moves" path post-fix (previously moved children).
