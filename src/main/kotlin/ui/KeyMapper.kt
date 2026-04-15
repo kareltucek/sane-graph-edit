@@ -592,6 +592,7 @@ class KeyMapper(
         when (name) {
             "timeoutlen" -> value.toIntOrNull()?.let { timeoutMs = it }
             "spring-scale" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScale = it }
+            "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
             else -> System.err.println("sane-graph-edit: unknown setting '$name'")
         }
     }
@@ -696,10 +697,17 @@ class KeyMapper(
         sb.appendLine("                    repulsion (unconnected nodes push apart when")
         sb.appendLine("                    too close). 1.0 is the baseline; smaller =")
         sb.appendLine("                    tighter whole graph, larger = looser. `-` / `=`")
-        sb.appendLine("                    adjust by 0.9x / 1.11x per second of holding")
-        sb.appendLine("                    (and run an optimize pass). Node repulsion")
-        sb.appendLine("                    floors at 1x radii sum to avoid overlap.")
+        sb.appendLine("                    adjust it (and run an optimize pass). Node")
+        sb.appendLine("                    repulsion floors at 1x radii sum to avoid")
+        sb.appendLine("                    overlap.")
         sb.appendLine("                    Session-only. Default: 1.0. Current: ${graph_tools.LayoutOptimizer.springScale}.")
+        sb.appendLine()
+        sb.appendLine("  spring-scale-step=<n>")
+        sb.appendLine("                    Per-second multiplier for the `-` / `=` keys.")
+        sb.appendLine("                    Default 0.8 = 'shrink by 20% over one second")
+        sb.appendLine("                    of holding `-`'. Values closer to 1.0 are")
+        sb.appendLine("                    gentler; lower values are more aggressive.")
+        sb.appendLine("                    Session-only. Default: 0.8. Current: ${graph_tools.LayoutOptimizer.springScaleStep}.")
         sb.appendLine()
         sb.appendLine("Related:")
         sb.appendLine("  :source <path>    Load a different init file.")

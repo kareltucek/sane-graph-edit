@@ -59,10 +59,16 @@ fun registerAllCommands() {
     r.register("delete-reconnect") { impl.deleteNode(it, true) }
     r.register("optimize") { impl.optimize(it, false) }
     r.register("optimize-restrict") { impl.optimize(it, true) }
-    // 0.9 / (1/0.9) — small steps so the effect is tuneable in
-    // five or six taps without blowing up the layout.
-    r.register("spring-shorter") { impl.tweakSpringScale(it, 0.9) }
-    r.register("spring-longer") { impl.tweakSpringScale(it, 1.0 / 0.9) }
+    // The per-second factor is LayoutOptimizer.springScaleStep
+    // (default 0.8, tuneable via `:set spring-scale-step=<n>`).
+    // `spring-longer` uses the inverse so held keys cancel
+    // correctly across direction changes.
+    r.register("spring-shorter") {
+        impl.tweakSpringScale(it, graph_tools.LayoutOptimizer.springScaleStep)
+    }
+    r.register("spring-longer") {
+        impl.tweakSpringScale(it, 1.0 / graph_tools.LayoutOptimizer.springScaleStep)
+    }
     r.register("mirror-horizontal") { impl.mirror(it, horizontal = true) }
     r.register("mirror-vertical") { impl.mirror(it, horizontal = false) }
     r.register("mirror") { impl.mirror(it, horizontal = true) }  // alias for mirror-horizontal

@@ -107,6 +107,18 @@ object LayoutOptimizer {
      */
     var springScale: Double = 1.0
 
+    /**
+     * Per-second multiplier for the `-` / `=` keys (and a
+     * matching `1/step` in the other direction). Default 0.8
+     * = "spring-scale shrinks by 20% over one second of
+     * holding the `-` key". Larger values toward 1.0 are
+     * gentler; smaller values are more aggressive.
+     *
+     * Tuneable via `:set spring-scale-step=<n>`. Session-only
+     * like [springScale].
+     */
+    var springScaleStep: Double = 0.8
+
     fun optimize(g: Graph, movingNodes: Boolean, restrictOperator: Boolean) {
         Utils.PerformanceData.withPerformanceCheck("LayoutOptimizer", 5.0, onIssue = { g.printStats() }) {
             val tgt = SpringTarget.fromContext(movingNodes, restrictOperator, g.selectedNodes.size)
