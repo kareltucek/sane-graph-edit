@@ -317,6 +317,11 @@ class GraphKeyListener(
         }
 
         fun unselectAll(graphView: GraphView) {
+            // Escape cancels any active modal drag / rotation
+            // first — so the first Escape aborts a grab or
+            // rotate, and a subsequent one clears the selection
+            // as usual.
+            if (graphView.mouseListener.controller.cancelActiveModal()) return
             graphView.g.cleanSelect(emptySet())
             graphView.repaint()
         }
@@ -390,37 +395,20 @@ class GraphKeyListener(
         }
 
         /**
-         * Rotate the selected nodes 90° clockwise around their
-         * bounding-box centre. Tap four times to return to the
-         * starting orientation. (Hence the "toggle" naming —
-         * each tap cycles one quarter turn.)
+         * Toggle rotate mode. Delegates to the mouse controller,
+         * which handles the live tracking in [mouseMoved]. See
+         * [GraphMouseController.startOrEndRotate] for the state
+         * machine.
+         *
+         * Matches the shape of [grab]: first call arms the mode,
+         * cursor movement rotates the selection around the
+         * bounding-box centre in step with the mouse angle,
+         * second call commits the final positions as one
+         * [MoveNodesCommand] (undoable as a single step).
+         * Escape cancels and reverts (see [unselectAll]).
          */
-        fun toggleRotate(graphView: GraphView) {
-            val sel = graphView.g.selectedNodes
-            if (sel.isEmpty()) return
-            val box = GraphTools.computeBoundingBox(sel) ?: return
-            val cx = (box.ul.x + box.br.x) / 2
-            val cy = (box.ul.y + box.br.y) / 2
-
-            val before = sel.associateWith { it.position }
-            for (n in sel) {
-                // Clockwise 90°: (dx, dy) → (-dy, dx) gives ccw,
-                // so we want (dy, -dx) for clockwise. Pick what
-                // looks "natural" — matching screen coords where
-                // y grows downward, clockwise means
-                // (dx, dy) → (-dy, dx).
-                val dx = n.position.x - cx
-                val dy = n.position.y - cy
-                n.position = Vector2(cx - dy, cy + dx)
-                graphView.g.needsRecomputing(n)
-            }
-            val after = sel.associateWith { it.position }.toMutableMap()
-            if (before != after) {
-                graphView.g.history.commitWithoutRun(
-                    MoveNodesCommand(graphView.g, before, after),
-                )
-            }
-            graphView.repaint()
+        fun rotate(graphView: GraphView) {
+            graphView.mouseListener.controller.startOrEndRotate()
         }
 
         fun optimize(graphView: GraphView, restrict: Boolean) {

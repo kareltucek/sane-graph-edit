@@ -2,11 +2,15 @@ package ui
 
 import utils.Constants
 import graph_tools.AddNodeCommand
+import graph_tools.GraphTools
 import graph_tools.LayoutOptimizer
 import graph_tools.MoveNodesCommand
 import graph_tools.Node
 import graph_tools.Plotter
 import utils.Vector2
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import utils.Utils.orElse
 import utils.Utils.toScreenVector
 import utils.Utils.toScreenspaceVector
@@ -91,6 +95,10 @@ class GraphMouseListener(
             controller.state == GraphMouseController.States.SelectionBox -> {
                 controller.dragOrEndSelectionBox(false)
             }
+
+            controller.state == GraphMouseController.States.Rotating -> {
+                controller.dragRotate(pos)
+            }
         }
 
         val newPos = e.toWorkspaceVector()
@@ -106,6 +114,9 @@ class GraphMouseListener(
         when {
             controller.state == GraphMouseController.States.MovingNodes -> {
                 controller.dragMoveNode(pos, e.isShiftDown)
+            }
+            controller.state == GraphMouseController.States.Rotating -> {
+                controller.dragRotate(pos)
             }
         }
 
@@ -172,8 +183,23 @@ class GraphMouseListener(
          * rather than one undo step per mouse-move event).
          */
         var moveStartPositions: Map<Node, Vector2>? = null,
+        /**
+         * Captured positions of the selection at the start of a
+         * [States.Rotating] gesture. Consumed on commit (to build
+         * a MoveNodesCommand) or on cancel (to revert the live
+         * positions). Same pattern as [moveStartPositions].
+         */
+        var rotateStartPositions: Map<Node, Vector2>? = null,
+        /** Bounding-box centre at the moment rotation began. */
+        var rotateCenter: Vector2? = null,
+        /**
+         * Angle from [rotateCenter] to the cursor at the moment
+         * rotation began. All subsequent cursor positions are
+         * interpreted as deltas against this reference angle.
+         */
+        var rotateStartAngle: Double = 0.0,
     )  {
-        enum class States { PanningWorkspace, MovingNodes, SelectionBox }
+        enum class States { PanningWorkspace, MovingNodes, SelectionBox, Rotating }
 
 
         fun startToggleMultiselectState(mouseoverNodes: MutableSet<Node>) {
@@ -225,6 +251,120 @@ class GraphMouseListener(
                     captureMoveStart()
                 }
             }
+        }
+
+        /**
+         * Toggle rotate mode. First call: capture selection
+         * positions + bounding-box centre + cursor angle, enter
+         * [States.Rotating]. Subsequent cursor movement rotates
+         * the selection around the centre in step with the
+         * cursor's angular motion (see [dragRotate]). Second
+         * call: commit the final positions as one
+         * [MoveNodesCommand] and exit the mode.
+         *
+         * Cancel with [cancelActiveModal] (bound to Escape) to
+         * revert to the captured positions.
+         */
+        fun startOrEndRotate() {
+            when (state) {
+                States.Rotating -> {
+                    commitRotateIfAny()
+                    state = null
+                }
+                else -> {
+                    if (!captureRotateStart()) return
+                    state = States.Rotating
+                }
+            }
+        }
+
+        private fun captureRotateStart(): Boolean {
+            val sel = graphView.g.selectedNodes
+            if (sel.isEmpty()) return false
+            val box = GraphTools.computeBoundingBox(sel) ?: return false
+            val center = Vector2(
+                (box.ul.x + box.br.x) / 2,
+                (box.ul.y + box.br.y) / 2,
+            )
+            rotateCenter = center
+            rotateStartPositions = sel.associateWith { it.position }
+            val cursor = graphView.lastCursorPosition
+            rotateStartAngle = atan2(cursor.y - center.y, cursor.x - center.x)
+            return true
+        }
+
+        private fun commitRotateIfAny() {
+            val before = rotateStartPositions ?: return
+            rotateStartPositions = null
+            rotateCenter = null
+            val after = before.keys.associateWith { it.position }.toMutableMap()
+            if (before.any { (n, p) -> after[n] != p }) {
+                graphView.g.history.commitWithoutRun(
+                    MoveNodesCommand(graphView.g, before, after),
+                )
+            }
+        }
+
+        /**
+         * Called from `mouseMoved` while in [States.Rotating].
+         * Computes the angular delta from the initial cursor
+         * angle and applies a rigid rotation to the captured
+         * starting positions — so the selection always reflects
+         * an exact rotation from the start state, not an
+         * accumulation of incremental updates (which would drift
+         * as the mouse moves).
+         */
+        fun dragRotate(pos: Vector2) {
+            val center = rotateCenter ?: return
+            val start = rotateStartPositions ?: return
+            val currentAngle = atan2(pos.y - center.y, pos.x - center.x)
+            val delta = currentAngle - rotateStartAngle
+            val cos = cos(delta)
+            val sin = sin(delta)
+            for ((n, origPos) in start) {
+                val dx = origPos.x - center.x
+                val dy = origPos.y - center.y
+                n.position = Vector2(
+                    center.x + dx * cos - dy * sin,
+                    center.y + dx * sin + dy * cos,
+                )
+                graphView.g.needsRecomputing(n)
+            }
+            graphView.repaint()
+        }
+
+        /**
+         * Revert any in-flight modal mutation (grab or rotate)
+         * and exit the mode. Returns true if something was
+         * cancelled, false if there was nothing to cancel.
+         *
+         * Bound to `Escape` via [GraphKeyListener.impl.unselectAll]
+         * so the user's first Escape aborts the drag/rotation,
+         * and a second Escape clears the selection as usual.
+         */
+        fun cancelActiveModal(): Boolean {
+            if (state == States.MovingNodes) {
+                moveStartPositions?.forEach { (n, p) ->
+                    n.position = p
+                    graphView.g.needsRecomputing(n)
+                }
+                moveStartPositions = null
+                state = null
+                graphView.repaint()
+                return true
+            }
+            if (state == States.Rotating) {
+                rotateStartPositions?.forEach { (n, p) ->
+                    n.position = p
+                    graphView.g.needsRecomputing(n)
+                }
+                rotateStartPositions = null
+                rotateCenter = null
+                state = null
+                graphView.repaint()
+                return true
+            }
+            return false
         }
         fun startMove() {
             state = States.MovingNodes

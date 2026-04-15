@@ -34,13 +34,26 @@ class MessageArea(
         setViewportView(area)
         border = BorderFactory.createMatteBorder(1, 0, 0, 0, Color.GRAY)
         isVisible = false
-        // Dismiss on Escape or any printable key.
         area.addKeyListener(object : KeyAdapter() {
             override fun keyPressed(e: KeyEvent) {
                 if (e.keyCode == KeyEvent.VK_ESCAPE ||
                     e.keyCode == KeyEvent.VK_ENTER ||
                     e.keyCode == KeyEvent.VK_Q) {
                     close()
+                    e.consume()
+                }
+            }
+
+            override fun keyTyped(e: KeyEvent) {
+                // `:` closes the pane and drops into the command
+                // bar — same feel as vim's more pager.
+                if (e.keyChar == ':') {
+                    close()
+                    graphView.commandBar?.open(":")
+                    e.consume()
+                } else if (e.keyChar == '/' || e.keyChar == '?') {
+                    close()
+                    graphView.commandBar?.open(e.keyChar.toString())
                     e.consume()
                 }
             }
