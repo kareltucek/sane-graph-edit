@@ -107,21 +107,20 @@ object LayoutOptimizer {
                 val restrict = restrictOperator
                 val size = selectionSize.coerceAtMost(2)
                 val res = when {
-                    !moving && !restrict && size == 0 -> MoveEveryone
-                    !moving && !restrict && size == 1 -> MoveEntireFamily
-                    !moving && !restrict && size == 2 -> MoveEntireFamily
-                    !moving && restrict && size == 0 -> MoveEveryone
-                    !moving && restrict && size == 1 -> MoveChildsOnly
-                    !moving && restrict && size == 2 -> MoveSelectedOnly
-                    moving && !restrict && size == 0 -> MoveNoOne //should never happen
-//                    moving && !restrict && size == 1 -> MoveChildsOnly
-//                    moving && !restrict && size == 2 -> MoveChildsOnly
-                    moving && !restrict && size == 1 -> MoveAllNotSelected
-                    moving && !restrict && size == 2 -> MoveAllNotSelected
-                    moving && restrict && size == 0 -> MoveNoOne //should never happen
-                    moving && restrict && size == 1 -> MoveNoOne //should never happen
-                    moving && restrict && size == 2 -> MoveNoOne //should never happen
-                    else -> MoveNoOne
+                    // No selection → relax the whole graph.
+                    !moving && size == 0 -> MoveEveryone
+                    // Non-empty selection via `o` or `O`: move ONLY the
+                    // selected nodes. Unselected nodes stay anchored,
+                    // and cross-boundary edges are ignored (so an
+                    // unselected neighbour has no spring influence).
+                    // This is the "optimize the selected subset against
+                    // itself" behaviour the user asked for.
+                    !moving -> MoveSelectedOnly
+                    // Drag-time optimisation: the selected nodes are
+                    // the drag anchor; relax everything else around
+                    // them.
+                    moving && size > 0 -> MoveAllNotSelected
+                    else -> MoveNoOne // no selection while dragging shouldn't happen
                 }
                 return res
             }
