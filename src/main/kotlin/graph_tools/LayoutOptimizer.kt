@@ -26,6 +26,71 @@ import utils.Vector2.Companion.Zero
  *   - Should energy be distributed one directionally?
  *   - Should it be proportional to the degree ofthe node?
  */
+
+/**
+ * Force-directed graph layout. One pass of [optimize] gathers
+ * three kinds of spring force, averages them per node, and
+ * applies one position update.
+ *
+ * ## The three spring types
+ *
+ * **BB spring** ([impl.computeBBSpring]) — *edge attraction*.
+ * For each edge, pulls both endpoints toward a target distance
+ * derived from the nodes' connection points on their shape
+ * boundaries (hence "BB" for bounding-box boundary), modulated
+ * by a degree factor (higher-degree nodes pull harder) and the
+ * session-wide [springScale]. Only fires on connected pairs.
+ *
+ * **Collision spring** ([impl.computeCollisionSpring]) — *node
+ * repulsion*. For every pair of nodes that are closer than
+ * `sum-of-radii × distanceCf × springScale` (with a floor on
+ * distanceCf at 1.0 so nodes can touch but not overlap regardless
+ * of scale), pushes them apart. Fires on *every* pair, connected
+ * or not — this is what keeps the graph from collapsing into a
+ * point under BB-spring attraction.
+ *
+ * **Gravity spring** ([impl.computeGravitySpring]) —
+ * *directional alignment*. For each node with incoming edges,
+ * applies a force that tries to align the in-edges' directions
+ * so "flows" (chains of directed edges) stay consistent in
+ * orientation. Only fires on nodes with at least one in-edge.
+ *
+ * ## Per-pass combining
+ *
+ * Each spring function returns a `List<Spring>`. [compute]
+ * flattens all three lists, groups by target node, averages the
+ * per-node vector, and adds it to the node's position. One pass
+ * is one nudge — the user's `o` key hits it once; dragging with
+ * `optimizeOnDrag` hits it every mouse-move event.
+ *
+ * ## [SpringTarget]
+ *
+ * Controls *which* nodes get moved during a pass. `MoveEveryone`
+ * (no selection) relaxes the whole graph; `MoveSelectedOnly`
+ * (non-empty selection) relaxes just the selected nodes but
+ * still considers cross-boundary edges as pulls on the
+ * selected end. See [SpringTarget.fromContext] for the full
+ * table.
+ *
+ * ## [springScale] (session-wide)
+ *
+ * Multiplier on BB-spring target distance AND collision
+ * distance threshold — the whole graph breathes together when
+ * the user dials it with `-`/`=`. See `:help init` for the user-
+ * facing story.
+ *
+ * ## Known limitations
+ *
+ * - **O(n²) collision**: every step tests every node pair.
+ *   Fine for a few hundred nodes, not for thousands. Spatial
+ *   hashing is the obvious fix but not done yet.
+ * - **No energy conservation**: forces are applied as-is, no
+ *   damping or timestep control. Large scale changes can
+ *   oscillate.
+ * - **Gravity springs can launch selected nodes** when their
+ *   in-edge directions conflict with the overall flow; the
+ *   old top-of-file TODO flagged this.
+ */
 object LayoutOptimizer {
     data class Spring(val n: Node, val v: Vector2)
 
