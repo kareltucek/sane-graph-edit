@@ -306,8 +306,14 @@ object LayoutOptimizer {
             val c1 = node.cache.shape.connectionPoint(dir, node)
             val c2 = othr.cache.shape.connectionPoint(dir, othr)
 
-//            val distanceCf = g.findEdge(node, other).isNotNull().fold( 2.0, 1.5)
-            val distanceCf = 2.0
+            // Baseline 2.0 = "nodes want a gap equal to their own
+            // size between them". Scales with springScale so the
+            // whole graph breathes together — edge attraction and
+            // unconnected-node repulsion both change by the same
+            // factor. Floor at 1.0 so the collision distance never
+            // drops below "just touching" — otherwise very small
+            // scale values would permit visual overlap.
+            val distanceCf = (2.0 * springScale).coerceAtLeast(1.0)
             val desiredDistance = (c1 + c2).length() * distanceCf * strengthModulator
 
             return if ((n - o).length() < desiredDistance) {

@@ -6,6 +6,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class SpringScaleTest {
 
@@ -59,6 +60,38 @@ class SpringScaleTest {
         val diff = (baseline - scaled).length()
         assertEquals(true, diff > 0.0 && diff.isFinite(),
             "expected spring vector to differ between scales; baseline=$baseline scaled=$scaled")
+    }
+
+    @Test
+    fun `computeCollisionSpring scales with springScale`() {
+        // Build two close-enough-to-collide nodes. Baseline
+        // scale produces some repulsion vector; a smaller scale
+        // should relax the collision (let them be closer), and
+        // at very small scale the collision should vanish
+        // entirely (below the touching floor of 1.0 × radii).
+        val g = Graph()
+        val a = Node("a", Vector2(0, 0))
+        val b = Node("b", Vector2(50, 0))  // close: likely to collide
+        a.cache.shapeBounds = Vector2(40, 40)
+        b.cache.shapeBounds = Vector2(40, 40)
+        g.add(a); g.add(b)
+
+        LayoutOptimizer.springScale = 1.0
+        val baselineSpring = LayoutOptimizer.impl.computeCollisionSpring(g, a, b)
+
+        LayoutOptimizer.springScale = 0.4  // below the 0.5 floor
+        val tightSpring = LayoutOptimizer.impl.computeCollisionSpring(g, a, b)
+
+        // At scale=1.0 the nodes are within the baseline
+        // desired-distance (40/2 + 40/2 = 40 per radius, *2 = 80
+        // desired, current 50 < 80 → collision force produced).
+        assertTrue(baselineSpring != null,
+            "expected collision force at baseline scale")
+        // At scale=0.4, distanceCf clamps to max(0.8, 1.0) = 1.0,
+        // so desired distance is 40 (sum of radii). Current 50 >
+        // 40 → no collision. Force should be null.
+        assertTrue(tightSpring == null,
+            "expected no collision force once scale is small enough to let nodes touch")
     }
 
     @Test
