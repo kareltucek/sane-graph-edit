@@ -59,6 +59,10 @@ fun registerAllCommands() {
     r.register("delete-reconnect") { impl.deleteNode(it, true) }
     r.register("optimize") { impl.optimize(it, false) }
     r.register("optimize-restrict") { impl.optimize(it, true) }
+    r.register("hmirror") { impl.mirror(it, horizontal = true) }
+    r.register("vmirror") { impl.mirror(it, horizontal = false) }
+    r.register("mirror") { impl.mirror(it, horizontal = true) }  // alias for hmirror
+    r.register("toggle-rotate") { impl.toggleRotate(it) }
 
     // Selection & navigation
     r.register("invert-selection") { impl.invertSelection(it) }

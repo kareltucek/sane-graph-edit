@@ -354,6 +354,75 @@ class GraphKeyListener(
             graphView.repaint()
         }
 
+        /**
+         * Mirror the selected nodes around their bounding-box
+         * centre. [horizontal] = true flips x (left↔right),
+         * false flips y (top↔bottom).
+         *
+         * No-op if the selection is empty. Wraps the position
+         * changes in a single [MoveNodesCommand] so undo
+         * reverts the whole flip in one step.
+         */
+        fun mirror(graphView: GraphView, horizontal: Boolean) {
+            val sel = graphView.g.selectedNodes
+            if (sel.isEmpty()) return
+            val box = GraphTools.computeBoundingBox(sel) ?: return
+            val cx = (box.ul.x + box.br.x) / 2
+            val cy = (box.ul.y + box.br.y) / 2
+
+            val before = sel.associateWith { it.position }
+            for (n in sel) {
+                val p = n.position
+                n.position = if (horizontal) {
+                    Vector2(2 * cx - p.x, p.y)
+                } else {
+                    Vector2(p.x, 2 * cy - p.y)
+                }
+                graphView.g.needsRecomputing(n)
+            }
+            val after = sel.associateWith { it.position }.toMutableMap()
+            if (before != after) {
+                graphView.g.history.commitWithoutRun(
+                    MoveNodesCommand(graphView.g, before, after),
+                )
+            }
+            graphView.repaint()
+        }
+
+        /**
+         * Rotate the selected nodes 90° clockwise around their
+         * bounding-box centre. Tap four times to return to the
+         * starting orientation. (Hence the "toggle" naming —
+         * each tap cycles one quarter turn.)
+         */
+        fun toggleRotate(graphView: GraphView) {
+            val sel = graphView.g.selectedNodes
+            if (sel.isEmpty()) return
+            val box = GraphTools.computeBoundingBox(sel) ?: return
+            val cx = (box.ul.x + box.br.x) / 2
+            val cy = (box.ul.y + box.br.y) / 2
+
+            val before = sel.associateWith { it.position }
+            for (n in sel) {
+                // Clockwise 90°: (dx, dy) → (-dy, dx) gives ccw,
+                // so we want (dy, -dx) for clockwise. Pick what
+                // looks "natural" — matching screen coords where
+                // y grows downward, clockwise means
+                // (dx, dy) → (-dy, dx).
+                val dx = n.position.x - cx
+                val dy = n.position.y - cy
+                n.position = Vector2(cx - dy, cy + dx)
+                graphView.g.needsRecomputing(n)
+            }
+            val after = sel.associateWith { it.position }.toMutableMap()
+            if (before != after) {
+                graphView.g.history.commitWithoutRun(
+                    MoveNodesCommand(graphView.g, before, after),
+                )
+            }
+            graphView.repaint()
+        }
+
         fun optimize(graphView: GraphView, restrict: Boolean) {
             // Capture positions before optimising, then build a
             // MoveNodesCommand so the user can undo a layout pass with
