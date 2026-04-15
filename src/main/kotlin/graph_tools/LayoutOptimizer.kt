@@ -32,7 +32,7 @@ import utils.Vector2.Companion.Zero
  * three kinds of spring force, averages them per node, and
  * applies one position update.
  *
- * ## The three spring types
+ * ## The four spring types
  *
  * **BB spring** ([impl.computeBBSpring]) — *edge attraction*.
  * For each edge, pulls both endpoints toward a target distance
@@ -55,10 +55,18 @@ import utils.Vector2.Companion.Zero
  * so "flows" (chains of directed edges) stay consistent in
  * orientation. Only fires on nodes with at least one in-edge.
  *
+ * **Uniform-out spring** ([impl.computeUniformOutSprings]) —
+ * *sibling-length equaliser*. For every node with two or more
+ * outgoing edges, pulls each destination toward the average
+ * distance from the source along its current radial direction.
+ * Effect: sibling edges settle to the same length, which makes
+ * star graphs and trees look evenly spoked. The source (parent)
+ * stays put — only the destinations move.
+ *
  * ## Per-pass combining
  *
  * Each spring function returns a `List<Spring>`. [compute]
- * flattens all three lists, groups by target node, averages the
+ * flattens all four lists, groups by target node, averages the
  * per-node vector, and adds it to the node's position. One pass
  * is one nudge — the user's `o` key hits it once; dragging with
  * `optimizeOnDrag` hits it every mouse-move event.
@@ -148,7 +156,8 @@ object LayoutOptimizer {
             val springSet = listOf(
                 Pair({ computeCollisionSprings(g, tgt, movingNodes) }, "collision"),
                 Pair({ computeGravitySprings(g, tgt, movingNodes) }, "grav"),
-                Pair({ computeBBSprings(g, tgt) }, "bb")
+                Pair({ computeBBSprings(g, tgt) }, "bb"),
+                Pair({ impl.computeUniformOutSprings(g, tgt) }, "uniform"),
             )
 
             val takeAPeek = if (true) {
@@ -411,6 +420,47 @@ object LayoutOptimizer {
 
             return nodes
                 .mapNotNull { computeCollisionSpring(g, it.first, it.second, strengthModulator) }
+        }
+
+        /**
+         * Uniform-outgoing-length spring: for every node with at
+         * least two outgoing edges, pull each destination toward
+         * the average distance along its current edge direction.
+         * Effect: sibling edges (edges sharing a source) settle to
+         * the same length, which makes trees and star graphs look
+         * evenly spoked.
+         *
+         * Only produces springs for nodes that are allowed to
+         * move in the current [SpringTarget]. The source (parent)
+         * stays put — only the destinations move.
+         */
+        fun computeUniformOutSprings(g: Graph, tgt: SpringTarget): List<Spring> {
+            val movable = computeNodeSet(g, tgt).toSet()
+            return g.nodes.flatMap { parent ->
+                val outEdges = g.findOutEdges(parent)
+                if (outEdges.size < 2) return@flatMap emptyList<Spring>()
+
+                val parentPos = parent.position
+                val lengths = outEdges.map { (it.dst.position - parentPos).length() }
+                val avgLen = lengths.average()
+
+                outEdges.mapNotNull { e ->
+                    // Only produce a spring for destinations we're allowed to move.
+                    if (e.dst !in movable) return@mapNotNull null
+                    val offset = e.dst.position - parentPos
+                    val currLen = offset.length()
+                    // Skip degenerate edges (dst sitting on top of parent) —
+                    // toUnit would divide by zero and the direction to pull
+                    // is undefined anyway.
+                    if (currLen < 0.001) return@mapNotNull null
+                    // Pull the destination to `avgLen` along its current
+                    // radial direction. Halved for mildness so this doesn't
+                    // dominate the BB / collision contributions in the
+                    // averaged delta.
+                    val target = parentPos + offset.toUnit() * avgLen
+                    Spring(e.dst, (target - e.dst.position) * 0.5)
+                }
+            }
         }
 
         fun computeNodeSet(g: Graph, tgt: SpringTarget): Collection<Node> {

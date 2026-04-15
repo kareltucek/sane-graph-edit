@@ -342,6 +342,7 @@ node, and applies one position update:
 | **BB**        | `computeBBSpring`         | each edge      | Pulls both endpoints toward a target distance derived from the nodes' shape boundaries. "BB" = bounding-box boundary. |
 | **Collision** | `computeCollisionSpring`  | every node pair | Pushes apart pairs closer than `sum-of-radii × distanceCf × springScale`. Keeps unconnected nodes from stacking.     |
 | **Gravity**   | `computeGravitySpring`    | each node with in-edges | Aligns a node with the direction of its incoming edges. Keeps chains of edges pointing consistently.        |
+| **Uniform-out** | `computeUniformOutSprings` | each node with ≥ 2 outgoing edges | Pulls the destinations toward the average outgoing-edge length along their current radial direction. Sibling edges settle to the same length. |
 
 `compute()` flattens the three lists, groups by target node,
 averages the per-node vector, and adds it to the position. One
