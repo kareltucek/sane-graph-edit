@@ -65,6 +65,8 @@ object Constants {
           d               - delete selected nodes
           D               - delete + reconnect predecessors to successors
           o/O             - layout optimiser (free / restricted)
+          - / =           - optimize + shrink / grow spring target
+                            distance (session-wide multiplier)
           g               - toggle grab-and-move
 
         Style

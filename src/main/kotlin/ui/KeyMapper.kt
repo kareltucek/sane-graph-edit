@@ -591,6 +591,7 @@ class KeyMapper(
     private fun applySetting(name: String, value: String) {
         when (name) {
             "timeoutlen" -> value.toIntOrNull()?.let { timeoutMs = it }
+            "spring-scale" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScale = it }
             else -> System.err.println("sane-graph-edit: unknown setting '$name'")
         }
     }
@@ -688,6 +689,13 @@ class KeyMapper(
         sb.appendLine("                    the pressed key is a prefix of a longer")
         sb.appendLine("                    mapping AND has a standalone binding itself.")
         sb.appendLine("                    Default: ${DEFAULT_TIMEOUT_MS}. Current: $timeoutMs.")
+        sb.appendLine()
+        sb.appendLine("  spring-scale=<n>  Multiplier on the BB-spring target distance —")
+        sb.appendLine("                    how spread-out layout-optimiser (`o`) makes the")
+        sb.appendLine("                    graph. 1.0 is the baseline; smaller = tighter,")
+        sb.appendLine("                    larger = looser. `-` / `=` adjust it by 0.9x /")
+        sb.appendLine("                    1.11x per tap (and run an optimize pass).")
+        sb.appendLine("                    Session-only. Default: 1.0. Current: ${graph_tools.LayoutOptimizer.springScale}.")
         sb.appendLine()
         sb.appendLine("Related:")
         sb.appendLine("  :source <path>    Load a different init file.")
@@ -899,6 +907,8 @@ class KeyMapper(
             "W" to "unselect-oldest-backward",
             "0" to "bound-screen",
             "1" to "center-screen",
+            "-" to "spring-shorter",
+            "=" to "spring-longer",
             "<Space>" to "edit-node",
             "<S-Space>" to "select-and-edit-node",
 

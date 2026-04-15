@@ -411,6 +411,49 @@ class GraphKeyListener(
             graphView.mouseListener.controller.startOrEndRotate()
         }
 
+        /**
+         * Time of the last spring-scale tweak, for rate-limiting
+         * the multiplier so held keys and single taps both feel
+         * right regardless of the OS key-repeat rate.
+         * Package-visible so tests can reset it between runs —
+         * this is singleton state on the `impl` object and
+         * persists across test cases otherwise.
+         */
+        internal var lastSpringTweakTime: Long = 0L
+
+        /**
+         * Adjust [LayoutOptimizer.springScale] toward [perSecFactor]
+         * and run one optimize pass.
+         *
+         * [perSecFactor] is the "rate": the scale the multiplier
+         * would reach if the key were held for a full second
+         * (e.g. 0.9 for shorter, 1/0.9 for longer). The actual
+         * multiplier per call is `perSecFactor^elapsedSec`, where
+         * `elapsedSec` is the time since the last call, clamped
+         * to a minimum of 200 ms so a single tap produces a
+         * visible 0.2-seconds-worth step.
+         *
+         * Consequence: sustained key-repeat yields a smooth
+         * per-second scaling regardless of repeat rate — fast
+         * repeats produce many tiny steps, slow repeats produce
+         * fewer larger ones, both totalling to perSecFactor per
+         * second. A single press gives 0.2 s worth.
+         */
+        fun tweakSpringScale(graphView: GraphView, perSecFactor: Double) {
+            val now = System.currentTimeMillis()
+            // Elapsed since last tap, clamped to at most 200 ms.
+            // A single tap after a long pause = 200 ms of effect.
+            // A held key firing every 30 ms = 30 ms of effect per
+            // tick, 33 ticks/sec → perSecFactor per second total.
+            // First call (lastSpringTweakTime == 0) also lands at
+            // 200 ms due to the clamp.
+            val elapsedMs = (now - lastSpringTweakTime).coerceAtMost(200L)
+            val elapsedSec = elapsedMs / 1000.0
+            LayoutOptimizer.springScale *= Math.pow(perSecFactor, elapsedSec)
+            lastSpringTweakTime = now
+            optimize(graphView, restrict = false)
+        }
+
         fun optimize(graphView: GraphView, restrict: Boolean) {
             // Capture positions before optimising, then build a
             // MoveNodesCommand so the user can undo a layout pass with

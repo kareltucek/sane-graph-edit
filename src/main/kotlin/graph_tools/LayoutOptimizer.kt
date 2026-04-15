@@ -29,6 +29,19 @@ import utils.Vector2.Companion.Zero
 object LayoutOptimizer {
     data class Spring(val n: Node, val v: Vector2)
 
+    /**
+     * Session-wide scale for the BB spring target distance.
+     *
+     * 1.0 is the baseline density. `-` / `=` keybindings shrink
+     * / grow this by a small multiplicative step. `:set
+     * spring-scale=<n>` sets it directly.
+     *
+     * Not persisted to DOT — it's a workflow preference, not a
+     * property of the graph. Survives tab switches within a
+     * session; resets to 1.0 on restart.
+     */
+    var springScale: Double = 1.0
+
     fun optimize(g: Graph, movingNodes: Boolean, restrictOperator: Boolean) {
         Utils.PerformanceData.withPerformanceCheck("LayoutOptimizer", 5.0, onIssue = { g.printStats() }) {
             val tgt = SpringTarget.fromContext(movingNodes, restrictOperator, g.selectedNodes.size)
@@ -144,7 +157,7 @@ object LayoutOptimizer {
             val c2 = listOf(cn, co).maxBy { it.lengthSquared() }
 
             val f = degFactor(g, node, othr) // degree factor
-            val d = 1.0 // distance factor
+            val d = springScale // distance factor, tuneable via -/=
 
             val desiredRelativeLocation =  - (c1 + c2) * d * f
 //            val desiredRelativeLocation =  - (c1 + c2)

@@ -59,6 +59,10 @@ fun registerAllCommands() {
     r.register("delete-reconnect") { impl.deleteNode(it, true) }
     r.register("optimize") { impl.optimize(it, false) }
     r.register("optimize-restrict") { impl.optimize(it, true) }
+    // 0.9 / (1/0.9) — small steps so the effect is tuneable in
+    // five or six taps without blowing up the layout.
+    r.register("spring-shorter") { impl.tweakSpringScale(it, 0.9) }
+    r.register("spring-longer") { impl.tweakSpringScale(it, 1.0 / 0.9) }
     r.register("mirror-horizontal") { impl.mirror(it, horizontal = true) }
     r.register("mirror-vertical") { impl.mirror(it, horizontal = false) }
     r.register("mirror") { impl.mirror(it, horizontal = true) }  // alias for mirror-horizontal
