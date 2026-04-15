@@ -37,7 +37,7 @@ import javax.swing.Timer
  */
 class KeyMapper(
     private val defaults: Map<String, String>,
-    var timeoutMs: Int = 500,
+    var timeoutMs: Int = DEFAULT_TIMEOUT_MS,
 ) {
     data class Mapping(val rhs: String, val recursive: Boolean)
 
@@ -529,6 +529,7 @@ class KeyMapper(
                     "" -> formatHelpOverview()
                     "commands" -> formatCommandList()
                     "keys", "map", "bindings" -> formatBindings()
+                    "init", "config", "settings" -> formatInitHelp()
                     else -> "sane-graph-edit: unknown :help topic '$what'\n\n" +
                         formatHelpOverview()
                 }
@@ -643,6 +644,9 @@ class KeyMapper(
                              as headers with no entries.
         :help map            Alias for :help keys.
         :help bindings       Alias for :help keys.
+        :help init           Init file path and available :set options.
+        :help config         Alias for :help init.
+        :help settings       Alias for :help init.
 
         :map                 With no arguments, same as :help keys.
                              With arguments, adds a mapping (see
@@ -650,6 +654,47 @@ class KeyMapper(
 
         Dismiss this pane with Escape, Enter, or q.
     """.trimIndent() + "\n"
+
+    /**
+     * :help init — show where the init file lives and which
+     * `:set <opt>=<val>` options exist. Whenever we add a new
+     * settable option, it gets a row here so the user can
+     * discover it without reading source.
+     */
+    private fun formatInitHelp(): String {
+        val initPath = XdgPaths.appConfigDir.resolve("init")
+        val sb = StringBuilder()
+        sb.appendLine("sane-graph-edit init file & settings")
+        sb.appendLine()
+        sb.appendLine("Init file:")
+        sb.appendLine("  $initPath")
+        sb.appendLine()
+        sb.appendLine("  Loaded once at startup (and whenever `:source <path>` runs)")
+        sb.appendLine("  against a different path). One command per line, `#` for")
+        sb.appendLine("  comments. Contents are the same commands you'd type in the")
+        sb.appendLine("  : bar, without the leading colon.")
+        sb.appendLine()
+        sb.appendLine("Example init file:")
+        sb.appendLine("  # comments and blank lines are ignored")
+        sb.appendLine("  map gt :next-tab<Enter>")
+        sb.appendLine("  map gT :prev-tab<Enter>")
+        sb.appendLine("  set timeoutlen=300")
+        sb.appendLine()
+        sb.appendLine("Available settings (use `:set <name>=<value>`):")
+        sb.appendLine()
+        sb.appendLine("  timeoutlen=<ms>   Milliseconds to wait for the next key in a")
+        sb.appendLine("                    multi-key sequence (e.g. 500ms between `g` and")
+        sb.appendLine("                    `t` for the `gt` mapping). Only applies when")
+        sb.appendLine("                    the pressed key is a prefix of a longer")
+        sb.appendLine("                    mapping AND has a standalone binding itself.")
+        sb.appendLine("                    Default: ${DEFAULT_TIMEOUT_MS}. Current: $timeoutMs.")
+        sb.appendLine()
+        sb.appendLine("Related:")
+        sb.appendLine("  :source <path>    Load a different init file.")
+        sb.appendLine("  :help keys        Show active key bindings.")
+        sb.appendLine("  :help commands    Show all available commands.")
+        return sb.toString()
+    }
 
     /**
      * Format the full command-name registry plus the built-in
@@ -827,6 +872,7 @@ class KeyMapper(
 
     companion object {
         const val MAX_RECURSION = 1000
+        const val DEFAULT_TIMEOUT_MS = 500
 
         /** Build the defaults table from the editor's hardcoded bindings. */
         fun defaultBindings(): Map<String, String> = mapOf(
