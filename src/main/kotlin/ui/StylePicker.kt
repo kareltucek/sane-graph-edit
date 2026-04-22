@@ -132,6 +132,7 @@ class StylePicker(
         if (targets.isEmpty()) return
         val before = targets.associateWith { it.attributes.nodeScale }
         parent.g.commit(SetSizeCommand(parent.g, before, delta = r, absolute = null))
+        parent.refreshStatus()
         parent.repaint()
     }
 

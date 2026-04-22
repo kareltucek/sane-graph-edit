@@ -223,10 +223,33 @@ class GraphView(
             else -> ""
         }
         val gesture = gestureName?.let { "-- TRANSFORM: $it$lockSuffix --" } ?: ""
+        val stylePickerText = if (stylePicker.isVisible) styleScaleLabel() else ""
         val recording = keyMapper?.isRecording == true
         val recText = if (recording) "recording" else ""
-        val parts = listOf(gesture, recText).filter { it.isNotEmpty() }
+        val parts = listOf(gesture, stylePickerText, recText).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))
+    }
+
+    /**
+     * Describe the current selection's node-scale values for the
+     * status bar while the style picker is open. Null scale
+     * means "default" (1.0). With mixed scales across multiple
+     * selected nodes, renders a range; single selection shows
+     * just that node's value.
+     */
+    private fun styleScaleLabel(): String {
+        val sel = g.selectedNodes
+        if (sel.isEmpty()) return "node scale: (no selection)"
+        val scales = sel.map { it.attributes.nodeScale ?: 1.0 }
+        val minV = scales.min()
+        val maxV = scales.max()
+        val label = if (minV == maxV) {
+            "%.2f".format(minV)
+        } else {
+            "%.2f–%.2f".format(minV, maxV)
+        }
+        val suffix = if (sel.size > 1) " (${sel.size} nodes)" else ""
+        return "node scale: $label$suffix"
     }
 
     fun placeMeAt(me: JComponent, ul: Vector2, br: Vector2) {
@@ -286,12 +309,14 @@ class GraphView(
         placeMeAt(stylePicker, ul, br)
         stylePicker.isVisible = true
         stylePicker.requestFocus()
+        refreshStatus()
         parent.repaint()
     }
 
     fun endStylePicker() {
         stylePicker.isVisible = false
         graphCanvas.requestFocus()
+        refreshStatus()
         parent.repaint()
     }
 
