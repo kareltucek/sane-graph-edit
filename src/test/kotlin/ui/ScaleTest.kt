@@ -38,6 +38,11 @@ class ScaleTest {
 
     private fun viewWith(g: Graph): GraphView {
         System.setProperty("java.awt.headless", "true")
+        // Plotter.t is a shared singleton — reset to identity so
+        // bbox-centre projection (toScreenVector) is 1:1 and the
+        // per-test cursor math is predictable regardless of what
+        // earlier tests did to the transform.
+        graph_tools.Plotter.t.setToIdentity()
         return GraphView(initialGraph = g)
     }
 
@@ -49,9 +54,12 @@ class ScaleTest {
         // projects to world (0, 0). Start cursor at (50, 50)
         // (screen), drag to (100, 100): cursor distance from
         // screen centre doubles per axis → sx = sy = 2.
-        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        // Anchor = bbox centre (50,50). Start cursor at (100,100)
+        // — 50px from the anchor on each axis. Drag to (150,150)
+        // — 100px from the anchor → factor doubles on both axes.
+        v.lastScreenCursorPosition = Vector2(100.0, 100.0)
         v.mouseListener.controller.startOrEndScale()
-        v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
+        v.mouseListener.controller.dragScale(Vector2(150.0, 150.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
         // Anchor is bbox centre (50, 50).
@@ -71,11 +79,11 @@ class ScaleTest {
     fun `dragScale with lockY holds y coords at originals`() {
         val g = trianglesGraph()
         val v = viewWith(g)
-        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        v.lastScreenCursorPosition = Vector2(100.0, 100.0)
         v.mouseListener.controller.startOrEndScale()
         // `x` key: constrain to X → lockY=true, Y frozen.
         v.mouseListener.controller.lockY = true
-        v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
+        v.mouseListener.controller.dragScale(Vector2(150.0, 150.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
         // X doubles around bbox centre; Y pinned at originals.
@@ -91,11 +99,11 @@ class ScaleTest {
     fun `dragScale with lockX holds x coords at originals`() {
         val g = trianglesGraph()
         val v = viewWith(g)
-        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        v.lastScreenCursorPosition = Vector2(100.0, 100.0)
         v.mouseListener.controller.startOrEndScale()
         // `y` key: constrain to Y → lockX=true, X frozen.
         v.mouseListener.controller.lockX = true
-        v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
+        v.mouseListener.controller.dragScale(Vector2(150.0, 150.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
         // Y doubles around bbox centre; X pinned.
@@ -113,9 +121,12 @@ class ScaleTest {
         val v = viewWith(g)
         val originals = g.nodes.associateWith { it.position }
 
-        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        // Anchor = bbox centre (50,50). Start cursor at (100,100)
+        // — 50px from the anchor on each axis. Drag to (150,150)
+        // — 100px from the anchor → factor doubles on both axes.
+        v.lastScreenCursorPosition = Vector2(100.0, 100.0)
         v.mouseListener.controller.startOrEndScale()
-        v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
+        v.mouseListener.controller.dragScale(Vector2(150.0, 150.0))
         // Something moved — B's x went from 100 to 150.
         assertEquals(150.0, g.nodes.first { it.attributes.text == "B" }.position.x, absoluteTolerance = 0.001)
 
@@ -133,9 +144,12 @@ class ScaleTest {
         val v = viewWith(g)
         val originals = g.nodes.associateWith { it.position }
 
-        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        // Anchor = bbox centre (50,50). Start cursor at (100,100)
+        // — 50px from the anchor on each axis. Drag to (150,150)
+        // — 100px from the anchor → factor doubles on both axes.
+        v.lastScreenCursorPosition = Vector2(100.0, 100.0)
         v.mouseListener.controller.startOrEndScale()
-        v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
+        v.mouseListener.controller.dragScale(Vector2(150.0, 150.0))
         // Second toggle commits.
         v.mouseListener.controller.startOrEndScale()
 
@@ -159,9 +173,12 @@ class ScaleTest {
         val originals = g.nodes.associateWith { it.position }
         assertFalse(v.isDirty)
 
-        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        // Anchor = bbox centre (50,50). Start cursor at (100,100)
+        // — 50px from the anchor on each axis. Drag to (150,150)
+        // — 100px from the anchor → factor doubles on both axes.
+        v.lastScreenCursorPosition = Vector2(100.0, 100.0)
         v.mouseListener.controller.startOrEndScale()
-        v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
+        v.mouseListener.controller.dragScale(Vector2(150.0, 150.0))
         // Drive the click path directly. endSingleClick is the
         // mouse-release terminal — it's what ends the gesture
         // when the user clicks mid-scale.
@@ -179,15 +196,15 @@ class ScaleTest {
     }
 
     @Test
-    fun `scale re-bootstraps reference when cursor starts near screen centre`() {
-        // Start cursor at (1, 1) — well inside the 4px dead-band
-        // around screen centre (0, 0). Scale should freeze both
-        // axes at 1.0; the selection must not move.
+    fun `scale re-bootstraps reference when cursor starts near the anchor`() {
+        // Anchor is bbox centre (50, 50). Start cursor at (51, 51)
+        // — inside the 4px dead-band on both axes. Scale should
+        // freeze at 1.0; selection unchanged.
         val g = trianglesGraph()
         val v = viewWith(g)
-        v.lastScreenCursorPosition = Vector2(1.0, 1.0)
+        v.lastScreenCursorPosition = Vector2(51.0, 51.0)
         v.mouseListener.controller.startOrEndScale()
-        v.mouseListener.controller.dragScale(Vector2(2.0, 2.0))
+        v.mouseListener.controller.dragScale(Vector2(52.0, 52.0))
 
         val b = g.nodes.first { it.attributes.text == "B" }
         assertEquals(100.0, b.position.x, absoluteTolerance = 0.001)
@@ -195,10 +212,10 @@ class ScaleTest {
 
         // Cursor jumps outside the band → reference re-bootstraps
         // at the crossing cursor position. From (100,100) out to
-        // (200,200) is a 2x factor.
+        // (150,150) is a 2x factor (dist from anchor doubles).
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
-        v.mouseListener.controller.dragScale(Vector2(200.0, 200.0))
-        // Anchor = bbox centre (50, 50). B (100,0) → (50+2*50, 50+2*(-50)) = (150, -50).
+        v.mouseListener.controller.dragScale(Vector2(150.0, 150.0))
+        // Anchor (50,50). B (100,0) → (50+2*50, 50+2*(-50)) = (150, -50).
         assertEquals(150.0, b.position.x, absoluteTolerance = 0.001)
         assertEquals(-50.0, b.position.y, absoluteTolerance = 0.001)
     }

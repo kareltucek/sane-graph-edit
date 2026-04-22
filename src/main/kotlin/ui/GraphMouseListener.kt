@@ -235,11 +235,20 @@ class GraphMouseListener(
         /**
          * Cursor position *in canvas-screen coordinates* at the
          * moment scaling began. The per-axis scale factor is the
-         * ratio of (current cursor − screen centre) to
-         * (start cursor − screen centre), so we need a stable
+         * ratio of (current cursor − anchor-in-screen) to
+         * (start cursor − anchor-in-screen), so we need a stable
          * reference point that's insulated from pan/zoom.
          */
         var scaleStartCursorScreen: Vector2? = null,
+        /**
+         * Anchor (= bbox centre) projected into canvas-screen
+         * coordinates at gesture start. Drives the factor source
+         * so that when the cursor reaches the bbox centre on
+         * screen, the per-axis factor is `0` and the selection
+         * collapses at the anchor. Captured once at entry so
+         * pan/zoom mid-gesture doesn't shift the reference.
+         */
+        var scaleAnchorScreen: Vector2? = null,
         /**
          * Live axis-lock flags shared across the three modal
          * transforms. Blender semantics: the `x` key toggles
@@ -321,6 +330,7 @@ class GraphMouseListener(
             rotateCenter = null
             scaleStartPositions = null
             scaleAnchor = null
+            scaleAnchorScreen = null
             scaleStartCursorScreen = null
             // Reset axis-locks and Transform mode; refresh the
             // status bar so the indicator clears.
@@ -510,16 +520,20 @@ class GraphMouseListener(
         private fun captureScaleStart(): Boolean {
             val sel = graphView.g.selectedNodes
             if (sel.isEmpty()) return false
-            // Anchor = the selection's bounding-box centre, so
-            // the selection grows/shrinks in place without
-            // sliding across the canvas. Factor source is still
-            // cursor distance from screen centre (a stable
-            // reference unaffected by pan/zoom).
+            // Anchor = the selection's bounding-box centre (world
+            // coords). Selection grows/shrinks in place around
+            // this pivot. Factor source = cursor distance from
+            // the anchor *projected to screen coords* — so
+            // dragging the cursor *to* the bbox centre drives
+            // the factor to 0 and collapses the selection at the
+            // anchor.
             val box = GraphTools.computeBoundingBox(sel) ?: return false
-            scaleAnchor = Vector2(
+            val anchor = Vector2(
                 (box.ul.x + box.br.x) / 2,
                 (box.ul.y + box.br.y) / 2,
             )
+            scaleAnchor = anchor
+            scaleAnchorScreen = anchor.toScreenVector()
             scaleStartPositions = sel.associateWith { it.position }
             scaleStartCursorScreen = graphView.lastScreenCursorPosition
             return true
@@ -529,6 +543,7 @@ class GraphMouseListener(
             val before = scaleStartPositions ?: return
             scaleStartPositions = null
             scaleAnchor = null
+            scaleAnchorScreen = null
             scaleStartCursorScreen = null
             val after = before.keys.associateWith { it.position }.toMutableMap()
             if (before.any { (n, p) -> after[n] != p }) {
@@ -554,19 +569,18 @@ class GraphMouseListener(
          */
         fun dragScale(screenPos: Vector2) {
             val anchor = scaleAnchor ?: return
+            val anchorScreen = scaleAnchorScreen ?: return
             val start = scaleStartPositions ?: return
             val startCursor = scaleStartCursorScreen ?: return
-            val cx = graphView.graphCanvas.width / 2.0
-            val cy = graphView.graphCanvas.height / 2.0
 
             var sx = axisFactor(
-                startDelta = startCursor.x - cx,
-                currentDelta = screenPos.x - cx,
+                startDelta = startCursor.x - anchorScreen.x,
+                currentDelta = screenPos.x - anchorScreen.x,
                 rebootstrap = { scaleStartCursorScreen = Vector2(screenPos.x, startCursor.y) },
             )
             var sy = axisFactor(
-                startDelta = startCursor.y - cy,
-                currentDelta = screenPos.y - cy,
+                startDelta = startCursor.y - anchorScreen.y,
+                currentDelta = screenPos.y - anchorScreen.y,
                 rebootstrap = { scaleStartCursorScreen = Vector2(scaleStartCursorScreen!!.x, screenPos.y) },
             )
             if (lockX) sx = 1.0
