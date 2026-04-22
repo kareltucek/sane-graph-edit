@@ -45,13 +45,13 @@ object Constants {
     val defaultFgColor = Color(0, 0, 0)
     val defaultBgColor = Color(255, 255, 255)
     /**
-     * Colour an edge fades to once its on-screen length reaches
-     * the longer canvas dimension. Edges shorter than half that
-     * dimension render in [defaultFgColor]; lengths in between
-     * interpolate linearly. Picked to stay readable without
-     * obscuring the graph it crosses.
+     * Brightness level (0..255) that a fully-faded edge renders
+     * at. Fade begins when the edge's on-screen length is half
+     * the shorter canvas dimension and reaches this brightness
+     * at the longer dimension. Picked to stay readable without
+     * obscuring the graph the edge crosses.
      */
-    val edgeFadedColor = Color(180, 180, 180)
+    val edgeFadedMaxBrightness: Int = 180
 
     val helpCommands = """
         Graph manipulation

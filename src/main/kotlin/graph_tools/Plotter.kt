@@ -169,36 +169,37 @@ object Plotter {
 
         /**
          * Colour for an edge between world-space points [src]
-         * and [dst]. Edges shorter than half the longer canvas
-         * dimension (on screen) render in the default fg colour;
-         * edges at or above the longer dimension render in
-         * [Constants.edgeFadedColor]. Lengths in between
-         * interpolate linearly.
+         * and [dst]. Edges shorter than half the *shorter* canvas
+         * dimension (on screen) render default black; edges at
+         * or above the longer dimension render at
+         * [Constants.edgeFadedMaxBrightness] gray. Linear ramp in
+         * between.
          *
          * Long edges often cut across the centre of the graph
          * and obscure everything underneath — fading them to a
          * mid-gray keeps them visible as structure while letting
          * the shorter local connections stay prominent.
+         *
+         * TODO: if another feature needs a proper perceptual
+         * colour ramp (between two arbitrary RGB endpoints), add
+         * a full lerp helper then. For now a single-channel
+         * brightness is enough and cheap — we only ever fade
+         * from black toward a uniform gray.
          */
         private fun edgePaint(src: Vector2, dst: Vector2): Color {
-            val worldLen = (dst - src).length()
-            val screenLen = worldLen * t.scaleX
-            val longerDim = maxOf(screenDimensions.x, screenDimensions.y)
-            if (longerDim <= 0) return Constants.defaultFgColor
-            val fadeStart = longerDim * 0.5
+            val worldLen = (dst - src).length().toFloat()
+            val screenLen = worldLen * t.scaleX.toFloat()
+            val w = screenDimensions.x.toFloat()
+            val h = screenDimensions.y.toFloat()
+            val shorterDim = minOf(w, h)
+            val longerDim = maxOf(w, h)
+            if (longerDim <= 0f) return Constants.defaultFgColor
+            val fadeStart = shorterDim * 0.5f
             val fadeEnd = longerDim
-            val fade = ((screenLen - fadeStart) / (fadeEnd - fadeStart)).coerceIn(0.0, 1.0)
-            if (fade <= 0.0) return Constants.defaultFgColor
-            return lerpColor(Constants.defaultFgColor, Constants.edgeFadedColor, fade)
-        }
-
-        private fun lerpColor(a: Color, b: Color, t: Double): Color {
-            val clamped = t.coerceIn(0.0, 1.0)
-            return Color(
-                (a.red + (b.red - a.red) * clamped).toInt().coerceIn(0, 255),
-                (a.green + (b.green - a.green) * clamped).toInt().coerceIn(0, 255),
-                (a.blue + (b.blue - a.blue) * clamped).toInt().coerceIn(0, 255),
-            )
+            if (screenLen <= fadeStart) return Constants.defaultFgColor
+            val fade = ((screenLen - fadeStart) / (fadeEnd - fadeStart)).coerceIn(0f, 1f)
+            val brightness = (fade * Constants.edgeFadedMaxBrightness).toInt()
+            return Color(brightness, brightness, brightness)
         }
 
         fun drawNode(g2d: Graphics2D, n: Node, selected: Boolean) {
