@@ -42,28 +42,29 @@ class ScaleTest {
     }
 
     @Test
-    fun `dragScale doubles positions around bbox centre when cursor distance doubles`() {
+    fun `dragScale doubles positions around screen centre when cursor distance doubles`() {
         val g = trianglesGraph()
         val v = viewWith(g)
-        // Start cursor at (50, 50) in screen coords → distance
-        // from screen centre (0, 0) is (50, 50).
+        // Headless canvas has width/height 0, so screen centre
+        // projects to world (0, 0). Start cursor at (50, 50)
+        // (screen), drag to (100, 100): cursor distance from
+        // screen centre doubles per axis → sx = sy = 2.
         v.lastScreenCursorPosition = Vector2(50.0, 50.0)
         v.mouseListener.controller.startOrEndScale()
-        // Move cursor to (100, 100) → distance doubles → sx=sy=2.
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
-        // Anchor is bbox centre (50, 50). Each node:
-        //   new = anchor + 2 * (orig - anchor)
-        // A (0,0):    anchor + 2*(-50,-50)  = (-50, -50)
-        // B (100,0):  anchor + 2*(50,-50)   = (150, -50)
-        // C (0,100):  anchor + 2*(-50, 50)  = (-50, 150)
-        assertEquals(-50.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(-50.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(150.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(-50.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(-50.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(150.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
+        // Anchor is world (0,0). new = anchor + 2*(orig − anchor)
+        // = 2 * orig.
+        // A (0,0)    → (0, 0)
+        // B (100,0)  → (200, 0)
+        // C (0,100)  → (0, 200)
+        assertEquals(0.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(0.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(200.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(0.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(0.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(200.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
     }
 
     @Test
@@ -72,17 +73,17 @@ class ScaleTest {
         val v = viewWith(g)
         v.lastScreenCursorPosition = Vector2(50.0, 50.0)
         v.mouseListener.controller.startOrEndScale()
-        v.mouseListener.controller.lockY = true   // `x` key: constrain to X
-        // Double X, double Y in the factor — lockY should nuke Y.
+        // `x` key: constrain to X → lockY=true, Y frozen.
+        v.mouseListener.controller.lockY = true
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
-        // X scales as before; Y pinned to original values.
-        assertEquals(-50.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
+        // X doubles around world origin; Y pinned at originals.
+        assertEquals(0.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
         assertEquals(0.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(150.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(200.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
         assertEquals(0.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(-50.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(0.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
         assertEquals(100.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
     }
 
@@ -92,17 +93,18 @@ class ScaleTest {
         val v = viewWith(g)
         v.lastScreenCursorPosition = Vector2(50.0, 50.0)
         v.mouseListener.controller.startOrEndScale()
-        v.mouseListener.controller.lockX = true   // `y` key: constrain to Y
+        // `y` key: constrain to Y → lockX=true, X frozen.
+        v.mouseListener.controller.lockX = true
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
-        // Y scales; X pinned.
+        // Y doubles around world origin; X pinned.
         assertEquals(0.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(-50.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(0.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
         assertEquals(100.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(-50.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(0.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
         assertEquals(0.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(150.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(200.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
     }
 
     @Test
@@ -114,8 +116,8 @@ class ScaleTest {
         v.lastScreenCursorPosition = Vector2(50.0, 50.0)
         v.mouseListener.controller.startOrEndScale()
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
-        // Something moved.
-        assertEquals(-50.0, g.nodes.first { it.attributes.text == "A" }.position.x, absoluteTolerance = 0.001)
+        // Something moved — B's x went from 100 to 200.
+        assertEquals(200.0, g.nodes.first { it.attributes.text == "B" }.position.x, absoluteTolerance = 0.001)
 
         // Cancel — positions revert; state clears; history untouched.
         assertTrue(v.mouseListener.controller.cancelActiveModal())
@@ -137,9 +139,39 @@ class ScaleTest {
         // Second toggle commits.
         v.mouseListener.controller.startOrEndScale()
 
-        val a = g.nodes.first { it.attributes.text == "A" }
-        assertEquals(-50.0, a.position.x, absoluteTolerance = 0.001)
+        val b = g.nodes.first { it.attributes.text == "B" }
+        assertEquals(200.0, b.position.x, absoluteTolerance = 0.001)
 
+        g.history.undo()
+        for ((node, orig) in originals) {
+            assertEquals(orig, node.position)
+        }
+    }
+
+    @Test
+    fun `scale commits on click-release via endSingleClick`() {
+        // Regression: pressing `s`, dragging, then clicking
+        // must land one MoveNodesCommand on the undo stack and
+        // flip the dirty flag. Previously endSingleClick called
+        // commitMoveIfAny only (committed grab, not scale).
+        val g = trianglesGraph()
+        val v = viewWith(g)
+        val originals = g.nodes.associateWith { it.position }
+        assertFalse(v.isDirty)
+
+        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        v.mouseListener.controller.startOrEndScale()
+        v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
+        // Drive the click path directly. endSingleClick is the
+        // mouse-release terminal — it's what ends the gesture
+        // when the user clicks mid-scale.
+        v.mouseListener.controller.commitActiveTransform()
+        v.mouseListener.controller.state = null
+
+        // Dirty flag should be set and undo should revert.
+        assertTrue(v.isDirty)
+        val b = g.nodes.first { it.attributes.text == "B" }
+        assertEquals(200.0, b.position.x, absoluteTolerance = 0.001)
         g.history.undo()
         for ((node, orig) in originals) {
             assertEquals(orig, node.position)
@@ -157,21 +189,18 @@ class ScaleTest {
         v.mouseListener.controller.startOrEndScale()
         v.mouseListener.controller.dragScale(Vector2(2.0, 2.0))
 
-        val a = g.nodes.first { it.attributes.text == "A" }
-        assertEquals(0.0, a.position.x, absoluteTolerance = 0.001)
-        assertEquals(0.0, a.position.y, absoluteTolerance = 0.001)
+        val b = g.nodes.first { it.attributes.text == "B" }
+        assertEquals(100.0, b.position.x, absoluteTolerance = 0.001)
+        assertEquals(0.0, b.position.y, absoluteTolerance = 0.001)
 
-        // Now cursor jumps outside the band → reference
-        // re-bootstraps at the crossing cursor position. After
-        // re-bootstrap, moving back to the same point gives 1.0
-        // (no movement); moving further out scales from there.
+        // Cursor jumps outside the band → reference re-bootstraps
+        // at the crossing cursor position. From (100,100) out to
+        // (200,200) is a 2x factor.
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
-        // This new state defines (100, 100) as sx=sy=1 reference.
-        // Dragging to (200, 200) doubles it.
         v.mouseListener.controller.dragScale(Vector2(200.0, 200.0))
-        // A (0,0): anchor + 2*(-50,-50) = (-50, -50)
-        assertEquals(-50.0, a.position.x, absoluteTolerance = 0.001)
-        assertEquals(-50.0, a.position.y, absoluteTolerance = 0.001)
+        // Anchor = world (0,0). B (100,0) → (200, 0).
+        assertEquals(200.0, b.position.x, absoluteTolerance = 0.001)
+        assertEquals(0.0, b.position.y, absoluteTolerance = 0.001)
     }
 
     @Test
@@ -224,32 +253,33 @@ class ScaleTest {
         mapper.feedKey("y")
         mapper.feedKey("s")
 
-        // x names the axis being locked (X), y names its axis (Y).
+        // Blender semantics: the letter names the axis that
+        // stays free.
         assertEquals(
-            listOf("toggle-axis-lock-x", "toggle-axis-lock-y", "scale"),
+            listOf("constrain-axis-x", "constrain-axis-y", "scale"),
             executed,
         )
     }
 
     @Test
-    fun `axis lock is radio-style — tapping the other axis releases the first`() {
+    fun `axis constraint is radio-style — tapping the other axis releases the first`() {
         val g = trianglesGraph()
         val v = viewWith(g)
         v.lastScreenCursorPosition = Vector2(50.0, 50.0)
         v.mouseListener.controller.startOrEndScale()
 
-        // Lock X first.
-        GraphKeyListener.impl.toggleAxisLockX(v)
-        assertTrue(v.mouseListener.controller.lockX)
-        assertFalse(v.mouseListener.controller.lockY)
-
-        // Lock Y → X should release, only Y locked.
-        GraphKeyListener.impl.toggleAxisLockY(v)
+        // Constrain to X: X free, Y locked.
+        GraphKeyListener.impl.constrainAxisX(v)
         assertFalse(v.mouseListener.controller.lockX)
         assertTrue(v.mouseListener.controller.lockY)
 
+        // Constrain to Y: Y free, X locked.
+        GraphKeyListener.impl.constrainAxisY(v)
+        assertTrue(v.mouseListener.controller.lockX)
+        assertFalse(v.mouseListener.controller.lockY)
+
         // Tap Y again → release to free 2D scale.
-        GraphKeyListener.impl.toggleAxisLockY(v)
+        GraphKeyListener.impl.constrainAxisY(v)
         assertFalse(v.mouseListener.controller.lockX)
         assertFalse(v.mouseListener.controller.lockY)
     }

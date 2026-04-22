@@ -420,27 +420,41 @@ class GraphKeyListener(
          * Bound to the `y` key in Transform mode (Blender semantic:
          * `y` constrains to the Y axis by freezing X).
          */
-        fun toggleAxisLockX(graphView: GraphView) {
+        /**
+         * "Constrain to X": press `x` to scale / move along X
+         * only. Internally that means locking Y (the other axis).
+         * Tapping `x` while already X-constrained releases the
+         * constraint; tapping `x` while Y-constrained switches
+         * (radio-style) so only one axis is locked at a time.
+         *
+         * Blender convention: the letter you press names the
+         * axis that *remains free*.
+         */
+        fun constrainAxisX(graphView: GraphView) {
             val c = graphView.mouseListener.controller
-            // Radio behaviour: tapping X when X is already the
-            // locked axis releases it; tapping X when Y is the
-            // locked axis clears Y first and locks X. Only one
-            // axis can be locked at a time.
-            val wasX = c.lockX
-            c.lockX = !wasX
-            c.lockY = false
-            // Re-render positions with the new lock applied, then
+            val alreadyConstrainedToX = c.lockY && !c.lockX
+            if (alreadyConstrainedToX) {
+                c.lockY = false   // release
+            } else {
+                c.lockY = true    // lock the *other* axis
+                c.lockX = false   // radio clear
+            }
+            // Re-render positions with the new constraint, then
             // refresh the status bar so the "(X)/(Y)" suffix
             // reflects the new state.
             reapplyActiveGesture(graphView)
             graphView.refreshStatus()
         }
 
-        fun toggleAxisLockY(graphView: GraphView) {
+        fun constrainAxisY(graphView: GraphView) {
             val c = graphView.mouseListener.controller
-            val wasY = c.lockY
-            c.lockY = !wasY
-            c.lockX = false
+            val alreadyConstrainedToY = c.lockX && !c.lockY
+            if (alreadyConstrainedToY) {
+                c.lockX = false
+            } else {
+                c.lockX = true
+                c.lockY = false
+            }
             reapplyActiveGesture(graphView)
             graphView.refreshStatus()
         }

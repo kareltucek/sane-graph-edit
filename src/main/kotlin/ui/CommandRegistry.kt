@@ -74,8 +74,8 @@ fun registerAllCommands() {
     r.register("mirror") { impl.mirror(it, horizontal = true) }  // alias for mirror-horizontal
     r.register("rotate") { impl.rotate(it) }
     r.register("scale") { impl.scale(it) }
-    r.register("toggle-axis-lock-x") { impl.toggleAxisLockX(it) }
-    r.register("toggle-axis-lock-y") { impl.toggleAxisLockY(it) }
+    r.register("constrain-axis-x") { impl.constrainAxisX(it) }
+    r.register("constrain-axis-y") { impl.constrainAxisY(it) }
 
     // Selection & navigation
     r.register("invert-selection") { impl.invertSelection(it) }

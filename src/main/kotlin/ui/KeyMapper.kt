@@ -104,14 +104,15 @@ class KeyMapper(
      * Call once after construction, before any gesture can run.
      */
     fun installDefaultTransformBindings() {
-        // Key names the axis being constrained (frozen): press
-        // `x` to keep X constant (scale/move along Y), press `y`
-        // to keep Y constant (scale/move along X). Tapping the
-        // same axis again releases the lock; tapping the other
-        // axis clears the current lock first (radio-style), so
-        // `sxy` ends with only Y locked, not both.
-        bindInTransformMode("x", "toggle-axis-lock-x")
-        bindInTransformMode("y", "toggle-axis-lock-y")
+        // Blender convention: the letter you press names the
+        // axis that *remains free*. So press `x` to scale / move
+        // along X only (Y locked); press `y` for Y only (X
+        // locked). Tapping the same axis twice releases the
+        // constraint; tapping the other axis swaps (radio-style)
+        // so only one axis is locked at a time. `sxy` ends with
+        // Y free / X locked, not with both locked.
+        bindInTransformMode("x", "constrain-axis-x")
+        bindInTransformMode("y", "constrain-axis-y")
         bindInTransformMode("s", "scale")
         bindInTransformMode("g", "grab")
         bindInTransformMode("<Esc>", "deselect")

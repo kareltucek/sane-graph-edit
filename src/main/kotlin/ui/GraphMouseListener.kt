@@ -285,6 +285,28 @@ class GraphMouseListener(
             }
 
         /**
+         * Commit whatever transform gesture is currently active
+         * as a single [MoveNodesCommand] on the undo stack, if
+         * positions actually moved. No-op if no gesture is
+         * active. Call this *before* setting `state = null` —
+         * the commit needs to read the capture snapshots that
+         * [onGestureEnded] will clear.
+         *
+         * This is the shared exit path for "finish the current
+         * gesture": the modal toggles call it, and so does
+         * [endSingleClick] so that a click-release during any
+         * transform lands in the undo history (not just grab).
+         */
+        fun commitActiveTransform() {
+            when (state) {
+                States.MovingNodes -> commitMoveIfAny()
+                States.Rotating -> commitRotateIfAny()
+                States.Scaling -> commitScaleIfAny()
+                else -> Unit
+            }
+        }
+
+        /**
          * Called automatically by the [state] setter whenever a
          * transform gesture ends (commit, cancel, click-release,
          * or any other exit). Idempotent — calling it from a
@@ -350,7 +372,7 @@ class GraphMouseListener(
         fun startOrEndMove() {
             when (state) {
                 States.MovingNodes -> {
-                    commitMoveIfAny()
+                    commitActiveTransform()
                     state = null   // setter runs onGestureEnded()
                 }
                 null -> {
@@ -388,7 +410,7 @@ class GraphMouseListener(
         fun startOrEndRotate() {
             when (state) {
                 States.Rotating -> {
-                    commitRotateIfAny()
+                    commitActiveTransform()
                     state = null   // setter runs onGestureEnded()
                 }
                 null -> {
@@ -471,7 +493,7 @@ class GraphMouseListener(
         fun startOrEndScale() {
             when (state) {
                 States.Scaling -> {
-                    commitScaleIfAny()
+                    commitActiveTransform()
                     state = null   // setter runs onGestureEnded()
                 }
                 null -> {
@@ -488,11 +510,16 @@ class GraphMouseListener(
         private fun captureScaleStart(): Boolean {
             val sel = graphView.g.selectedNodes
             if (sel.isEmpty()) return false
-            val box = GraphTools.computeBoundingBox(sel) ?: return false
-            scaleAnchor = Vector2(
-                (box.ul.x + box.br.x) / 2,
-                (box.ul.y + box.br.y) / 2,
-            )
+            // Anchor = the world-coord point under the canvas
+            // centre. Matches the factor source (cursor distance
+            // from screen centre) so that sx=sy=0 collapses the
+            // selection *at* the cursor when the cursor is in the
+            // middle of the screen. Any other anchor choice makes
+            // "cursor at centre → selection at centre" only
+            // approximately true.
+            val canvas = graphView.graphCanvas
+            val screenCentre = Vector2(canvas.width / 2.0, canvas.height / 2.0)
+            scaleAnchor = screenCentre.toWorkspaceVector()
             scaleStartPositions = sel.associateWith { it.position }
             scaleStartCursorScreen = graphView.lastScreenCursorPosition
             return true
@@ -723,7 +750,11 @@ class GraphMouseListener(
                 singleClickedTime = pressedTime
             }
 
-            commitMoveIfAny()
+            // Commit whatever gesture was active — grab, rotate,
+            // or scale. Click-release is a "confirm" action for
+            // all three, so the undo record and dirty flag land
+            // the same way as a second `s`/`g`/`r` tap.
+            commitActiveTransform()
 
             state = null
             selectionBoxFrom = null

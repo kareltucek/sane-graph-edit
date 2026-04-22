@@ -213,14 +213,13 @@ class GraphView(
             GraphMouseListener.GraphMouseController.States.Rotating -> "ROTATE"
             else -> null
         }
-        // Axis-lock suffix names the *frozen* axis (the one
-        // whose key was pressed). `lockX` = "X is locked" =
-        // "selection cannot grow along X" = press `x` showed
-        // "(X)".
+        // Axis-lock suffix names the *active* (unlocked) axis —
+        // the one the gesture is constrained to. Matches the
+        // key the user pressed: `x` → "(X)", `y` → "(Y)".
         val lockSuffix = when {
             gestureName == null -> ""
-            c.lockX -> " (X)"
-            c.lockY -> " (Y)"
+            c.lockY && !c.lockX -> " (X)"   // Y frozen → X is free
+            c.lockX && !c.lockY -> " (Y)"   // X frozen → Y is free
             else -> ""
         }
         val gesture = gestureName?.let { "-- TRANSFORM: $it$lockSuffix --" } ?: ""
