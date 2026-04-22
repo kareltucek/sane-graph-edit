@@ -11,8 +11,6 @@ import utils.Utils.orElse
 import utils.Utils.toHexString
 import utils.Vector2
 import java.awt.Color
-import java.awt.Graphics2D
-import java.awt.image.BufferedImage
 
 /**
  * Exports a [Graph] to a self-contained SVG string.
@@ -44,7 +42,7 @@ object SvgWriter {
      * exported.
      */
     fun write(graph: Graph, selection: Set<Node>? = null): String {
-        ensureCachesFresh(graph)
+        graph.ensureCachesFresh(force = true)
 
         val nodes = selection?.takeIf { it.isNotEmpty() } ?: graph.nodes
         val nodeSet = nodes.toSet()
@@ -135,22 +133,6 @@ object SvgWriter {
         sb.appendLine("""</svg>""")
 
         return sb.toString()
-    }
-
-    /**
-     * Ensure every node's cache (bounds, lines, font) and every
-     * edge's cache (srcPt, dstPt) are populated. Uses a headless
-     * 1×1 BufferedImage so this works without a visible window.
-     */
-    private fun ensureCachesFresh(graph: Graph) {
-        val img = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
-        val g2d: Graphics2D = img.createGraphics()
-        try {
-            graph.needsRecomputing(graph.nodes)
-            graph.recompute(g2d)
-        } finally {
-            g2d.dispose()
-        }
     }
 
     private fun emptySvg(): String =

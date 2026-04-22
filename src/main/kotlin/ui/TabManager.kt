@@ -99,7 +99,19 @@ class TabManager(
             }
             try {
                 val g = DotGraphLoader.loadFromFile(path.toString())
-                newTab(graph = g, path = path, persistSession = false)
+                val gv = newTab(graph = g, path = path, persistSession = false)
+                // Restore the saved pan/zoom if we had one for this
+                // file. Keying by absolute path matches how Session
+                // writes/reads them. GraphCanvas's first-paint
+                // centering translate is gated on `isIdentity`, so
+                // the restore survives that pass.
+                snap.viewTransforms[path.toAbsolutePath()]?.let { m ->
+                    if (m.size == 6) {
+                        gv.viewTransform.setTransform(
+                            m[0], m[1], m[2], m[3], m[4], m[5],
+                        )
+                    }
+                }
             } catch (t: Throwable) {
                 System.err.println("sane-graph-edit: failed to restore $path: ${t.message}")
             }
@@ -260,7 +272,17 @@ class TabManager(
     fun saveSession() {
         val files = views.mapNotNull { it.currentFile }
         val active = currentOrNull?.currentFile
-        session.save(Session.Snapshot(files = files, activeFile = active))
+        // Snapshot each file-backed view's transform as six doubles.
+        // Untitled tabs are omitted for the same reason they're
+        // omitted from `files`: no stable key to restore them by.
+        val transforms = mutableMapOf<java.nio.file.Path, List<Double>>()
+        for (gv in views) {
+            val path = gv.currentFile ?: continue
+            val m = DoubleArray(6)
+            gv.viewTransform.getMatrix(m)
+            transforms[path.toAbsolutePath()] = m.toList()
+        }
+        session.save(Session.Snapshot(files = files, activeFile = active, viewTransforms = transforms))
     }
 
     /**

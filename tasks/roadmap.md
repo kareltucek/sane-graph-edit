@@ -49,6 +49,7 @@ reflects the sequence in which things shipped.
 | `features/dotlike-extension.md` | save as .dotlike instead of .dot    |
 | `features/pin-node.md`       | always-visible node at any zoom        |
 | `features/subdivide-edges.md`| inverse of D: insert hub into edges    |
+| `features/optimize-no-drift.md` | keep component center of mass during optimize |
 
 ## Also done (not in numbered tasks)
 

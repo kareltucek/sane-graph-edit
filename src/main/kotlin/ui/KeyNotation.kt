@@ -17,9 +17,11 @@ object KeyNotation {
      * keyPressed instead).
      */
     fun fromKeyTyped(c: Char): String? = when {
-        c == ' ' -> "<Space>"
-        c == '\t' -> "<Tab>"
-        c == '\n' || c == '\r' -> "<CR>"
+        // Tab, Space, Enter all come through keyPressed via
+        // specialKeyName — letting keyTyped translate them too fires
+        // the mapping twice (noticed once focus-traversal was
+        // disabled on the canvas and Tab started reaching keyPressed).
+        c == ' ' || c == '\t' || c == '\n' || c == '\r' -> null
         c == '\u001B' -> "<Esc>"
         c.isISOControl() -> null  // Ctrl combos produce control chars; skip
         else -> c.toString()

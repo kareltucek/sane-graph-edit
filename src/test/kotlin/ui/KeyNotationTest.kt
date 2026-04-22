@@ -103,8 +103,14 @@ class KeyNotationTest {
     }
 
     @Test
-    fun `fromKeyTyped space`() {
-        assertEquals("<Space>", KeyNotation.fromKeyTyped(' '))
+    fun `fromKeyTyped special chars return null`() {
+        // Space, Tab, CR, LF are dispatched via keyPressed
+        // (specialKeyName). fromKeyTyped must drop them so the
+        // mapping doesn't fire twice per keystroke.
+        assertNull(KeyNotation.fromKeyTyped(' '))
+        assertNull(KeyNotation.fromKeyTyped('\t'))
+        assertNull(KeyNotation.fromKeyTyped('\n'))
+        assertNull(KeyNotation.fromKeyTyped('\r'))
     }
 
     @Test

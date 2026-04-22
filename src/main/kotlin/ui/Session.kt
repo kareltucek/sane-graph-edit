@@ -29,10 +29,18 @@ class Session(private val file: Path) {
      *    right in the tab bar.
      *  - [activeFile] is whichever one was focused. Null means
      *    "no preference" — the loader will default to tab 0.
+     *  - [viewTransforms] maps each restored file's absolute path
+     *    to its per-tab affine transform (pan + zoom), stored as
+     *    the 6-element matrix produced by
+     *    [java.awt.geom.AffineTransform.getMatrix]:
+     *    `[m00, m10, m01, m11, m02, m12]`. Paths that aren't in
+     *    this map restore to identity and get the first-paint
+     *    centering translate as before.
      */
     data class Snapshot(
         val files: List<Path>,
         val activeFile: Path?,
+        val viewTransforms: Map<Path, List<Double>> = emptyMap(),
     )
 
     /**
@@ -57,7 +65,20 @@ class Session(private val file: Path) {
         }
         val activeStr = props.getProperty("activeFile")
         val active = activeStr?.takeIf { it.isNotBlank() }?.let(Paths::get)
-        return Snapshot(files, active)
+        val transforms = mutableMapOf<Path, List<Double>>()
+        for (name in props.stringPropertyNames()) {
+            if (!name.startsWith(VIEW_TRANSFORM_PREFIX)) continue
+            val pathStr = name.removePrefix(VIEW_TRANSFORM_PREFIX)
+            if (pathStr.isBlank()) continue
+            val parsed = props.getProperty(name)
+                ?.split(",")
+                ?.mapNotNull { it.trim().toDoubleOrNull() }
+                ?: continue
+            if (parsed.size == 6) {
+                transforms[Paths.get(pathStr)] = parsed
+            }
+        }
+        return Snapshot(files, active, transforms)
     }
 
     /**
@@ -76,6 +97,13 @@ class Session(private val file: Path) {
             snapshot.activeFile?.let {
                 props.setProperty("activeFile", it.toAbsolutePath().toString())
             }
+            snapshot.viewTransforms.forEach { (path, matrix) ->
+                if (matrix.size != 6) return@forEach
+                props.setProperty(
+                    VIEW_TRANSFORM_PREFIX + path.toAbsolutePath().toString(),
+                    matrix.joinToString(","),
+                )
+            }
             Files.newOutputStream(file).use {
                 props.store(it, "sane-graph-edit session")
             }
@@ -85,6 +113,7 @@ class Session(private val file: Path) {
     }
 
     companion object {
+        private const val VIEW_TRANSFORM_PREFIX = "viewTransform."
         val EMPTY: Snapshot = Snapshot(files = emptyList(), activeFile = null)
 
         /** Production singleton pointed at `$XDG_CONFIG_HOME/sane-graph-edit/session.properties`. */

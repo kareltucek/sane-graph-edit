@@ -360,24 +360,26 @@ object LayoutOptimizer {
                 }
 
                 SpringTarget.MoveSelectedOnly -> {
-                    // Include every edge incident to the selection,
-                    // including cross-boundary edges. Each triple
-                    // `(a, b, e)` produces a spring for `b` (the
-                    // "moving" end — second slot), so we emit one
-                    // triple per selected endpoint:
+                    // Each triple `(a, b, e)` produces a spring for
+                    // `b` (the "moving" end — second slot). We emit:
                     //   • edge fully inside the selection → both
                     //     endpoints get springs.
-                    //   • edge crossing the boundary → only the
-                    //     selected endpoint gets a spring; the
-                    //     unselected end stays anchored but still
-                    //     exerts a pull on its selected neighbour.
+                    //   • incoming cross-boundary edge
+                    //     (src ∉ sel, dst ∈ sel) → only the selected
+                    //     dst gets a spring; the unselected src
+                    //     stays anchored but still pulls dst.
+                    //   • outgoing cross-boundary edge
+                    //     (src ∈ sel, dst ∉ sel) → no spring. The
+                    //     selected src should not be dragged toward
+                    //     an anchored unselected child when the user
+                    //     is optimising just the subgraph.
                     val sel = g.selectedNodes
                     g.edges
-                        .filter { it.src in sel || it.dst in sel }
+                        .filter { it.dst in sel }
                         .flatMap { e ->
                             listOfNotNull(
                                 Triple(e.dst, e.src, e).takeIf { e.src in sel },
-                                Triple(e.src, e.dst, e).takeIf { e.dst in sel },
+                                Triple(e.src, e.dst, e),
                             )
                         }
                 }

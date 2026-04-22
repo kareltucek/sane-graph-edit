@@ -4,6 +4,7 @@ import parser_dot.ParseLog
 import utils.Constants
 import utils.Vector2
 import java.awt.Graphics2D
+import java.awt.image.BufferedImage
 
 
 /**
@@ -178,6 +179,31 @@ class Graph(
         Plotter.recomputeNodes(g2d, nodes)
         Plotter.recomputeEdges(edges)
         needsRecomputing.clear()
+    }
+
+    /**
+     * Flush pending cache recomputations using an offscreen
+     * Graphics2D. Interactive rendering does this every paint frame
+     * via [recompute]; code paths that run without a window
+     * (headless CLI, SVG export, tests) must call this themselves —
+     * otherwise [Node.cache.shapeBounds] and edge endpoint caches
+     * stay at their defaults and the layout optimiser ends up
+     * treating nodes as dimensionless points.
+     *
+     * No-op when the dirty set is empty, so it's cheap to call
+     * defensively. Pass `force = true` to recompute every node
+     * regardless of dirty state.
+     */
+    fun ensureCachesFresh(force: Boolean = false) {
+        if (force) needsRecomputing(nodesRestricted)
+        if (needsRecomputing.isEmpty()) return
+        val img = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+        val g2d = img.createGraphics()
+        try {
+            recompute(g2d)
+        } finally {
+            g2d.dispose()
+        }
     }
 
     fun findEddges(from: Set<Node>, to: Set<Node>): List<Edge> {

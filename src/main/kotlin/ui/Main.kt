@@ -149,11 +149,20 @@ fun runHeadless(file: String?, execs: List<String>): Int {
     view.keyMapper = mapper
     mapper.activeView = view
 
+    // Interactive mode flushes node/edge cache recomputation every
+    // paint frame (GraphCanvas.doDrawing → Graph.recompute). In
+    // headless there's no paint loop, so we must flush manually —
+    // otherwise commands that read shapeBounds (notably the layout
+    // optimiser) see zero-sized nodes and produce a different
+    // layout than an interactive run would.
+    view.g.ensureCachesFresh()
+
     // Feed each -e argument through the mapper.
     for (exec in execs) {
         val tokens = KeyNotation.tokenize(exec)
         for (tok in tokens) {
             mapper.feedKey(tok)
+            view.g.ensureCachesFresh()
         }
         // Reset pending state between -e args — each -e should
         // start with a clean slate.

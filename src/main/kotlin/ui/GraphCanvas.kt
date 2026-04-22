@@ -15,6 +15,11 @@ class GraphCanvas(
 
     init {
         this.isFocusable = true
+        // Swing's default Tab / Shift-Tab focus traversal keys eat
+        // the events before KeyListener sees them — so `:map <Tab>
+        // …` never fires. We don't use focus traversal on the
+        // canvas (single focus target), so turn it off.
+        this.focusTraversalKeysEnabled = false
         // prevents artifact caused by overlay windows, such as oneko
         this.isDoubleBuffered = true
         this.requestFocus()
@@ -32,7 +37,13 @@ class GraphCanvas(
         if (!initialized && this.width != 0 && this.height != 0) {
             initialized = true
             println("width ${this.width} ${this.height}")
-            Plotter.t.translate(this.width.toDouble() / 2, this.height.toDouble() / 2)
+            // Only center on first paint when the transform is still
+            // at identity — i.e. a fresh tab. If Session restored a
+            // saved pan/zoom for this tab, `Plotter.t` is already
+            // non-identity and we must not clobber it.
+            if (Plotter.t.isIdentity) {
+                Plotter.t.translate(this.width.toDouble() / 2, this.height.toDouble() / 2)
+            }
             this.requestFocus()
         }
 

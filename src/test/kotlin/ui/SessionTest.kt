@@ -69,6 +69,55 @@ class SessionTest {
     }
 
     @Test
+    fun `round-trip with view transforms`() {
+        val (session, _) = tempSession()
+        val a = Paths.get("/tmp/graphs/a.dot")
+        val b = Paths.get("/tmp/graphs/b.dot")
+        // Representative matrices: `a` is a 1.5x zoom with a pan;
+        // `b` is identity (still saved so restore is explicit).
+        val tA = listOf(1.5, 0.0, 0.0, 1.5, 120.0, -40.0)
+        val tB = listOf(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+        session.save(
+            Session.Snapshot(
+                files = listOf(a, b),
+                activeFile = a,
+                viewTransforms = mapOf(a to tA, b to tB),
+            ),
+        )
+        val loaded = session.load()
+
+        assertEquals(tA, loaded.viewTransforms[a.toAbsolutePath()])
+        assertEquals(tB, loaded.viewTransforms[b.toAbsolutePath()])
+    }
+
+    @Test
+    fun `load drops malformed transform entries`() {
+        val (session, dir) = tempSession()
+        val a = Paths.get("/tmp/graphs/a.dot")
+        // Write a valid snapshot first, then hand-edit the
+        // transform to something that won't parse.
+        session.save(
+            Session.Snapshot(
+                files = listOf(a),
+                activeFile = a,
+                viewTransforms = mapOf(a to listOf(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)),
+            ),
+        )
+        val file = dir.resolve("session.properties")
+        val munged = Files.readString(file).replace(
+            "1.0,0.0,0.0,1.0,0.0,0.0",
+            "not,a,matrix",
+        )
+        Files.writeString(file, munged)
+
+        val loaded = session.load()
+        // Files list survives; the bad transform is simply absent.
+        assertEquals(listOf(a.toAbsolutePath()), loaded.files)
+        assertTrue(loaded.viewTransforms.isEmpty())
+    }
+
+    @Test
     fun `load tolerates a corrupted file and returns empty`() {
         val (session, dir) = tempSession()
         val file = dir.resolve("session.properties")
