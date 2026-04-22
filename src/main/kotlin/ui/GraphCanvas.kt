@@ -62,6 +62,10 @@ class GraphCanvas(
 
             g2d.drawRect(1, 1, this.width - 2, this.height - 2)
 
+            // Push the current canvas dimensions so the edge-fade
+            // logic in Plotter.drawEdge can compare edge length
+            // against the window size for each paint frame.
+            Plotter.screenDimensions = Vector2(this.width.toDouble(), this.height.toDouble())
             Plotter.setTransforms(g2d, optimizeLevel)
 
             withPerformanceCheck("Recomputation", 5.0, onIssue = { parent.g.printStats()}) {

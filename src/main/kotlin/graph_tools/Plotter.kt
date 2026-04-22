@@ -41,6 +41,14 @@ object Plotter {
     var renderOvals: Boolean = true
     var thinStroke: BasicStroke = BasicStroke(1.0f)
     var thickStroke: BasicStroke = BasicStroke(2.0f)
+    /**
+     * Canvas dimensions (width, height) in screen pixels. Set
+     * once per paint frame by [ui.GraphCanvas] before [drawGraph]
+     * runs. Used by [TextPlotter.drawEdge] to fade long edges
+     * that cut across the canvas so they don't obscure the
+     * graph underneath.
+     */
+    var screenDimensions: Vector2 = Vector2(800.0, 600.0)
 
     fun fontScale(n: Node): Double = pow(Constants.fontSizeZoomCoef, n.attributes.nodeScale.orElse(0.0))
     fun workspaceFontSize(n: Node): Double = (fontScale(n) * defaultFontSize)
@@ -137,7 +145,7 @@ object Plotter {
             val src = e.cache.srcPt
             val dst = e.cache.dstPt
 
-            g2d.paint = Constants.defaultFgColor
+            g2d.paint = edgePaint(src, dst)
 
             g2d.drawLine(src.x.toInt(), src.y.toInt(), dst.x.toInt(), dst.y.toInt())
             if (renderOvals) {
@@ -157,6 +165,40 @@ object Plotter {
                     r * 2,
                 )
             }
+        }
+
+        /**
+         * Colour for an edge between world-space points [src]
+         * and [dst]. Edges shorter than half the longer canvas
+         * dimension (on screen) render in the default fg colour;
+         * edges at or above the longer dimension render in
+         * [Constants.edgeFadedColor]. Lengths in between
+         * interpolate linearly.
+         *
+         * Long edges often cut across the centre of the graph
+         * and obscure everything underneath — fading them to a
+         * mid-gray keeps them visible as structure while letting
+         * the shorter local connections stay prominent.
+         */
+        private fun edgePaint(src: Vector2, dst: Vector2): Color {
+            val worldLen = (dst - src).length()
+            val screenLen = worldLen * t.scaleX
+            val longerDim = maxOf(screenDimensions.x, screenDimensions.y)
+            if (longerDim <= 0) return Constants.defaultFgColor
+            val fadeStart = longerDim * 0.5
+            val fadeEnd = longerDim
+            val fade = ((screenLen - fadeStart) / (fadeEnd - fadeStart)).coerceIn(0.0, 1.0)
+            if (fade <= 0.0) return Constants.defaultFgColor
+            return lerpColor(Constants.defaultFgColor, Constants.edgeFadedColor, fade)
+        }
+
+        private fun lerpColor(a: Color, b: Color, t: Double): Color {
+            val clamped = t.coerceIn(0.0, 1.0)
+            return Color(
+                (a.red + (b.red - a.red) * clamped).toInt().coerceIn(0, 255),
+                (a.green + (b.green - a.green) * clamped).toInt().coerceIn(0, 255),
+                (a.blue + (b.blue - a.blue) * clamped).toInt().coerceIn(0, 255),
+            )
         }
 
         fun drawNode(g2d: Graphics2D, n: Node, selected: Boolean) {
