@@ -177,7 +177,7 @@ class GraphMouseListener(
 
     class GraphMouseController(
         val graphView: GraphView,
-        var state: States? = null,
+        initialState: States? = null,
         var pressedAt: Vector2 = Vector2.Zero,
         var pressedTime: Instant? = Instant.now(),
         var lastPosition: Vector2 = Vector2.Zero,
@@ -251,7 +251,62 @@ class GraphMouseListener(
         var lockX: Boolean = false,
         var lockY: Boolean = false,
     )  {
-        enum class States { PanningWorkspace, MovingNodes, SelectionBox, Rotating, Scaling }
+        enum class States {
+            PanningWorkspace, MovingNodes, SelectionBox, Rotating, Scaling;
+
+            /**
+             * True for the three modal "transform" gestures —
+             * grab / rotate / scale. These are the ones that
+             * flip [KeyMapper] into Transform mode and accept
+             * `x` / `y` axis-lock bindings. Pan and
+             * selection-box don't.
+             */
+            val isTransformGesture: Boolean
+                get() = this == MovingNodes || this == Rotating || this == Scaling
+        }
+
+        /**
+         * Current mouse/gesture state. Setting this to `null`
+         * from a transform gesture ([States.isTransformGesture])
+         * runs [onGestureEnded] — a single cleanup hook that
+         * flips [KeyMapper] back to Normal, clears axis-locks
+         * and leftover gesture captures, and refreshes the
+         * status bar. Any code path that ends a gesture just
+         * needs to null `state` out; it doesn't have to know
+         * about Transform mode or what else needs resetting.
+         */
+        var state: States? = initialState
+            set(value) {
+                val prev = field
+                field = value
+                if (prev != null && prev.isTransformGesture && value == null) {
+                    onGestureEnded()
+                }
+            }
+
+        /**
+         * Called automatically by the [state] setter whenever a
+         * transform gesture ends (commit, cancel, click-release,
+         * or any other exit). Idempotent — calling it from a
+         * non-gesture state is a no-op.
+         */
+        private fun onGestureEnded() {
+            // Drop any leftover capture snapshots / anchors in
+            // case an exit path forgot to clear them.
+            moveStartPositions = null
+            moveAnchor = null
+            rotateStartPositions = null
+            rotateCenter = null
+            scaleStartPositions = null
+            scaleAnchor = null
+            scaleStartCursorScreen = null
+            // Reset axis-locks and Transform mode; refresh the
+            // status bar so the indicator clears.
+            lockX = false
+            lockY = false
+            graphView.keyMapper?.mode = KeyMapper.Mode.Normal
+            graphView.refreshStatus()
+        }
 
 
         fun startToggleMultiselectState(mouseoverNodes: MutableSet<Node>) {
@@ -296,22 +351,19 @@ class GraphMouseListener(
             when (state) {
                 States.MovingNodes -> {
                     commitMoveIfAny()
-                    state = null
-                    exitTransformMode()
+                    state = null   // setter runs onGestureEnded()
                 }
                 null -> {
-                    state = States.MovingNodes
                     captureMoveStart()
                     // Anchor the drag at the cursor's current
                     // position so [dragMoveNode]'s from-start
-                    // recomputation has a stable origin. Only the
-                    // modal path sets this — mouse-driven grabs
-                    // leave it null and fall back to the old
-                    // per-frame delta path in [dragMoveNode]
-                    // (axis-lock toggling isn't a use case
-                    // during a click-drag anyway).
+                    // recomputation has a stable origin. Only
+                    // the modal path sets this — mouse-driven
+                    // grabs leave it null and fall back to the
+                    // per-frame delta path in [dragMoveNode].
                     moveAnchor = graphView.lastCursorPosition
                     enterTransformMode()
+                    state = States.MovingNodes
                 }
                 else -> {
                     // Another modal gesture (rotate / scale) is
@@ -337,13 +389,12 @@ class GraphMouseListener(
             when (state) {
                 States.Rotating -> {
                     commitRotateIfAny()
-                    state = null
-                    exitTransformMode()
+                    state = null   // setter runs onGestureEnded()
                 }
                 null -> {
                     if (!captureRotateStart()) return
-                    state = States.Rotating
                     enterTransformMode()
+                    state = States.Rotating
                 }
                 else -> {
                     // Another modal gesture is active; ignore.
@@ -421,13 +472,12 @@ class GraphMouseListener(
             when (state) {
                 States.Scaling -> {
                     commitScaleIfAny()
-                    state = null
-                    exitTransformMode()
+                    state = null   // setter runs onGestureEnded()
                 }
                 null -> {
                     if (!captureScaleStart()) return
-                    state = States.Scaling
                     enterTransformMode()
+                    state = States.Scaling
                 }
                 else -> {
                     // Another modal gesture is active; ignore.
@@ -537,11 +587,9 @@ class GraphMouseListener(
             graphView.keyMapper?.mode = KeyMapper.Mode.Transform
         }
 
-        private fun exitTransformMode() {
-            lockX = false
-            lockY = false
-            graphView.keyMapper?.mode = KeyMapper.Mode.Normal
-        }
+        // exitTransformMode inlined into onGestureEnded so there's
+        // a single exit hook — any path that sets `state = null`
+        // out of a transform gesture triggers it via the setter.
 
         /**
          * Revert any in-flight modal mutation (grab or rotate)
@@ -553,44 +601,23 @@ class GraphMouseListener(
          * and a second Escape clears the selection as usual.
          */
         fun cancelActiveModal(): Boolean {
-            if (state == States.MovingNodes) {
-                moveStartPositions?.forEach { (n, p) ->
-                    n.position = p
-                    graphView.g.needsRecomputing(n)
-                }
-                moveStartPositions = null
-                moveAnchor = null
-                state = null
-                exitTransformMode()
-                graphView.repaint()
-                return true
+            val captured = when (state) {
+                States.MovingNodes -> moveStartPositions
+                States.Rotating -> rotateStartPositions
+                States.Scaling -> scaleStartPositions
+                else -> return false
             }
-            if (state == States.Rotating) {
-                rotateStartPositions?.forEach { (n, p) ->
-                    n.position = p
-                    graphView.g.needsRecomputing(n)
-                }
-                rotateStartPositions = null
-                rotateCenter = null
-                state = null
-                exitTransformMode()
-                graphView.repaint()
-                return true
+            // Revert positions to what the gesture captured. The
+            // state setter runs onGestureEnded() which clears the
+            // capture fields, axis-locks, and Transform mode —
+            // no extra bookkeeping here.
+            captured?.forEach { (n, p) ->
+                n.position = p
+                graphView.g.needsRecomputing(n)
             }
-            if (state == States.Scaling) {
-                scaleStartPositions?.forEach { (n, p) ->
-                    n.position = p
-                    graphView.g.needsRecomputing(n)
-                }
-                scaleStartPositions = null
-                scaleAnchor = null
-                scaleStartCursorScreen = null
-                state = null
-                exitTransformMode()
-                graphView.repaint()
-                return true
-            }
-            return false
+            state = null
+            graphView.repaint()
+            return true
         }
         fun startMove() {
             state = States.MovingNodes

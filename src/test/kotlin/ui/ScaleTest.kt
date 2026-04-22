@@ -305,6 +305,38 @@ class ScaleTest {
     }
 
     @Test
+    fun `any exit from a transform gesture restores Normal mode via the state setter`() {
+        // Regression: clicking during modal grab used to drop the
+        // state but leave KeyMapper.mode stuck at Transform. The
+        // state setter now runs a shared onGestureEnded() hook
+        // whenever a transform gesture transitions to null, so any
+        // exit path (commit, cancel, click-release, anything
+        // future) gets the cleanup for free.
+        val g = trianglesGraph()
+        val v = viewWith(g)
+        val mapper = KeyMapper(KeyMapper.defaultBindings()).also {
+            it.installDefaultTransformBindings()
+        }
+        v.keyMapper = mapper
+        val c = v.mouseListener.controller
+
+        // Modal grab → Transform.
+        v.lastCursorPosition = Vector2(0.0, 0.0)
+        c.lastPosition = Vector2(0.0, 0.0)
+        c.startOrEndMove()
+        assertEquals(KeyMapper.Mode.Transform, mapper.mode)
+        c.lockX = true
+
+        // Simulate a mouse-click exit — drop state the way
+        // endSingleClick does, without going through
+        // startOrEndMove.
+        c.state = null
+        assertEquals(KeyMapper.Mode.Normal, mapper.mode)
+        assertFalse(c.lockX)
+        assertFalse(c.lockY)
+    }
+
+    @Test
     fun `entering scale flips KeyMapper to Transform mode, exiting restores Normal`() {
         val g = trianglesGraph()
         val v = viewWith(g)
