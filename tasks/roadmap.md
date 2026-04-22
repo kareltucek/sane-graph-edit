@@ -50,6 +50,7 @@ reflects the sequence in which things shipped.
 | `features/pin-node.md`       | always-visible node at any zoom        |
 | `features/subdivide-edges.md`| inverse of D: insert hub into edges    |
 | `features/optimize-no-drift.md` | keep component center of mass during optimize |
+| `features/scale-command.md`  | cursor-driven `s` scale + `x`/`y` axis lock |
 
 ## Also done (not in numbered tasks)
 
