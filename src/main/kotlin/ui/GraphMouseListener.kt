@@ -510,16 +510,16 @@ class GraphMouseListener(
         private fun captureScaleStart(): Boolean {
             val sel = graphView.g.selectedNodes
             if (sel.isEmpty()) return false
-            // Anchor = the world-coord point under the canvas
-            // centre. Matches the factor source (cursor distance
-            // from screen centre) so that sx=sy=0 collapses the
-            // selection *at* the cursor when the cursor is in the
-            // middle of the screen. Any other anchor choice makes
-            // "cursor at centre → selection at centre" only
-            // approximately true.
-            val canvas = graphView.graphCanvas
-            val screenCentre = Vector2(canvas.width / 2.0, canvas.height / 2.0)
-            scaleAnchor = screenCentre.toWorkspaceVector()
+            // Anchor = the selection's bounding-box centre, so
+            // the selection grows/shrinks in place without
+            // sliding across the canvas. Factor source is still
+            // cursor distance from screen centre (a stable
+            // reference unaffected by pan/zoom).
+            val box = GraphTools.computeBoundingBox(sel) ?: return false
+            scaleAnchor = Vector2(
+                (box.ul.x + box.br.x) / 2,
+                (box.ul.y + box.br.y) / 2,
+            )
             scaleStartPositions = sel.associateWith { it.position }
             scaleStartCursorScreen = graphView.lastScreenCursorPosition
             return true

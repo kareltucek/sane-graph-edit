@@ -42,7 +42,7 @@ class ScaleTest {
     }
 
     @Test
-    fun `dragScale doubles positions around screen centre when cursor distance doubles`() {
+    fun `dragScale doubles positions around bbox centre when cursor distance doubles`() {
         val g = trianglesGraph()
         val v = viewWith(g)
         // Headless canvas has width/height 0, so screen centre
@@ -54,17 +54,17 @@ class ScaleTest {
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
-        // Anchor is world (0,0). new = anchor + 2*(orig − anchor)
-        // = 2 * orig.
-        // A (0,0)    → (0, 0)
-        // B (100,0)  → (200, 0)
-        // C (0,100)  → (0, 200)
-        assertEquals(0.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(0.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(200.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(0.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(0.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(200.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
+        // Anchor is bbox centre (50, 50).
+        // new = anchor + 2 * (orig - anchor).
+        // A (0,0)   → (50 + 2*(-50),  50 + 2*(-50))  = (-50, -50)
+        // B (100,0) → (50 + 2*(50),   50 + 2*(-50))  = (150, -50)
+        // C (0,100) → (50 + 2*(-50),  50 + 2*(50))   = (-50, 150)
+        assertEquals(-50.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(-50.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(150.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(-50.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(-50.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(150.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
     }
 
     @Test
@@ -78,12 +78,12 @@ class ScaleTest {
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
-        // X doubles around world origin; Y pinned at originals.
-        assertEquals(0.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
+        // X doubles around bbox centre; Y pinned at originals.
+        assertEquals(-50.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
         assertEquals(0.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(200.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(150.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
         assertEquals(0.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
-        assertEquals(0.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
+        assertEquals(-50.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
         assertEquals(100.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
     }
 
@@ -98,13 +98,13 @@ class ScaleTest {
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
 
         val byName = g.nodes.associateBy { it.attributes.text }
-        // Y doubles around world origin; X pinned.
+        // Y doubles around bbox centre; X pinned.
         assertEquals(0.0, byName["A"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(0.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(-50.0, byName["A"]!!.position.y, absoluteTolerance = 0.001)
         assertEquals(100.0, byName["B"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(0.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(-50.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
         assertEquals(0.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
-        assertEquals(200.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
+        assertEquals(150.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
     }
 
     @Test
@@ -116,8 +116,8 @@ class ScaleTest {
         v.lastScreenCursorPosition = Vector2(50.0, 50.0)
         v.mouseListener.controller.startOrEndScale()
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
-        // Something moved — B's x went from 100 to 200.
-        assertEquals(200.0, g.nodes.first { it.attributes.text == "B" }.position.x, absoluteTolerance = 0.001)
+        // Something moved — B's x went from 100 to 150.
+        assertEquals(150.0, g.nodes.first { it.attributes.text == "B" }.position.x, absoluteTolerance = 0.001)
 
         // Cancel — positions revert; state clears; history untouched.
         assertTrue(v.mouseListener.controller.cancelActiveModal())
@@ -140,7 +140,7 @@ class ScaleTest {
         v.mouseListener.controller.startOrEndScale()
 
         val b = g.nodes.first { it.attributes.text == "B" }
-        assertEquals(200.0, b.position.x, absoluteTolerance = 0.001)
+        assertEquals(150.0, b.position.x, absoluteTolerance = 0.001)
 
         g.history.undo()
         for ((node, orig) in originals) {
@@ -171,7 +171,7 @@ class ScaleTest {
         // Dirty flag should be set and undo should revert.
         assertTrue(v.isDirty)
         val b = g.nodes.first { it.attributes.text == "B" }
-        assertEquals(200.0, b.position.x, absoluteTolerance = 0.001)
+        assertEquals(150.0, b.position.x, absoluteTolerance = 0.001)
         g.history.undo()
         for ((node, orig) in originals) {
             assertEquals(orig, node.position)
@@ -198,9 +198,9 @@ class ScaleTest {
         // (200,200) is a 2x factor.
         v.mouseListener.controller.dragScale(Vector2(100.0, 100.0))
         v.mouseListener.controller.dragScale(Vector2(200.0, 200.0))
-        // Anchor = world (0,0). B (100,0) → (200, 0).
-        assertEquals(200.0, b.position.x, absoluteTolerance = 0.001)
-        assertEquals(0.0, b.position.y, absoluteTolerance = 0.001)
+        // Anchor = bbox centre (50, 50). B (100,0) → (50+2*50, 50+2*(-50)) = (150, -50).
+        assertEquals(150.0, b.position.x, absoluteTolerance = 0.001)
+        assertEquals(-50.0, b.position.y, absoluteTolerance = 0.001)
     }
 
     @Test
