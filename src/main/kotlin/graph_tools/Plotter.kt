@@ -169,11 +169,11 @@ object Plotter {
 
         /**
          * Colour for an edge between world-space points [src]
-         * and [dst]. Edges shorter than half the *shorter* canvas
-         * dimension (on screen) render default black; edges at
-         * or above the longer dimension render at
-         * [Constants.edgeFadedMaxBrightness] gray. Linear ramp in
-         * between.
+         * and [dst]. Edges shorter than a quarter of the shorter
+         * canvas dimension (on screen) render default black;
+         * edges at or above the longer dimension render at
+         * [Constants.edgeFadedMaxBrightness] gray. Linear ramp
+         * in between.
          *
          * Long edges often cut across the centre of the graph
          * and obscure everything underneath — fading them to a
@@ -194,7 +194,7 @@ object Plotter {
             val shorterDim = minOf(w, h)
             val longerDim = maxOf(w, h)
             if (longerDim <= 0f) return Constants.defaultFgColor
-            val fadeStart = shorterDim * 0.5f
+            val fadeStart = shorterDim * 0.25f
             val fadeEnd = longerDim
             if (screenLen <= fadeStart) return Constants.defaultFgColor
             val fade = ((screenLen - fadeStart) / (fadeEnd - fadeStart)).coerceIn(0f, 1f)
