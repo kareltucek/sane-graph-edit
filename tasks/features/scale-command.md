@@ -3,27 +3,33 @@
 > **Status: spec / backlog**
 
 Add a third cursor-driven transform to join `grab` (move) and
-`rotate`: **scale**. Cursor movement away from the selection's
-bbox centre grows the selection; movement inward shrinks it.
-Tap `x` / `y` while in the gesture to constrain to one axis.
+`rotate`: **scale**. Cursor position drives the scale factor; the
+selection scales around its bbox centre. Tap `x` / `y` while in
+the gesture to constrain to one axis. Same gesture shape applies
+to grab and rotate — the new "Transform" mode hosts all three.
 
 The shape is deliberately Blender-like (`g`/`r`/`s`, with `x`/`y`
 axis locks), since that's the muscle memory target.
 
 ## User-visible behaviour
 
-Assume `s` is bound to scale (actual key TBD; see open questions).
+`s` is the default binding for scale.
 
 - `s` — enter scale mode. Cursor movement scales the selection
   around its bbox centre. Second `s` commits as one undoable
   step. `<Esc>` cancels and reverts positions.
-- `sx` — enter scale mode, then immediately lock to the X axis:
-  only horizontal scale changes, Y stays 1.0. Tap `x` again to
-  release the lock and return to free 2D scale.
+- `sx` — enter scale mode, then lock to the X axis: only
+  horizontal scale changes, Y stays 1.0. Tap `x` again to release
+  the lock and return to free 2D scale. Blender semantics: `x`
+  locks *Y*.
 - `sy` — same but vertical. `sy` squashes / stretches the
   subgraph vertically.
-- `x` / `y` work *while in scale mode*. Outside scale mode they
-  retain their normal bindings (nothing by default).
+- `x` / `y` work *while a transform gesture is live* (scale,
+  grab, or rotate — see "Cross-mode reuse" below). Outside those
+  gestures they retain their normal bindings.
+
+The mode is advertised in a new status-bar line at the bottom of
+the canvas (see "Status bar").
 
 ## Architecture
 
@@ -36,150 +42,187 @@ and rotate already live:
   `Rotating`, etc. (GraphMouseListener.kt:202).
 - New method `startOrEndScale()` modelled on
   `startOrEndRotate()`. First call → `captureScaleStart()`
-  snapshots positions into `scaleStartPositions` and records
-  the initial cursor-to-centre vector. Second call → commits a
+  snapshots positions into `scaleStartPositions`, records the
+  bbox centre in world coordinates (the scale anchor), and
+  records the start cursor position in *screen* coordinates
+  (the factor reference — see below). Second call → commits a
   `MoveNodesCommand(g, before, after)` via
   `history.commitWithoutRun(...)` (same pattern as rotate,
   GraphMouseController.kt:302–305).
-- `dragScale(pos)` is called from `mouseMoved` / `mouseDragged`
-  (same hook points as `dragRotate`, GraphMouseListener.kt
-  mouseMoved branch). It recomputes every node's position from
-  the captured starting positions each frame — no accumulated
-  drift.
+- `dragScale(screenPos)` is called from `mouseMoved` /
+  `mouseDragged` (same hook points as `dragRotate`,
+  GraphMouseListener.kt mouseMoved branch). It recomputes every
+  node's position from the captured starting positions each
+  frame — no accumulated drift.
 - `cancelActiveModal()` grows a new branch for `Scaling` that
   restores `scaleStartPositions`. `<Esc>` already routes through
   here via `impl.unselectAll` (GraphKeyListener.kt:324).
-- Bound key (say `s`) invokes
-  `mouseListener.controller.startOrEndScale()` through
-  `CommandRegistry`, same wiring as grab
+- `s` invokes `mouseListener.controller.startOrEndScale()`
+  through `CommandRegistry`, same wiring as grab
   (GraphKeyListener.kt:111).
 
-### Reference point and scale factor
+### Scale anchor and scale factor
 
-Bbox centre of the current selection, captured once on entry
-(matches rotate / mirror, GraphTools.computeBoundingBox).
+**Anchor (where the selection scales from):** bbox centre of the
+selection in world coordinates, captured on entry. Selection
+grows or shrinks in place — it doesn't slide across the canvas.
 
-Scale factor per axis from the cursor:
+**Factor (how much to scale):** cursor distance from *screen
+centre*, per axis, compared against the cursor's distance at
+gesture start.
 
-- `dx0, dy0 = cursorStart - centre`
-- `dx, dy  = cursorNow  - centre`
-- `sx = dx / dx0` (if not axis-locked and |dx0| above epsilon)
-- `sy = dy / dy0` (same)
-- `n.position = centre + ((startPos − centre) scaled by (sx, sy))`
+```
+cx, cy = screen centre (canvas.width / 2, canvas.height / 2)
+dx0 = cursorStartScreen.x - cx
+dy0 = cursorStartScreen.y - cy
+dx  = cursorNowScreen.x   - cx
+dy  = cursorNowScreen.y   - cy
 
-This is the Blender convention. Distance ratio to bbox centre,
-not absolute cursor delta, so the gesture "feels" scale-invariant
-across zoom levels.
+sx = dx / dx0   (if not axis-locked)
+sy = dy / dy0   (if not axis-locked)
 
-Degenerate case: `|dx0|` or `|dy0|` near zero (cursor sits on the
-centre line when the gesture begins). Two options — pick one:
+n.position = anchor + ((startPos − anchor) scaled by (sx, sy))
+```
 
-1. Fall back to pixel-linear mapping on that axis (e.g.
-   `sx = 1 + (dx − dx0) / K` for some constant K).
-2. Refuse to activate until the cursor is at least N pixels from
-   the centre, otherwise nothing happens and the mode stays
-   armed.
+Using screen centre (rather than the bbox centre or the start
+cursor position) gives a stable, pan/zoom-independent reference:
+the user can think of the screen as a 2D "scale dial" where the
+centre is `1.0` and moving outward grows the selection.
 
-### Axis lock and the "transform mode"
+Degenerate case: if the cursor starts within ±ε pixels of the
+screen-centre line on either axis, `dx0` or `dy0` is effectively
+zero and the ratio blows up. Freeze the affected axis at `1.0`
+until the cursor moves outside ε, then begin scaling from there
+(re-bootstrap that axis's `dx0` at the first frame where `|dx0|
+> ε`). This keeps the gesture usable even if the user happens
+to click near screen centre.
 
-Lock state is a pair of booleans on the controller:
-`lockX: Boolean`, `lockY: Boolean`. Both start false (free 2D
-scale). During the gesture:
+### Cross-mode reuse: all three gestures enter Transform mode
 
-- `lockX = true` → `sx` is forced to `1.0`.
-- `lockY = true` → `sy` is forced to `1.0`.
-- User pressing `x` toggles `lockY` (Blender semantic: "constrain
-  to X" means Y is locked).
-- User pressing `y` toggles `lockX` (constrain to Y).
+Grab, rotate, and scale all flip the mapper into the shared
+"Transform" mode on entry and restore "Normal" on commit /
+cancel. This means `x` / `y` axis locks are uniformly available
+across gestures:
 
-Locks reset on commit/cancel.
+- **Scale:** axis lock forces that axis's scale factor to `1.0`
+  (the main use case).
+- **Grab:** axis lock constrains cursor-driven translation to
+  the unlocked axis. `grab` + `x` → drag only along X.
+- **Rotate:** axis lock is a deliberate no-op in 2D. Tapping `x`
+  or `y` during rotate flashes a hint in the status bar but
+  does not change rotation; 2D rotation has only one axis (Z).
 
-To route `x`/`y` differently while the mode is active we need
-*some* mode-aware dispatch in `KeyMapper`. Today the mapper is
-entirely global (KeyMapper.kt, `feedKey`) — defaults and user
-mappings share one namespace. Proposal:
+Axis-lock state is a pair of booleans on the mouse controller,
+shared across the three gestures: `lockX: Boolean, lockY: Boolean`
+(Blender semantics: `x` toggles `lockY`, `y` toggles `lockX`).
+Locks reset when the gesture ends.
 
-- Add `var mode: Mode = Mode.Normal` on `KeyMapper` with at least
-  `Mode.Normal` and `Mode.Transform`.
-- Add a second mapping table `modeBindings: Map<Mode, Map<String,
-  String>>` consulted *before* `mappings` and `defaults`.
-- `startOrEndScale()` sets `mode = Mode.Transform` on entry and
-  restores `mode = Mode.Normal` on commit / cancel. Same hook
-  would later apply to grab and rotate if we want axis-locked
-  variants of those too — which is why the mode is called
-  "Transform" rather than "Scale".
+### Mode-scoped key dispatch on KeyMapper
+
+Today the mapper is entirely global (KeyMapper.kt `feedKey`) —
+defaults and user mappings share one namespace. To make `x`/`y`
+behave differently mid-gesture we add a minimal mode layer:
+
+- `var mode: Mode = Mode.Normal` on `KeyMapper`. Values:
+  `Normal`, `Transform`.
+- `modeBindings: Map<Mode, Map<String, String>>` consulted
+  *before* `mappings` and `defaults`.
+- `startOrEndScale`, `startOrEndMove`, `startOrEndRotate` set
+  `mode = Transform` on entry; commit / cancel restore
+  `Mode.Normal`.
 - Bindings registered into `Mode.Transform`:
-  - `x` → `toggle-axis-lock-y` (yes, `x`-key locks Y, per above)
+  - `x` → `toggle-axis-lock-y`
   - `y` → `toggle-axis-lock-x`
-  - `<Esc>` → cancel (can still fall through to the global
-    binding that resolves to `cancelActiveModal`)
+  - `<Esc>` → falls through to the global `cancelActiveModal`
+    path (works today via `impl.unselectAll`).
+  - `s` / `g` / `r` (or whatever is bound to the active
+    gesture's toggle) → falls through so the second tap still
+    commits.
+- **Other keys are swallowed.** In `Transform` mode, any key not
+  listed above is consumed and ignored — no fall-through to
+  normal dispatch. This prevents accidental `u` / `d` / etc.
+  mid-gesture.
 
-Letters not bound in the mode fall through to the normal mapper,
-so the user can still (say) press `u` mid-gesture if we decide we
-want that. Whether falling through is desirable is an open
-question — Blender *swallows* everything except a small allowlist.
+### Status bar
+
+The canvas currently has no persistent status line. Add one.
+
+- New `StatusBar` JComponent, a thin monospace label anchored
+  to the bottom edge of `GraphView` (same anchoring pattern as
+  `CommandBar`, GraphView.kt wherever `placeMeAt` is used).
+- Displays a compact mode indicator:
+  - Normal mode: empty (bar visible as a 1-line slate, or
+    hidden — pick one; leaning "always visible" so there's no
+    layout jump on mode change).
+  - Transform mode: `-- SCALE --`, `-- GRAB --`, `-- ROTATE --`
+    plus an axis-lock suffix when set: `-- SCALE (X) --` means
+    "X axis only" (Y is locked).
+  - Macro recording (`isRecording` on KeyMapper, line 79):
+    piggyback — show `recording @q` when active. This finally
+    surfaces a state that has no visible indicator today.
+- Controller ownership: `GraphView.statusBar` holds the
+  component; `KeyMapper` / `GraphMouseController` push updates
+  via a callback (`onModeChange: (ModeInfo) -> Unit`) set by
+  the view during construction, same shape as `markSetter` on
+  KeyMapper (KeyMapper.kt:85).
+
+Keep scope tight: no colours, no flashing, no right-aligned
+clock. Just a text line.
 
 ### Cursor tracking
 
-Same source as rotate: `GraphView.lastCursorPosition` is updated
-on every `mouseMoved` / `mouseDragged` by `GraphMouseListener`.
-`dragScale` is called from the same dispatch points, so no new
-plumbing is required.
+For scale specifically we need cursor position in *screen*
+coordinates (the scale factor is screen-centre-relative). Grab
+and rotate already read world coordinates from
+`GraphView.lastCursorPosition`. `dragScale` takes the raw AWT
+`MouseEvent.point` and computes against canvas-centre directly —
+no transform involved, and it's unaffected by pan/zoom, which
+matches the "screen as scale dial" mental model.
 
 ### Undo
 
 One `MoveNodesCommand(g, before, after)` on commit, via
-`history.commitWithoutRun`. The UI has already moved nodes during
-the drag; the command is only added to the undo stack, not
-re-executed. Cancel (`<Esc>`) restores `scaleStartPositions`
+`history.commitWithoutRun`. The UI has already moved nodes
+during the drag; the command is only added to the undo stack,
+not re-executed. Cancel (`<Esc>`) restores `scaleStartPositions`
 directly and writes *no* history entry — matching rotate and
 grab.
 
-## Minimum-viable scope
+## Implementation order
 
-1. `States.Scaling`, `scaleStartPositions`, `scaleCenter`,
-   `scaleStartCursor` on `GraphMouseController`.
-2. `startOrEndScale()`, `captureScaleStart()`,
-   `commitScaleIfAny()`, `dragScale(pos)`, and a new branch in
-   `cancelActiveModal()`.
-3. `KeyMapper.mode` + `modeBindings` + lookup order in
-   `feedKey`.
-4. Register `scale`, `toggle-axis-lock-x`, `toggle-axis-lock-y`
-   commands in `CommandRegistry`; add the default binding
-   (`s` in `Mode.Normal`, and `x`/`y` in `Mode.Transform`).
-5. Tests mirroring `MirrorRotateTest`: free scale, axis-locked
-   scale, cancel reverts, undo/redo round-trip.
+1. **Mouse controller state.** Add `States.Scaling`,
+   `scaleStartPositions`, `scaleAnchor`, `scaleStartCursorScreen`
+   on `GraphMouseController`. Implement `startOrEndScale`,
+   `captureScaleStart`, `commitScaleIfAny`, `dragScale`, and
+   grow `cancelActiveModal`.
+2. **Axis-lock flags.** Add `lockX`, `lockY` (shared across
+   gestures) and `toggle-axis-lock-x` / `toggle-axis-lock-y`
+   commands. Have `dragScale` / `dragMoveNode` respect the
+   flags; `dragRotate` explicitly ignores them (but a status-bar
+   flash when tapped is a nice-to-have).
+3. **KeyMapper.mode + modeBindings.** Add the field and the
+   lookup order. Wire `startOrEndMove` / `startOrEndRotate` /
+   `startOrEndScale` to flip the mode on entry/exit. Swallow
+   unbound keys while in `Transform`.
+4. **Default bindings.** Register `s` in normal-mode defaults;
+   register `x` / `y` in Transform-mode bindings.
+5. **StatusBar component.** New file `StatusBar.kt`, wire into
+   `GraphView`, plumb a `ModeInfo` callback through KeyMapper
+   and the mouse controller.
+6. **Tests.** Mirror `MirrorRotateTest`: free scale, X-locked
+   scale, Y-locked scale, cancel reverts, undo/redo round-trip,
+   commit-to-history is a single step, Transform mode swallows
+   unbound keys, axis-lock during grab constrains movement.
 
-## Open questions
+## Remaining unknowns
 
-1. **Default key for scale.** `s` is nice and Blender-like, but
-   currently unbound — does that collide with anything in the
-   user's muscle memory for this editor? If `s` is reserved for
-   something else, `S` or `<C-s>` as fallback.
+None blocking. Things to watch during implementation:
 
-2. **Axis-lock semantics.** Blender: `x` key means "lock to X
-   axis" (Y becomes 1.0). That's what the spec assumes. Worth
-   confirming — some users read `x` as "lock *out* the X axis".
-   The spec's current wording matches Blender.
-
-3. **Starting-distance degeneracy.** Ratio formula vs. pixel
-   delta fallback (see "Scale factor" above).
-
-4. **Cross-mode reuse.** Should `grab` and `rotate` also flip
-   `KeyMapper.mode` to `Transform`, so `x`/`y` axis locks apply
-   uniformly across all three transforms (again, Blender-like)?
-   Cheap to add if yes; easy to defer if no.
-
-5. **Key fall-through while in Transform mode.** Pass unbound
-   keys through to normal dispatch, or swallow them entirely
-   until the gesture ends? Swallowing is safer (no accidental
-   `u` mid-gesture), but makes the mode feel heavier.
-
-6. **Uniform-scale shortcut.** Blender has `shift+x` / `shift+y`
-   to *exclude* an axis (scale in the plane minus X). Overkill
-   for a 2D editor — mention and discard.
-
-7. **Visual feedback.** Status bar text `-- SCALE (Y) --` (with
-   axis-lock letter in parens) so the user knows the gesture is
-   live. Not strictly required for the first cut; punt to a
-   follow-up.
+- **StatusBar always-visible vs mode-only.** Leaning
+  always-visible (one-line slate) to avoid layout shifts.
+  Decide when writing the component.
+- **Degeneracy epsilon.** A few pixels (say 4) for the
+  screen-centre band. Tune by feel during the first round.
+- **Rotate + axis-lock UX.** Flashing a "no-op in 2D" hint the
+  first time a user taps `x` during rotate is friendly but
+  cheap to skip.
