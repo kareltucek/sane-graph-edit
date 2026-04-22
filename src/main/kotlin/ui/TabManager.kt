@@ -157,6 +157,11 @@ class TabManager(
             gv.add(msg)
             gv.setLayer(msg, 2)
         }
+        gv.statusBar = StatusBar(gv).also { bar ->
+            gv.add(bar)
+            gv.setLayer(bar, 2)
+            bar.relayout("")
+        }
         gv.onStateChange = { refreshTab(gv) }
         views.add(gv)
         tabbedPane.addTab(gv.title, gv)

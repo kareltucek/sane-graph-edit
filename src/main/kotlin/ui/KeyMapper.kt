@@ -41,6 +41,76 @@ class KeyMapper(
 ) {
     data class Mapping(val rhs: String, val recursive: Boolean)
 
+    /**
+     * Dispatch modes. [Normal] is the usual mapper behaviour —
+     * keys resolve against user mappings and defaults. [Transform]
+     * is active during a modal gesture (grab / rotate / scale):
+     * only the keys listed in [transformModeBindings] fire; every
+     * other key is swallowed so the user can't accidentally
+     * trigger other commands mid-gesture. The active gesture's
+     * mouse-controller method is responsible for flipping this
+     * field on entry and restoring [Normal] on commit / cancel.
+     */
+    enum class Mode { Normal, Transform }
+
+    var mode: Mode = Mode.Normal
+        set(value) {
+            val changed = field != value
+            field = value
+            if (changed) modeListener?.invoke(value)
+        }
+
+    /**
+     * Called whenever [mode] changes. Status bar wires in here so
+     * it can refresh the visible mode indicator.
+     */
+    var modeListener: ((Mode) -> Unit)? = null
+
+    /**
+     * Key → command bindings active in [Mode.Transform]. Entries
+     * here shadow everything in [defaults] and [mappings] while a
+     * modal gesture is live; anything not listed is swallowed.
+     *
+     * Populated at startup by [installDefaultTransformBindings].
+     * Each gesture's toggle key (`s`, `g`, …) re-enters its own
+     * `startOrEnd*` command here; because the toggle methods
+     * refuse to start a new gesture while another is active,
+     * pressing the "wrong" toggle mid-gesture is a harmless
+     * no-op rather than a state clobber.
+     */
+    private val transformModeBindings = mutableMapOf<String, String>()
+
+    /**
+     * Register [command] to fire for [key] while the mapper is in
+     * [Mode.Transform]. Called by startup wiring (see
+     * [installDefaultTransformBindings]); exposed publicly so
+     * init-file hooks could in principle add more.
+     */
+    fun bindInTransformMode(key: String, command: String) {
+        transformModeBindings[key] = command
+    }
+
+    /**
+     * Seed [transformModeBindings] with the built-in allowlist:
+     *
+     *  - `x` / `y` — toggle axis locks (Blender semantics).
+     *  - `s` / `g` — re-enter the gesture's own toggle so the
+     *    second tap commits. Each `startOrEnd*` method guards
+     *    against starting a new gesture over an active one, so
+     *    pressing the wrong letter mid-gesture is a no-op.
+     *  - `<Esc>` — route through the normal deselect path,
+     *    which cancels the active modal first.
+     *
+     * Call once after construction, before any gesture can run.
+     */
+    fun installDefaultTransformBindings() {
+        bindInTransformMode("x", "toggle-axis-lock-y")
+        bindInTransformMode("y", "toggle-axis-lock-x")
+        bindInTransformMode("s", "scale")
+        bindInTransformMode("g", "grab")
+        bindInTransformMode("<Esc>", "deselect")
+    }
+
     private val mappings = mutableMapOf<String, Mapping>()
     private var pending: String = ""
     private var pendingTimer: Timer? = null
@@ -158,6 +228,20 @@ class KeyMapper(
      * listener for every keypress.
      */
     fun feedKey(key: String) {
+        // --- Transform mode: restricted allowlist ---
+        // While a modal gesture (grab / rotate / scale) is live,
+        // only the keys in `transformModeBindings` fire. Everything
+        // else is swallowed so an accidental `u` / `d` / etc. can't
+        // clobber the gesture. `<Esc>` is included so the user's
+        // first Escape still cancels the gesture (routes through
+        // the `deselect` command → GraphMouseController.cancelActiveModal).
+        if (mode == Mode.Transform) {
+            transformModeBindings[key]?.let { executeCommand(it) }
+            // Don't record in macros, don't accumulate in pending —
+            // Transform mode is atomic, one keystroke at a time.
+            return
+        }
+
         // --- Command-buffer mode (":..." in flight) ---
         val buf = commandBuffer
         if (buf != null) {
@@ -945,6 +1029,7 @@ class KeyMapper(
             "gt" to "next-tab",
             "gT" to "prev-tab",
             "G" to "subgraph-focus",
+            "s" to "scale",
 
             // Modifier-based
             "<C-s>" to "save",

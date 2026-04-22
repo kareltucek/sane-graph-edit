@@ -139,6 +139,7 @@ fun runHeadless(file: String?, execs: List<String>): Int {
     mapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
     mapper.markSetter = { gv, letter -> GraphKeyListener.impl.setMark(gv, letter) }
     mapper.markRecaller = { gv, letter -> GraphKeyListener.impl.recallMark(gv, letter) }
+    mapper.installDefaultTransformBindings()
     mapper.loadInitFile(XdgPaths.appConfigDir.resolve("init"))
 
     // Construct a minimal headless GraphView (no Window, no

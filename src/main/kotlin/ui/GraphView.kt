@@ -55,6 +55,13 @@ class GraphView(
     val mouseListener = GraphMouseListener(this)
     val keyListener = GraphKeyListener(this)
     var lastCursorPosition: Vector2 = Vector2.Zero
+    /**
+     * Last cursor position in *canvas-local screen* coordinates
+     * (pre-pan/zoom). Updated in lockstep with [lastCursorPosition]
+     * by [GraphMouseListener]. The scale gesture reads this so
+     * its factor stays stable against pan/zoom.
+     */
+    var lastScreenCursorPosition: Vector2 = Vector2.Zero
     var optimizeOnDrag: Boolean = false
     var defaultNodeStyle: NodeStyle = NodeStyle()
 
@@ -138,6 +145,13 @@ class GraphView(
      */
     var messageArea: MessageArea? = null
 
+    /**
+     * Bottom-docked one-line status indicator. Surfaces the
+     * active Transform gesture + axis-lock, plus macro-recording
+     * state. Null outside interactive mode.
+     */
+    var statusBar: StatusBar? = null
+
     /** Search state: last confirmed query, results, n/N cursor. */
     val searchState: SearchState = SearchState()
 
@@ -183,6 +197,34 @@ class GraphView(
             val base = currentFile?.fileName?.toString() ?: "(untitled)"
             return if (isDirty) "*$base" else base
         }
+
+    /**
+     * Recompute and push the status-bar text from current state:
+     * active gesture (from mouse controller state), axis-lock
+     * flags, and macro-recording flag. Safe to call when
+     * [statusBar] is null (headless, tests).
+     */
+    fun refreshStatus() {
+        val bar = statusBar ?: return
+        val c = mouseListener.controller
+        val gestureName = when (c.state) {
+            GraphMouseListener.GraphMouseController.States.Scaling -> "SCALE"
+            GraphMouseListener.GraphMouseController.States.MovingNodes -> "GRAB"
+            GraphMouseListener.GraphMouseController.States.Rotating -> "ROTATE"
+            else -> null
+        }
+        val lockSuffix = when {
+            gestureName == null -> ""
+            c.lockX && !c.lockY -> " (Y)"  // X frozen → scaling/moving along Y
+            c.lockY && !c.lockX -> " (X)"  // Y frozen → scaling/moving along X
+            else -> ""
+        }
+        val gesture = gestureName?.let { "-- $it$lockSuffix --" } ?: ""
+        val recording = keyMapper?.isRecording
+        val recText = if (recording == true) "recording" else ""
+        val parts = listOf(gesture, recText).filter { it.isNotEmpty() }
+        bar.relayout(parts.joinToString("    "))
+    }
 
     fun placeMeAt(me: JComponent, ul: Vector2, br: Vector2) {
         springLayout.putConstraint(
@@ -503,6 +545,12 @@ class Window(
         keyMapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
         keyMapper.markSetter = { gv, letter -> GraphKeyListener.impl.setMark(gv, letter) }
         keyMapper.markRecaller = { gv, letter -> GraphKeyListener.impl.recallMark(gv, letter) }
+        keyMapper.installDefaultTransformBindings()
+        // Mode changes (Normal ↔ Transform) → refresh the active
+        // view's status bar. We can't know which tab the change
+        // applied to, so refresh the currently-focused one —
+        // modal gestures are scoped to one view anyway.
+        keyMapper.modeListener = { tabManager.currentOrNull?.refreshStatus() }
 
         // Load the user's init file (key mappings, settings).
         keyMapper.loadInitFile(XdgPaths.appConfigDir.resolve("init"))

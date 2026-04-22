@@ -82,6 +82,7 @@ class GraphMouseListener(
     override fun mouseDragged(e: MouseEvent) {
         //graph_tools.Plotter.screenDimensions = utils.Vector2(e.x, e.y)
         val pos = e.toWorkspaceVector()
+        val screen = Vector2(e.x.toDouble(), e.y.toDouble())
 
         when {
             controller.state == GraphMouseController.States.MovingNodes -> {
@@ -99,10 +100,15 @@ class GraphMouseListener(
             controller.state == GraphMouseController.States.Rotating -> {
                 controller.dragRotate(pos)
             }
+
+            controller.state == GraphMouseController.States.Scaling -> {
+                controller.dragScale(screen)
+            }
         }
 
         val newPos = e.toWorkspaceVector()
         graphView.lastCursorPosition = newPos
+        graphView.lastScreenCursorPosition = screen
         controller.lastPosition = newPos
     }
 
@@ -110,6 +116,7 @@ class GraphMouseListener(
 
     override fun mouseMoved(e: MouseEvent) {
         val pos = e.toWorkspaceVector()
+        val screen = Vector2(e.x.toDouble(), e.y.toDouble())
 
         when {
             controller.state == GraphMouseController.States.MovingNodes -> {
@@ -118,9 +125,13 @@ class GraphMouseListener(
             controller.state == GraphMouseController.States.Rotating -> {
                 controller.dragRotate(pos)
             }
+            controller.state == GraphMouseController.States.Scaling -> {
+                controller.dragScale(screen)
+            }
         }
 
         graphView.lastCursorPosition = pos
+        graphView.lastScreenCursorPosition = screen
         controller.lastPosition = pos
     }
 
@@ -198,8 +209,36 @@ class GraphMouseListener(
          * interpreted as deltas against this reference angle.
          */
         var rotateStartAngle: Double = 0.0,
+        /**
+         * Captured positions of the selection at the start of a
+         * [States.Scaling] gesture. Same role as the move / rotate
+         * equivalents: used by [dragScale] to recompute positions
+         * from the origin each frame (avoiding drift), by commit
+         * to build a [MoveNodesCommand], and by cancel to revert.
+         */
+        var scaleStartPositions: Map<Node, Vector2>? = null,
+        /** Bounding-box centre at the moment scaling began — the anchor. */
+        var scaleAnchor: Vector2? = null,
+        /**
+         * Cursor position *in canvas-screen coordinates* at the
+         * moment scaling began. The per-axis scale factor is the
+         * ratio of (current cursor − screen centre) to
+         * (start cursor − screen centre), so we need a stable
+         * reference point that's insulated from pan/zoom.
+         */
+        var scaleStartCursorScreen: Vector2? = null,
+        /**
+         * Live axis-lock flags shared across the three modal
+         * transforms. Blender semantics: the `x` key toggles
+         * [lockY] (constrain to X), the `y` key toggles [lockX].
+         * Scale forces the locked axis's factor to 1.0; grab
+         * zeros the locked axis's delta; rotate ignores them
+         * (no meaning in 2D).
+         */
+        var lockX: Boolean = false,
+        var lockY: Boolean = false,
     )  {
-        enum class States { PanningWorkspace, MovingNodes, SelectionBox, Rotating }
+        enum class States { PanningWorkspace, MovingNodes, SelectionBox, Rotating, Scaling }
 
 
         fun startToggleMultiselectState(mouseoverNodes: MutableSet<Node>) {
@@ -245,10 +284,17 @@ class GraphMouseListener(
                 States.MovingNodes -> {
                     commitMoveIfAny()
                     state = null
+                    exitTransformMode()
                 }
-                else -> {
+                null -> {
                     state = States.MovingNodes
                     captureMoveStart()
+                    enterTransformMode()
+                }
+                else -> {
+                    // Another modal gesture (rotate / scale) is
+                    // active. Ignore so we don't clobber its
+                    // captured state.
                 }
             }
         }
@@ -270,10 +316,15 @@ class GraphMouseListener(
                 States.Rotating -> {
                     commitRotateIfAny()
                     state = null
+                    exitTransformMode()
                 }
-                else -> {
+                null -> {
                     if (!captureRotateStart()) return
                     state = States.Rotating
+                    enterTransformMode()
+                }
+                else -> {
+                    // Another modal gesture is active; ignore.
                 }
             }
         }
@@ -334,6 +385,143 @@ class GraphMouseListener(
         }
 
         /**
+         * Toggle scale mode. First call: capture selection
+         * positions + bounding-box centre (the scale anchor) +
+         * current cursor position in screen coords (the factor
+         * reference). Second call: commit final positions as one
+         * [MoveNodesCommand]. Cancel via [cancelActiveModal] to
+         * revert. Unlike move / rotate, scale reads the cursor
+         * in *screen* coordinates so the factor is stable
+         * against pan/zoom — the user can treat the canvas as a
+         * scale dial whose centre is `1.0`.
+         */
+        fun startOrEndScale() {
+            when (state) {
+                States.Scaling -> {
+                    commitScaleIfAny()
+                    state = null
+                    exitTransformMode()
+                }
+                null -> {
+                    if (!captureScaleStart()) return
+                    state = States.Scaling
+                    enterTransformMode()
+                }
+                else -> {
+                    // Another modal gesture is active; ignore.
+                }
+            }
+        }
+
+        private fun captureScaleStart(): Boolean {
+            val sel = graphView.g.selectedNodes
+            if (sel.isEmpty()) return false
+            val box = GraphTools.computeBoundingBox(sel) ?: return false
+            scaleAnchor = Vector2(
+                (box.ul.x + box.br.x) / 2,
+                (box.ul.y + box.br.y) / 2,
+            )
+            scaleStartPositions = sel.associateWith { it.position }
+            scaleStartCursorScreen = graphView.lastScreenCursorPosition
+            return true
+        }
+
+        private fun commitScaleIfAny() {
+            val before = scaleStartPositions ?: return
+            scaleStartPositions = null
+            scaleAnchor = null
+            scaleStartCursorScreen = null
+            val after = before.keys.associateWith { it.position }.toMutableMap()
+            if (before.any { (n, p) -> after[n] != p }) {
+                graphView.g.history.commitWithoutRun(
+                    MoveNodesCommand(graphView.g, before, after),
+                )
+            }
+        }
+
+        /**
+         * Recompute every node's position from its captured
+         * starting position each frame. [screenPos] is the cursor
+         * in canvas-local screen coordinates.
+         *
+         * Factor per axis is the ratio of cursor-distance-from-
+         * screen-centre now vs. at gesture start. That ratio is
+         * `1.0` at entry by construction, grows as the cursor
+         * moves further from centre, and shrinks as it nears.
+         * Degeneracy: if the cursor started within
+         * [SCALE_CENTER_EPSILON] pixels of a centre line, that
+         * axis is frozen at `1.0` until the cursor crosses out,
+         * at which point we re-bootstrap its reference distance.
+         */
+        fun dragScale(screenPos: Vector2) {
+            val anchor = scaleAnchor ?: return
+            val start = scaleStartPositions ?: return
+            val startCursor = scaleStartCursorScreen ?: return
+            val cx = graphView.graphCanvas.width / 2.0
+            val cy = graphView.graphCanvas.height / 2.0
+
+            var sx = axisFactor(
+                startDelta = startCursor.x - cx,
+                currentDelta = screenPos.x - cx,
+                rebootstrap = { scaleStartCursorScreen = Vector2(screenPos.x, startCursor.y) },
+            )
+            var sy = axisFactor(
+                startDelta = startCursor.y - cy,
+                currentDelta = screenPos.y - cy,
+                rebootstrap = { scaleStartCursorScreen = Vector2(scaleStartCursorScreen!!.x, screenPos.y) },
+            )
+            if (lockX) sx = 1.0
+            if (lockY) sy = 1.0
+
+            for ((n, origPos) in start) {
+                val dx = origPos.x - anchor.x
+                val dy = origPos.y - anchor.y
+                n.position = Vector2(anchor.x + dx * sx, anchor.y + dy * sy)
+                graphView.g.needsRecomputing(n)
+            }
+            graphView.repaint()
+        }
+
+        /**
+         * Per-axis factor with the start-on-centre-line fallback.
+         * If the start reference is too close to zero, freeze the
+         * axis at `1.0` and let [rebootstrap] re-anchor the start
+         * position as soon as the cursor moves outside the band —
+         * that way the gesture continues smoothly from `1.0`
+         * rather than jumping to some arbitrary ratio.
+         */
+        private fun axisFactor(
+            startDelta: Double,
+            currentDelta: Double,
+            rebootstrap: () -> Unit,
+        ): Double {
+            if (Math.abs(startDelta) < SCALE_CENTER_EPSILON) {
+                if (Math.abs(currentDelta) >= SCALE_CENTER_EPSILON) {
+                    rebootstrap()
+                }
+                return 1.0
+            }
+            return currentDelta / startDelta
+        }
+
+        /**
+         * Called by the toggle methods to flip the KeyMapper into
+         * [KeyMapper.Mode.Transform] so the `x`/`y` axis-lock
+         * bindings fire (and unbound keys are swallowed). Safe to
+         * call when there's no mapper — tests drive the controller
+         * directly and don't set one up.
+         */
+        private fun enterTransformMode() {
+            graphView.keyMapper?.mode = KeyMapper.Mode.Transform
+        }
+
+        private fun exitTransformMode() {
+            lockX = false
+            lockY = false
+            graphView.keyMapper?.mode = KeyMapper.Mode.Normal
+        }
+
+        /**
          * Revert any in-flight modal mutation (grab or rotate)
          * and exit the mode. Returns true if something was
          * cancelled, false if there was nothing to cancel.
@@ -350,6 +538,7 @@ class GraphMouseListener(
                 }
                 moveStartPositions = null
                 state = null
+                exitTransformMode()
                 graphView.repaint()
                 return true
             }
@@ -361,6 +550,20 @@ class GraphMouseListener(
                 rotateStartPositions = null
                 rotateCenter = null
                 state = null
+                exitTransformMode()
+                graphView.repaint()
+                return true
+            }
+            if (state == States.Scaling) {
+                scaleStartPositions?.forEach { (n, p) ->
+                    n.position = p
+                    graphView.g.needsRecomputing(n)
+                }
+                scaleStartPositions = null
+                scaleAnchor = null
+                scaleStartCursorScreen = null
+                state = null
+                exitTransformMode()
                 graphView.repaint()
                 return true
             }
@@ -385,7 +588,14 @@ class GraphMouseListener(
         }
 
         fun dragMoveNode(pos: Vector2, restrictOperator: Boolean) {
-            val diff = pos - lastPosition
+            val raw = pos - lastPosition
+            // In Transform mode the user may have axis-locked the
+            // drag with `x` / `y`. Zero out the frozen component so
+            // movement stays on the unlocked axis.
+            val diff = Vector2(
+                if (lockX) 0.0 else raw.x,
+                if (lockY) 0.0 else raw.y,
+            )
             graphView.g.selectedNodes.forEach {
                 it.position = it.position + diff
                 graphView.g.needsRecomputing(it)
@@ -496,6 +706,19 @@ class GraphMouseListener(
                 graphView.g.cleanSelect(mouseoverNodes)
             }
             graphView.startStylePicker(screenspaceCoordinates)
+        }
+
+        companion object {
+            /**
+             * Half-width (in canvas pixels) of the "cursor sits
+             * on the screen-centre line" dead-band used by
+             * [dragScale]. Gestures that begin inside this band
+             * on a given axis have that axis frozen at 1.0 until
+             * the cursor crosses out — at which point the
+             * reference distance is re-bootstrapped so the scale
+             * continues smoothly from 1.0 rather than jumping.
+             */
+            const val SCALE_CENTER_EPSILON: Double = 4.0
         }
     }
 }

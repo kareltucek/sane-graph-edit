@@ -411,6 +411,52 @@ class GraphKeyListener(
             graphView.mouseListener.controller.startOrEndRotate()
         }
 
+        fun scale(graphView: GraphView) {
+            graphView.mouseListener.controller.startOrEndScale()
+        }
+
+        /**
+         * Toggle [GraphMouseListener.GraphMouseController.lockX].
+         * Bound to the `y` key in Transform mode (Blender semantic:
+         * `y` constrains to the Y axis by freezing X).
+         */
+        fun toggleAxisLockX(graphView: GraphView) {
+            val c = graphView.mouseListener.controller
+            c.lockX = !c.lockX
+            // Re-render positions with the new lock applied, then
+            // refresh the status bar so the "(X)/(Y)" suffix
+            // reflects the new state.
+            reapplyActiveGesture(graphView)
+            graphView.refreshStatus()
+        }
+
+        /**
+         * Toggle [GraphMouseListener.GraphMouseController.lockY].
+         * Bound to the `x` key in Transform mode (Blender semantic:
+         * `x` constrains to the X axis by freezing Y).
+         */
+        fun toggleAxisLockY(graphView: GraphView) {
+            val c = graphView.mouseListener.controller
+            c.lockY = !c.lockY
+            reapplyActiveGesture(graphView)
+            graphView.refreshStatus()
+        }
+
+        /**
+         * After an axis-lock flip, re-run the active gesture's
+         * drag function so nodes snap to the axis-locked position
+         * without waiting for the next mouse-move event. Scale is
+         * the common case; grab's next delta is zero (cursor
+         * hasn't moved) so re-running dragMoveNode is a no-op; we
+         * skip rotate entirely (axis lock is meaningless in 2D).
+         */
+        private fun reapplyActiveGesture(graphView: GraphView) {
+            val c = graphView.mouseListener.controller
+            if (c.state == GraphMouseListener.GraphMouseController.States.Scaling) {
+                c.dragScale(graphView.lastScreenCursorPosition)
+            }
+        }
+
         /**
          * Time of the last spring-scale tweak, for rate-limiting
          * the multiplier so held keys and single taps both feel
