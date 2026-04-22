@@ -195,6 +195,19 @@ class GraphMouseListener(
          */
         var moveStartPositions: Map<Node, Vector2>? = null,
         /**
+         * Cursor position at the start of a move gesture (first
+         * drag frame). Used by [dragMoveNode] to compute the
+         * *total* delta from origin each frame — making the
+         * function idempotent so that flipping an axis-lock
+         * mid-drag reverts drift on the now-frozen axis instead
+         * of leaving it stranded. Lazily set on the first drag
+         * event because the mouse-press path updates
+         * [lastPosition] after starting the gesture; defaulting
+         * to the first drag position is equivalent to "start of
+         * the drag" for both modal and mouse-driven flows.
+         */
+        var moveAnchor: Vector2? = null,
+        /**
          * Captured positions of the selection at the start of a
          * [States.Rotating] gesture. Consumed on commit (to build
          * a MoveNodesCommand) or on cancel (to revert the live
@@ -289,6 +302,15 @@ class GraphMouseListener(
                 null -> {
                     state = States.MovingNodes
                     captureMoveStart()
+                    // Anchor the drag at the cursor's current
+                    // position so [dragMoveNode]'s from-start
+                    // recomputation has a stable origin. Only the
+                    // modal path sets this — mouse-driven grabs
+                    // leave it null and fall back to the old
+                    // per-frame delta path in [dragMoveNode]
+                    // (axis-lock toggling isn't a use case
+                    // during a click-drag anyway).
+                    moveAnchor = graphView.lastCursorPosition
                     enterTransformMode()
                 }
                 else -> {
@@ -537,6 +559,7 @@ class GraphMouseListener(
                     graphView.g.needsRecomputing(n)
                 }
                 moveStartPositions = null
+                moveAnchor = null
                 state = null
                 exitTransformMode()
                 graphView.repaint()
@@ -588,17 +611,40 @@ class GraphMouseListener(
         }
 
         fun dragMoveNode(pos: Vector2, restrictOperator: Boolean) {
-            val raw = pos - lastPosition
-            // In Transform mode the user may have axis-locked the
-            // drag with `x` / `y`. Zero out the frozen component so
-            // movement stays on the unlocked axis.
-            val diff = Vector2(
-                if (lockX) 0.0 else raw.x,
-                if (lockY) 0.0 else raw.y,
-            )
-            graphView.g.selectedNodes.forEach {
-                it.position = it.position + diff
-                graphView.g.needsRecomputing(it)
+            val start = moveStartPositions
+            val anchor = moveAnchor
+            if (start != null && anchor != null) {
+                // Modal grab (toggled with `g`): recompute each
+                // node's position from its start snapshot using
+                // the total delta (pos − moveAnchor). Idempotent,
+                // so toggling an axis-lock mid-gesture reverts
+                // accumulated drift on the now-frozen axis
+                // instead of stranding it there.
+                val totalRaw = pos - anchor
+                val total = Vector2(
+                    if (lockX) 0.0 else totalRaw.x,
+                    if (lockY) 0.0 else totalRaw.y,
+                )
+                for ((n, origPos) in start) {
+                    n.position = origPos + total
+                    graphView.g.needsRecomputing(n)
+                }
+            } else {
+                // Mouse-driven drag (no anchor captured). Stay on
+                // the per-frame delta path — axis-lock still
+                // applies but prior drift isn't reverted because
+                // we don't have a gesture origin. Click-drags
+                // don't involve axis-lock toggling, so this is
+                // fine.
+                val raw = pos - lastPosition
+                val diff = Vector2(
+                    if (lockX) 0.0 else raw.x,
+                    if (lockY) 0.0 else raw.y,
+                )
+                graphView.g.selectedNodes.forEach {
+                    it.position = it.position + diff
+                    graphView.g.needsRecomputing(it)
+                }
             }
             if (graphView.optimizeOnDrag || restrictOperator) {
                 LayoutOptimizer.optimize(graphView.g, movingNodes = true, restrictOperator = restrictOperator == graphView.optimizeOnDrag)
@@ -665,6 +711,7 @@ class GraphMouseListener(
         fun commitMoveIfAny() {
             val before = moveStartPositions ?: return
             moveStartPositions = null
+            moveAnchor = null
             val after = before.keys.associateWith { it.position }.toMutableMap()
             if (before.any { (n, p) -> after[n] != p }) {
                 graphView.g.history.commitWithoutRun(MoveNodesCommand(graphView.g, before, after))

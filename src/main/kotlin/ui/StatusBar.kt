@@ -5,23 +5,25 @@ import java.awt.Dimension
 import java.awt.Font
 import javax.swing.BorderFactory
 import javax.swing.JLabel
+import javax.swing.SpringLayout
 import javax.swing.SwingConstants
 
 /**
- * One-line status strip at the bottom of a [GraphView]. Shows the
- * active modal-transform mode (`-- SCALE --`, `-- GRAB --`, …)
- * with any axis-lock suffix, and mirrors macro-recording state
- * from [KeyMapper.isRecording].
+ * One-line status strip docked to the bottom edge of a
+ * [GraphView]. Surfaces the active modal-transform mode
+ * (`-- TRANSFORM: SCALE (X) --`, `-- TRANSFORM: GRAB --`, …) and
+ * macro-recording state.
  *
- * The bar is always visible so layout stays stable across mode
- * changes — it's a one-character-tall slate in Normal mode, and
- * gains text when a gesture or recording is live.
+ * The bar is always present — visibility doesn't shift between
+ * Normal and Transform, which keeps the layout stable. In Normal
+ * mode it shows a blank line (the width / height stay the same);
+ * entering Transform mode writes the label.
  *
  * State changes reach us through two paths: [KeyMapper.modeListener]
  * fires on Normal ↔ Transform transitions, and the axis-lock
  * command wrappers call [GraphView.refreshStatus] directly. The
- * bar itself is passive — it just renders whatever string it was
- * last handed by [setText].
+ * bar itself is passive — it renders whatever string it was last
+ * handed by [setLabel].
  */
 class StatusBar(
     private val graphView: GraphView,
@@ -30,40 +32,43 @@ class StatusBar(
     init {
         font = Font(Font.MONOSPACED, Font.PLAIN, 12)
         background = Color(0xEFEFEF)
+        foreground = Color(0x1A1A1A)
         isOpaque = true
         border = BorderFactory.createCompoundBorder(
             BorderFactory.createMatteBorder(1, 0, 0, 0, Color.GRAY),
             BorderFactory.createEmptyBorder(2, 6, 2, 6),
         )
         preferredSize = Dimension(100, HEIGHT_PX)
-        // Dock to the bottom edge of the GraphView. Width tracks
-        // the containing view; see relayout() below.
         isVisible = true
     }
 
     /**
-     * Refresh the bar's text and re-anchor it to the bottom of
-     * the parent [GraphView]. Called when the view is resized
-     * and when mode/lock/recording state changes.
+     * Pin the bar to the bottom edge of [graphView] via the
+     * view's [SpringLayout], so it auto-tracks window resizes.
+     * Call once, after the bar has been added as a child of the
+     * view (SpringLayout constraints require the components to
+     * be in the same container).
      */
-    fun relayout(text: String) {
-        this.text = text.ifEmpty { " " }  // preserve height when empty
-        val h = HEIGHT_PX
-        val w = graphView.width
-        graphView.placeMeAt(
-            this,
-            utils.Vector2(0.0, (graphView.height - h).toDouble()),
-            utils.Vector2(w.toDouble(), graphView.height.toDouble()),
-        )
-        graphView.revalidate()
-        graphView.repaint()
+    fun installConstraints() {
+        val sl = graphView.springLayout
+        sl.putConstraint(SpringLayout.WEST, this, 0, SpringLayout.WEST, graphView)
+        sl.putConstraint(SpringLayout.EAST, this, 0, SpringLayout.EAST, graphView)
+        sl.putConstraint(SpringLayout.SOUTH, this, 0, SpringLayout.SOUTH, graphView)
+        sl.putConstraint(SpringLayout.NORTH, this, -HEIGHT_PX, SpringLayout.SOUTH, graphView)
+    }
+
+    /**
+     * Update the visible text. Empty string falls back to a
+     * single space so the label still paints its background and
+     * keeps its height.
+     */
+    fun setLabel(text: String) {
+        this.text = text.ifEmpty { " " }
+        repaint()
     }
 
     companion object {
-        /**
-         * Visible height of the bar in pixels. Fixed so the
-         * layout doesn't jump as the text changes.
-         */
-        const val HEIGHT_PX: Int = 20
+        /** Visible height of the bar in pixels. */
+        const val HEIGHT_PX: Int = 22
     }
 }

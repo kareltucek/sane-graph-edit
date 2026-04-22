@@ -160,8 +160,9 @@ class TabManager(
         gv.statusBar = StatusBar(gv).also { bar ->
             gv.add(bar)
             gv.setLayer(bar, 2)
-            bar.relayout("")
+            bar.installConstraints()
         }
+        gv.refreshStatus()
         gv.onStateChange = { refreshTab(gv) }
         views.add(gv)
         tabbedPane.addTab(gv.title, gv)

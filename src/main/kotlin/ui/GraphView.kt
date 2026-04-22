@@ -213,17 +213,21 @@ class GraphView(
             GraphMouseListener.GraphMouseController.States.Rotating -> "ROTATE"
             else -> null
         }
+        // Axis-lock suffix names the *frozen* axis (the one
+        // whose key was pressed). `lockX` = "X is locked" =
+        // "selection cannot grow along X" = press `x` showed
+        // "(X)".
         val lockSuffix = when {
             gestureName == null -> ""
-            c.lockX && !c.lockY -> " (Y)"  // X frozen → scaling/moving along Y
-            c.lockY && !c.lockX -> " (X)"  // Y frozen → scaling/moving along X
+            c.lockX -> " (X)"
+            c.lockY -> " (Y)"
             else -> ""
         }
-        val gesture = gestureName?.let { "-- $it$lockSuffix --" } ?: ""
-        val recording = keyMapper?.isRecording
-        val recText = if (recording == true) "recording" else ""
+        val gesture = gestureName?.let { "-- TRANSFORM: $it$lockSuffix --" } ?: ""
+        val recording = keyMapper?.isRecording == true
+        val recText = if (recording) "recording" else ""
         val parts = listOf(gesture, recText).filter { it.isNotEmpty() }
-        bar.relayout(parts.joinToString("    "))
+        bar.setLabel(parts.joinToString("    "))
     }
 
     fun placeMeAt(me: JComponent, ul: Vector2, br: Vector2) {

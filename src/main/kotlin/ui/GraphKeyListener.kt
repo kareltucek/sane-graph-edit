@@ -422,7 +422,13 @@ class GraphKeyListener(
          */
         fun toggleAxisLockX(graphView: GraphView) {
             val c = graphView.mouseListener.controller
-            c.lockX = !c.lockX
+            // Radio behaviour: tapping X when X is already the
+            // locked axis releases it; tapping X when Y is the
+            // locked axis clears Y first and locks X. Only one
+            // axis can be locked at a time.
+            val wasX = c.lockX
+            c.lockX = !wasX
+            c.lockY = false
             // Re-render positions with the new lock applied, then
             // refresh the status bar so the "(X)/(Y)" suffix
             // reflects the new state.
@@ -430,14 +436,11 @@ class GraphKeyListener(
             graphView.refreshStatus()
         }
 
-        /**
-         * Toggle [GraphMouseListener.GraphMouseController.lockY].
-         * Bound to the `x` key in Transform mode (Blender semantic:
-         * `x` constrains to the X axis by freezing Y).
-         */
         fun toggleAxisLockY(graphView: GraphView) {
             val c = graphView.mouseListener.controller
-            c.lockY = !c.lockY
+            val wasY = c.lockY
+            c.lockY = !wasY
+            c.lockX = false
             reapplyActiveGesture(graphView)
             graphView.refreshStatus()
         }
@@ -452,8 +455,16 @@ class GraphKeyListener(
          */
         private fun reapplyActiveGesture(graphView: GraphView) {
             val c = graphView.mouseListener.controller
-            if (c.state == GraphMouseListener.GraphMouseController.States.Scaling) {
-                c.dragScale(graphView.lastScreenCursorPosition)
+            when (c.state) {
+                GraphMouseListener.GraphMouseController.States.Scaling ->
+                    c.dragScale(graphView.lastScreenCursorPosition)
+                // Grab's dragMoveNode is now idempotent (from-start
+                // + total delta), so re-invoking it with the last
+                // cursor reverts any drift on the newly-frozen
+                // axis instead of leaving it stranded.
+                GraphMouseListener.GraphMouseController.States.MovingNodes ->
+                    c.dragMoveNode(graphView.lastCursorPosition, restrictOperator = false)
+                else -> Unit  // rotate: axis lock is a 2D no-op.
             }
         }
 

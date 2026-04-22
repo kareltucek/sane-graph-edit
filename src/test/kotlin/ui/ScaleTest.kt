@@ -224,18 +224,44 @@ class ScaleTest {
         mapper.feedKey("y")
         mapper.feedKey("s")
 
+        // x names the axis being locked (X), y names its axis (Y).
         assertEquals(
-            listOf("toggle-axis-lock-y", "toggle-axis-lock-x", "scale"),
+            listOf("toggle-axis-lock-x", "toggle-axis-lock-y", "scale"),
             executed,
         )
+    }
+
+    @Test
+    fun `axis lock is radio-style — tapping the other axis releases the first`() {
+        val g = trianglesGraph()
+        val v = viewWith(g)
+        v.lastScreenCursorPosition = Vector2(50.0, 50.0)
+        v.mouseListener.controller.startOrEndScale()
+
+        // Lock X first.
+        GraphKeyListener.impl.toggleAxisLockX(v)
+        assertTrue(v.mouseListener.controller.lockX)
+        assertFalse(v.mouseListener.controller.lockY)
+
+        // Lock Y → X should release, only Y locked.
+        GraphKeyListener.impl.toggleAxisLockY(v)
+        assertFalse(v.mouseListener.controller.lockX)
+        assertTrue(v.mouseListener.controller.lockY)
+
+        // Tap Y again → release to free 2D scale.
+        GraphKeyListener.impl.toggleAxisLockY(v)
+        assertFalse(v.mouseListener.controller.lockX)
+        assertFalse(v.mouseListener.controller.lockY)
     }
 
     @Test
     fun `grab with lockY zeroes y component of dragMoveNode delta`() {
         val g = trianglesGraph()
         val v = viewWith(g)
-        // Drive the controller directly — simulate "grab started,
-        // then cursor moved from (0,0) to (50,50)".
+        // Simulate "cursor was at (0,0), user toggled grab,
+        // then dragged cursor to (50,50)". startOrEndMove
+        // anchors at the view's current lastCursorPosition.
+        v.lastCursorPosition = Vector2(0.0, 0.0)
         val c = v.mouseListener.controller
         c.lastPosition = Vector2(0.0, 0.0)
         c.startOrEndMove()
@@ -250,6 +276,32 @@ class ScaleTest {
         assertEquals(0.0, byName["B"]!!.position.y, absoluteTolerance = 0.001)
         assertEquals(50.0, byName["C"]!!.position.x, absoluteTolerance = 0.001)
         assertEquals(100.0, byName["C"]!!.position.y, absoluteTolerance = 0.001)
+    }
+
+    @Test
+    fun `axis-lock toggled mid-grab reverts drift on newly-frozen axis`() {
+        // Start at (0,0), drag to (40, 30) with both axes free —
+        // nodes move by (+40, +30). Then lock Y. With from-start
+        // recomputation, the Y drift (+30) must revert to 0 even
+        // though the cursor hasn't moved.
+        val g = trianglesGraph()
+        val v = viewWith(g)
+        v.lastCursorPosition = Vector2(0.0, 0.0)
+        val c = v.mouseListener.controller
+        c.lastPosition = Vector2(0.0, 0.0)
+        c.startOrEndMove()
+        c.dragMoveNode(Vector2(40.0, 30.0), restrictOperator = false)
+        // Verify the diagonal drag went through.
+        val aAfterDrag = g.nodes.first { it.attributes.text == "A" }
+        assertEquals(40.0, aAfterDrag.position.x, absoluteTolerance = 0.001)
+        assertEquals(30.0, aAfterDrag.position.y, absoluteTolerance = 0.001)
+
+        // Lock Y and re-drag at the same cursor — Y should snap
+        // back to origin.
+        c.lockY = true
+        c.dragMoveNode(Vector2(40.0, 30.0), restrictOperator = false)
+        assertEquals(40.0, aAfterDrag.position.x, absoluteTolerance = 0.001)
+        assertEquals(0.0, aAfterDrag.position.y, absoluteTolerance = 0.001)
     }
 
     @Test
