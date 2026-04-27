@@ -194,7 +194,7 @@ object Plotter {
             val shorterDim = minOf(w, h)
             val longerDim = maxOf(w, h)
             if (longerDim <= 0f) return Constants.defaultFgColor
-            val fadeStart = shorterDim * 0.25f
+            val fadeStart = shorterDim * 0.125f
             val fadeEnd = longerDim
             if (screenLen <= fadeStart) return Constants.defaultFgColor
             val fade = ((screenLen - fadeStart) / (fadeEnd - fadeStart)).coerceIn(0f, 1f)
