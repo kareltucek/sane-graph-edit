@@ -103,7 +103,7 @@ fun parseArgs(args: Array<String>): CliArgs {
 private const val USAGE = """Usage: sane-graph-edit [options] [file]
 
 Options:
-  -e <keys>    Execute a key sequence (e.g. ':export foo.svg<Enter>'),
+  -e <keys>    Execute a key sequence (e.g. ':export svg foo.svg<Enter>'),
                then exit (unless -u). Repeatable.
   -u           Stay open with a window after executing -e commands.
   -h, --help   Print this help and exit.

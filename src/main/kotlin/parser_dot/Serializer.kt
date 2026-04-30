@@ -155,4 +155,13 @@ class Serializer(
         val lines = log.actions.flatMap { processLog(it) }
         return lines.joinToString(separator = "\n")
     }
+
+    fun serializeSubset(nodes: Set<Node>): String {
+        val nodeLines = g.nodes.filter { nodes.contains(it) }.flatMap(::processNode)
+        val edgeLines = g.edges
+            .filter { nodes.contains(it.src) && nodes.contains(it.dst) }
+            .flatMap(::processEdge)
+        return (listOf("digraph ${g.id} {") + nodeLines + edgeLines + listOf("}"))
+            .joinToString(separator = "\n")
+    }
 }

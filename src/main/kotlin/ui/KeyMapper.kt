@@ -1,5 +1,6 @@
 package ui
 
+import Graph
 import javax.swing.SwingUtilities
 import javax.swing.Timer
 
@@ -536,6 +537,33 @@ class KeyMapper(
     }
 
     /**
+     * Parse `<fmt> <path>` from a :export-style command. Returns
+     * `(fmt, path)` on success or null with an error printed if
+     * the format is missing/unknown. [verb] is used in the error
+     * message so :export and :export-selection both report
+     * themselves correctly.
+     */
+    private fun parseExportArgs(args: String, verb: String): Pair<String, String>? {
+        val split = args.trim().split("\\s+".toRegex(), limit = 2)
+        if (split.size < 2 || split[0].isBlank() || split[1].isBlank()) {
+            System.err.println("sane-graph-edit: :$verb requires <fmt> <path> (fmt: svg|dot)")
+            return null
+        }
+        val fmt = split[0].lowercase()
+        if (fmt != "svg" && fmt != "dot") {
+            System.err.println("sane-graph-edit: :$verb unknown format '$fmt' (expected svg|dot)")
+            return null
+        }
+        return fmt to split[1]
+    }
+
+    private fun renderExport(g: Graph, nodes: Set<graph_tools.Node>, fmt: String): String =
+        when (fmt) {
+            "dot" -> parser_dot.Serializer(g).serializeSubset(nodes)
+            else -> export.SvgWriter.write(g, nodes)
+        }
+
+    /**
      * Execute a command-bar line. Config commands (`map`, `set`,
      * `source`, etc.) work without a [GraphView]; graph commands
      * (`:w`, `:q`, `:e`, named commands) require one and are
@@ -627,33 +655,42 @@ class KeyMapper(
                 showHelpText(text)
             }
             "export" -> {
-                // :export <path> — write the whole graph as SVG.
-                // No-path form falls back to the dialog (interactive only).
+                // :export <fmt> <path> — write the whole graph in <fmt> (svg|dot).
+                // No-arg form falls back to the SVG dialog (interactive only).
                 if (args != null) {
-                    try {
-                        val visible = gv.g.nodes.filter { it.isVisible }.toSet()
-                        java.nio.file.Files.writeString(
-                            resolvePath(args),
-                            export.SvgWriter.write(gv.g, visible),
-                        )
-                    } catch (t: Throwable) {
-                        System.err.println("sane-graph-edit: :export failed: ${t.message}")
+                    val parsed = parseExportArgs(args, "export")
+                    if (parsed != null) {
+                        val (fmt, path) = parsed
+                        try {
+                            val visible = gv.g.nodes.filter { it.isVisible }.toSet()
+                            java.nio.file.Files.writeString(
+                                resolvePath(path),
+                                renderExport(gv.g, visible, fmt),
+                            )
+                        } catch (t: Throwable) {
+                            System.err.println("sane-graph-edit: :export failed: ${t.message}")
+                        }
                     }
                 } else {
                     CommandRegistry.execute("export-svg", gv)
                 }
             }
             "export-selection" -> {
-                // :export-selection <path> — write only current selection.
+                // :export-selection <fmt> <path> — write only current selection in <fmt>.
                 if (args != null) {
-                    try {
-                        val sel = gv.g.selectedNodes.takeIf { it.isNotEmpty() }
-                        java.nio.file.Files.writeString(
-                            resolvePath(args),
-                            export.SvgWriter.write(gv.g, sel),
-                        )
-                    } catch (t: Throwable) {
-                        System.err.println("sane-graph-edit: :export-selection failed: ${t.message}")
+                    val parsed = parseExportArgs(args, "export-selection")
+                    if (parsed != null) {
+                        val (fmt, path) = parsed
+                        try {
+                            val sel = gv.g.selectedNodes.takeIf { it.isNotEmpty() }
+                                ?: gv.g.nodes.toSet()
+                            java.nio.file.Files.writeString(
+                                resolvePath(path),
+                                renderExport(gv.g, sel, fmt),
+                            )
+                        } catch (t: Throwable) {
+                            System.err.println("sane-graph-edit: :export-selection failed: ${t.message}")
+                        }
                     }
                 } else {
                     CommandRegistry.execute("export-selection", gv)
@@ -818,8 +855,8 @@ class KeyMapper(
         // not registered in CommandRegistry).
         val builtins = listOf(
             "e <path>                — open file (new tab)",
-            "export <path>           — write graph as SVG to <path>",
-            "export-selection <path> — write selection as SVG",
+            "export <fmt> <path>     — write graph in <fmt> (svg|dot) to <path>",
+            "export-selection <fmt> <path> — write selection in <fmt> (svg|dot)",
             "help [topic]            — this page (topic: commands, keys)",
             "map <lhs> <rhs>         — add non-recursive key mapping",
             "noremap <lhs> <rhs>     — alias for :map",
