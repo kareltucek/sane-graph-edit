@@ -558,14 +558,16 @@ class GraphMouseListener(
          * starting position each frame. [screenPos] is the cursor
          * in canvas-local screen coordinates.
          *
-         * Factor per axis is the ratio of cursor-distance-from-
-         * screen-centre now vs. at gesture start. That ratio is
-         * `1.0` at entry by construction, grows as the cursor
-         * moves further from centre, and shrinks as it nears.
+         * Factor is the ratio of cursor distance from the anchor
+         * (in screen pixels, true Euclidean) now vs. at gesture
+         * start — a single scalar applied to both axes. Axis locks
+         * pin the locked axis at `1.0` so only the free axis
+         * scales; the factor itself is still isotropic.
          * Degeneracy: if the cursor started within
-         * [SCALE_CENTER_EPSILON] pixels of a centre line, that
-         * axis is frozen at `1.0` until the cursor crosses out,
-         * at which point we re-bootstrap its reference distance.
+         * [SCALE_CENTER_EPSILON] pixels of the anchor, factor is
+         * frozen at `1.0` until the cursor leaves the band, at
+         * which point we re-bootstrap the reference distance so
+         * the gesture continues smoothly from `1.0`.
          */
         fun dragScale(screenPos: Vector2) {
             val anchor = scaleAnchor ?: return
@@ -573,18 +575,18 @@ class GraphMouseListener(
             val start = scaleStartPositions ?: return
             val startCursor = scaleStartCursorScreen ?: return
 
-            var sx = axisFactor(
-                startDelta = startCursor.x - anchorScreen.x,
-                currentDelta = screenPos.x - anchorScreen.x,
-                rebootstrap = { scaleStartCursorScreen = Vector2(screenPos.x, startCursor.y) },
-            )
-            var sy = axisFactor(
-                startDelta = startCursor.y - anchorScreen.y,
-                currentDelta = screenPos.y - anchorScreen.y,
-                rebootstrap = { scaleStartCursorScreen = Vector2(scaleStartCursorScreen!!.x, screenPos.y) },
-            )
-            if (lockX) sx = 1.0
-            if (lockY) sy = 1.0
+            val startDist = (startCursor - anchorScreen).length()
+            val currentDist = (screenPos - anchorScreen).length()
+            val factor = if (startDist < SCALE_CENTER_EPSILON) {
+                if (currentDist >= SCALE_CENTER_EPSILON) {
+                    scaleStartCursorScreen = screenPos
+                }
+                1.0
+            } else {
+                currentDist / startDist
+            }
+            val sx = if (lockX) 1.0 else factor
+            val sy = if (lockY) 1.0 else factor
 
             for ((n, origPos) in start) {
                 val dx = origPos.x - anchor.x
@@ -593,28 +595,6 @@ class GraphMouseListener(
                 graphView.g.needsRecomputing(n)
             }
             graphView.repaint()
-        }
-
-        /**
-         * Per-axis factor with the start-on-centre-line fallback.
-         * If the start reference is too close to zero, freeze the
-         * axis at `1.0` and let [rebootstrap] re-anchor the start
-         * position as soon as the cursor moves outside the band —
-         * that way the gesture continues smoothly from `1.0`
-         * rather than jumping to some arbitrary ratio.
-         */
-        private fun axisFactor(
-            startDelta: Double,
-            currentDelta: Double,
-            rebootstrap: () -> Unit,
-        ): Double {
-            if (Math.abs(startDelta) < SCALE_CENTER_EPSILON) {
-                if (Math.abs(currentDelta) >= SCALE_CENTER_EPSILON) {
-                    rebootstrap()
-                }
-                return 1.0
-            }
-            return currentDelta / startDelta
         }
 
         /**
