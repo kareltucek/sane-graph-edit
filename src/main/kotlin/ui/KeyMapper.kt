@@ -702,6 +702,7 @@ class KeyMapper(
                         val resolved = resolvePath(args)
                         val loaded = DotGraphLoader.loadFromFile(resolved.toString())
                         gv.tabManager?.newTab(graph = loaded, path = resolved)
+                        AppState.lastOpenDir = resolved.toAbsolutePath().parent
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :e failed: ${t.message}")
                     }

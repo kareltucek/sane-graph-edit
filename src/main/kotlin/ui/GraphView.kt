@@ -593,7 +593,9 @@ class Window(
         initialFile?.let { path ->
             try {
                 val loaded = DotGraphLoader.loadFromFile(path)
-                tabManager.newTab(graph = loaded, path = java.nio.file.Paths.get(path))
+                val opened = java.nio.file.Paths.get(path)
+                tabManager.newTab(graph = loaded, path = opened)
+                AppState.lastOpenDir = opened.toAbsolutePath().parent
             } catch (t: Throwable) {
                 System.err.println("sane-graph-edit: could not open '$path': ${t.message}")
             }
