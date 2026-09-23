@@ -24,8 +24,8 @@ class KeyNotationTest {
     @Test
     fun `tokenize mixed sequence`() {
         assertEquals(
-            listOf(":", "n", "e", "x", "t", "-", "t", "a", "b", "<CR>"),
-            KeyNotation.tokenize(":next-tab<CR>"),
+            listOf(":", "t", "a", "b", "n", "e", "x", "t", "<CR>"),
+            KeyNotation.tokenize(":tabnext<CR>"),
         )
     }
 

@@ -635,11 +635,11 @@ class KeyMapper(
                     CommandRegistry.execute("save", gv)
                 }
             }
-            "q" -> CommandRegistry.execute("close-tab", gv)
+            "q" -> CommandRegistry.execute("tabclose", gv)
             "q!" -> gv.tabManager?.closeCurrent()
             "wq" -> {
                 if (CommandRegistry.execute("save", gv)) {
-                    CommandRegistry.execute("close-tab", gv)
+                    CommandRegistry.execute("tabclose", gv)
                 }
             }
             "help" -> {
@@ -806,8 +806,8 @@ class KeyMapper(
         sb.appendLine()
         sb.appendLine("Example init file:")
         sb.appendLine("  # comments and blank lines are ignored")
-        sb.appendLine("  map gt :next-tab<Enter>")
-        sb.appendLine("  map gT :prev-tab<Enter>")
+        sb.appendLine("  map gt :tabnext<Enter>")
+        sb.appendLine("  map gT :tabprevious<Enter>")
         sb.appendLine("  set timeoutlen=300")
         sb.appendLine()
         sb.appendLine("Available settings (use `:set <name>=<value>`):")
@@ -1070,24 +1070,24 @@ class KeyMapper(
 
             // Movement
             "g" to "grab",
-            "gt" to "next-tab",
-            "gT" to "prev-tab",
+            "gt" to "tabnext",
+            "gT" to "tabprevious",
             "G" to "subgraph-focus",
             "s" to "scale",
 
             // Modifier-based
             "<C-s>" to "save",
-            "<C-S-s>" to "save-as",
+            "<C-S-s>" to "saveas",
             "<C-o>" to "open",
             "<C-n>" to "tabnew",
             "<C-t>" to "tabnew",
-            "<C-w>" to "close-tab",
+            "<C-w>" to "tabclose",
             "<C-e>" to "export-svg",
             "<C-S-e>" to "export-selection",
-            "<C-Tab>" to "next-tab",
-            "<C-S-Tab>" to "prev-tab",
-            "<C-PgDn>" to "next-tab",
-            "<C-PgUp>" to "prev-tab",
+            "<C-Tab>" to "tabnext",
+            "<C-S-Tab>" to "tabprevious",
+            "<C-PgDn>" to "tabnext",
+            "<C-PgUp>" to "tabprevious",
             "<C-a>" to "select-all",
             "<C-c>" to "copy",
             "<C-x>" to "cut",

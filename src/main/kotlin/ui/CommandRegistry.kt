@@ -42,6 +42,12 @@ object CommandRegistry {
  * at startup. The lambdas capture no state — they receive the
  * active [GraphView] at execution time, so they work correctly
  * across tab switches.
+ *
+ * Naming: commands that mirror a vim ex command use vim's exact
+ * spelling (`tabnew`, `tabclose`, `saveas`, …), while commands
+ * specific to this editor are kebab-case (`select-all`,
+ * `edge-forward`, …). The inconsistency is intentional — it tells
+ * vim-compatible commands apart from our own at a glance.
  */
 fun registerAllCommands() {
     val r = CommandRegistry
@@ -121,16 +127,16 @@ fun registerAllCommands() {
 
     // Files
     r.register("save") { it.saveFile() }
-    r.register("save-as") { it.saveFileAs() }
+    r.register("saveas") { it.saveFileAs() }
     r.register("open") { it.openFile() }
     r.register("export-svg") { it.exportSvg() }
     r.register("export-selection") { it.exportSelection() }
 
     // Tabs
     r.register("tabnew") { it.tabManager?.newTab() }
-    r.register("close-tab") { it.tabManager?.closeCurrent() }
-    r.register("next-tab") { it.tabManager?.selectNext() }
-    r.register("prev-tab") { it.tabManager?.selectPrevious() }
+    r.register("tabclose") { it.tabManager?.closeCurrent() }
+    r.register("tabnext") { it.tabManager?.selectNext() }
+    r.register("tabprevious") { it.tabManager?.selectPrevious() }
 
     // Search navigation
     r.register("search-next") { gv ->

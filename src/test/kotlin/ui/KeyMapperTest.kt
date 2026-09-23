@@ -64,7 +64,7 @@ class KeyMapperTest {
         assertEquals("delete", defaults["d"])
         assertEquals("save", defaults["<C-s>"])
         assertEquals("deselect", defaults["<Esc>"])
-        assertEquals("next-tab", defaults["<C-Tab>"])
+        assertEquals("tabnext", defaults["<C-Tab>"])
         assertEquals("subgraph-focus", defaults["G"])
     }
 
@@ -108,7 +108,7 @@ class KeyMapperTest {
     @Test
     fun `multi-key prefix causes pending state`() {
         val mapper = KeyMapper(testDefaults())
-        mapper.map("gt", ":next-tab<CR>")
+        mapper.map("gt", ":tabnext<CR>")
         // "g" is in defaults (→ grab) AND is a prefix of "gt" in
         // mappings → ambiguous → pending.
         mapper.feedKey("g")
@@ -118,7 +118,7 @@ class KeyMapperTest {
     @Test
     fun `multi-key completes on second key`() {
         val mapper = KeyMapper(testDefaults())
-        mapper.map("gt", ":next-tab<CR>")
+        mapper.map("gt", ":tabnext<CR>")
         mapper.feedKey("g")
         assertTrue(mapper.isPending)
         mapper.feedKey("t")
@@ -145,7 +145,7 @@ class KeyMapperTest {
     @Test
     fun `reset clears pending state`() {
         val mapper = KeyMapper(testDefaults())
-        mapper.map("gt", ":next-tab<CR>")
+        mapper.map("gt", ":tabnext<CR>")
         mapper.feedKey("g")
         assertTrue(mapper.isPending)
         mapper.reset()
@@ -170,7 +170,7 @@ class KeyMapperTest {
         java.nio.file.Files.writeString(initFile, """
             # comment
             map z u
-            map gt :next-tab<CR>
+            map gt :tabnext<CR>
             set timeoutlen=300
         """.trimIndent())
 

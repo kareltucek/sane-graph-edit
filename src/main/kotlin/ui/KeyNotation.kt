@@ -84,7 +84,7 @@ object KeyNotation {
     data class ParsedKey(val keyName: String, val ctrl: Boolean, val shift: Boolean)
 
     /**
-     * Break a key-sequence string (like `":next-tab<CR>"` or
+     * Break a key-sequence string (like `":tabnext<CR>"` or
      * `"tw0"`) into individual notation tokens.
      *
      * Rules:
