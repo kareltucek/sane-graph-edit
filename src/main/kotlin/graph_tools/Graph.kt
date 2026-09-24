@@ -53,6 +53,13 @@ class Graph(
     var parseLog: ParseLog? = null
 
     /**
+     * Graph-level attributes (`rankdir=LR;`, `graph [...]`), not
+     * interpreted by the editor, written back on save. Insertion
+     * order is kept.
+     */
+    val attributes: MutableMap<String, String> = linkedMapOf()
+
+    /**
      * Undo/redo stack attached to this graph. Every user-visible mutation
      * should go through [commit] (or be pushed via [History.commitWithoutRun]
      * for gestures that mutate the graph directly during the gesture — like

@@ -24,8 +24,9 @@ digraph storage {
 - **Not supported**: `subgraph` / `cluster`, default statements
   (`node [...]`, `edge [...]` — `node` would become a node named
   "node"), HTML labels, ports (`a:p -> b`).
-- **Graph-level attributes** (`rankdir=LR;` inside the braces) are
-  accepted but **dropped when the editor saves**.
+- Graph-level attributes — `rankdir=LR;` statements or
+  `graph [rankdir=LR]` — are not interpreted, but kept on save
+  (always written as `key="value";` statements).
 - Edge direction: always write `->`. `--` and `<-` are read as `->`
   from the first to the second node.
 - Comments: `// ...`, `# ...`, `/* ... */`. Kept on save (a comment

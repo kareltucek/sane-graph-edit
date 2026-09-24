@@ -65,6 +65,10 @@ data class ParserCtx(
         }
     }
 
-    fun pushGraphAttribute(tok: DotGraphLoader.Token, attr: DotGraphLoader.Token) {
+    fun pushGraphAttribute(key: String, value: String) {
+        if (!graph.attributes.containsKey(key)) {
+            log.add(LogGraphAttribute(key))
+        }
+        graph.attributes[key] = value
     }
 }

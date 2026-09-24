@@ -28,6 +28,7 @@ class Serializer(
             a is LogGraphEnd -> processLogGraphEnd(a)
             a is LogNodeDefined -> processLogNodeDefined(a)
             a is LogEdgeDefined -> processLogEdgeDefined(a)
+            a is LogGraphAttribute -> processLogGraphAttribute(a)
             a is LogComment -> processLogComment(a)
             a is LogSectionBreak -> processLogSectionBreak(a)
             else -> throw Throwable("Action type ${a::class.java.name} not recognized.")
@@ -104,8 +105,18 @@ class Serializer(
         return listOf("")
     }
 
+    /** Graph attributes whose statement is not in the parse log go right after the opening brace. */
     fun processLogGraphStart(a: LogGraphStart): List<String> {
-        return listOf("digraph ${a.id} {")
+        val logged = g.parseLog?.actions.orEmpty().filterIsInstance<LogGraphAttribute>().map { it.key }.toSet()
+        return listOf("digraph ${a.id} {") + graphAttributeLines(g.attributes.keys - logged)
+    }
+
+    fun processLogGraphAttribute(a: LogGraphAttribute): List<String> {
+        return graphAttributeLines(setOf(a.key))
+    }
+
+    private fun graphAttributeLines(keys: Set<String>): List<String> {
+        return keys.mapNotNull { k -> g.attributes[k]?.let { v -> "${serialize(k)}=${serialize(v, true)};" } }
     }
 
     fun findName(prefix: String): String {
@@ -161,7 +172,7 @@ class Serializer(
         val edgeLines = g.edges
             .filter { nodes.contains(it.src) && nodes.contains(it.dst) }
             .flatMap(::processEdge)
-        return (listOf("digraph ${g.id} {") + nodeLines + edgeLines + listOf("}"))
+        return (listOf("digraph ${g.id} {") + graphAttributeLines(g.attributes.keys) + nodeLines + edgeLines + listOf("}"))
             .joinToString(separator = "\n")
     }
 }

@@ -120,7 +120,10 @@ class Parser(
             when {
                 conditionMatches(tpe = TokenType.Id) -> process { tok ->
                     if (input.first().value == "=") {
-                        process { eq -> process { attr -> ctx.pushGraphAttribute(tok, attr) } }
+                        process { eq -> process { attr -> ctx.pushGraphAttribute(tok.value, attr.value) } }
+                    } else if (tok.value == "graph" && input.first().value == "[") {
+                        // `graph [k=v]`: graph-level attributes, same as `k=v;`
+                        parseAttributeList { k, v -> ctx.pushGraphAttribute(k, v) }
                     } else {
                         ctx.pushNode(tok)
                     }
@@ -133,7 +136,7 @@ class Parser(
                     }
                 }
 
-                conditionMatches("[") -> parseAttributeList(ctx)
+                conditionMatches("[") -> parseAttributeList { k, v -> ctx.pushAttribute(k, v) }
                 conditionMatches("graph", "digraph", "subgraph") -> TODO("Not implemented yet!")
                 conditionMatches(tpe = TokenType.Delimiter) -> process {
                     ctx.clear()
@@ -142,13 +145,13 @@ class Parser(
         }
     }
 
-    private fun parseAttributeList(ctx: ParserCtx) {
+    private fun parseAttributeList(push: (String, String) -> Unit) {
         process {}
         until("]") {
             val left = tryMatch(tpe = TokenType.Id) { it?.value }
             val eq = tryMatch("=") { it?.value }
             val right = tryMatch(tpe = TokenType.Id) { it?.value }
-            ctx.pushAttribute(left, right)
+            if (left != null && right != null) push(left, right)
             tryMatch(tpe = TokenType.Delimiter) {}
         }
         process { }
