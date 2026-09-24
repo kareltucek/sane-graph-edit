@@ -753,7 +753,8 @@ class KeyMapper(
         }
         when (name) {
             "unhide" -> graph_tools.ViewModes.unhide = change(graph_tools.ViewModes.unhide)
-            "show-neighbours" -> graph_tools.ViewModes.showNeighbours = change(graph_tools.ViewModes.showNeighbours)
+            "show-parents" -> graph_tools.ViewModes.showParents = change(graph_tools.ViewModes.showParents)
+            "show-children" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
         }
         activeView?.let { gv ->
@@ -762,7 +763,7 @@ class KeyMapper(
         }
     }
 
-    private val flagNames = setOf("unhide", "show-neighbours")
+    private val flagNames = setOf("unhide", "show-parents", "show-children")
 
     /**
      * Load an init file. Each line is a command-bar command
@@ -884,10 +885,13 @@ class KeyMapper(
         sb.appendLine("                    it selects (one undo step).")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.unhide) "on" else "off"}.")
         sb.appendLine()
-        sb.appendLine("  show-neighbours   Also show hidden nodes that are selected or")
-        sb.appendLine("                    adjacent to a shown node. Display only; hide")
-        sb.appendLine("                    levels are untouched.")
-        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showNeighbours) "on" else "off"}.")
+        sb.appendLine("  show-parents      Also show hidden nodes that are selected, or")
+        sb.appendLine("                    parents of a non-hidden or selected node.")
+        sb.appendLine("                    Display only; hide levels are untouched.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showParents) "on" else "off"}.")
+        sb.appendLine()
+        sb.appendLine("  show-children     Same, for children.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showChildren) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("Related:")
         sb.appendLine("  :source <path>    Load a different init file.")

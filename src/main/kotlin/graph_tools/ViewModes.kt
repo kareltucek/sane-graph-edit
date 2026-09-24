@@ -14,10 +14,13 @@ object ViewModes {
     var unhide: Boolean = false
 
     /**
-     * `:set show-neighbours` — visible nodes are the non-hidden and
-     * the selected ones, plus every neighbour of those. See
+     * `:set show-parents` — besides the non-hidden and the selected
+     * nodes, also show every parent (edge source) of those. See
      * [Graph.isVisible]. Display rule only; hide levels are not
      * touched.
      */
-    var showNeighbours: Boolean = false
+    var showParents: Boolean = false
+
+    /** `:set show-children` — like [showParents], for children (edge targets). */
+    var showChildren: Boolean = false
 }

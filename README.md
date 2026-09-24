@@ -213,9 +213,9 @@ while on:
 
 - `unhide` — `t`/`T`/`l`/`L` (and `G`) also step into hidden nodes,
   and unhide the ones they select (one undo step).
-- `show-neighbours` — besides non-hidden nodes, also show selected
-  nodes and every neighbour of a shown node. Display only; hide
-  levels are untouched.
+- `show-parents` / `show-children` — besides non-hidden nodes, also
+  show selected nodes and every parent / child of a non-hidden or
+  selected node. Display only; hide levels are untouched.
 
 ### Keyboard — styling
 

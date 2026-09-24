@@ -222,15 +222,17 @@ class Graph(
 
     /**
      * True when [n] should be drawn and is clickable. Normally: not
-     * hidden. With [ViewModes.showNeighbours]: not hidden, or
-     * selected, or a neighbour of a node that is one of those.
+     * hidden. With [ViewModes.showParents] / [ViewModes.showChildren]
+     * on, "shown" nodes are the non-hidden and the selected ones, and
+     * [n] is also visible when it is shown, or a parent / child of a
+     * shown node.
      */
     fun isVisible(n: Node): Boolean {
         val shown = { m: Node -> !m.isHidden || m in selectedNodesRestricted }
-        val nearShown = ViewModes.showNeighbours && (
-            shown(n) || edgeMap[n].orEmpty().any { e -> shown(if (e.src == n) e.dst else e.src) }
-        )
-        return !n.isHidden || nearShown
+        val anyMode = ViewModes.showParents || ViewModes.showChildren
+        val parentOfShown = ViewModes.showParents && findOutEdges(n).any { shown(it.dst) }
+        val childOfShown = ViewModes.showChildren && findInEdges(n).any { shown(it.src) }
+        return !n.isHidden || (anyMode && shown(n)) || parentOfShown || childOfShown
     }
 
     /** All nodes passing [isVisible]; linear in nodes + edges. */

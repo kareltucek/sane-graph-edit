@@ -231,7 +231,8 @@ class GraphView(
         val recText = if (recording) "recording" else ""
         val modes = listOfNotNull(
             "[unhide]".takeIf { graph_tools.ViewModes.unhide },
-            "[show-neighbours]".takeIf { graph_tools.ViewModes.showNeighbours },
+            "[show-parents]".takeIf { graph_tools.ViewModes.showParents },
+            "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
         ).joinToString(" ")
         val parts = listOf(modes, gesture, stylePickerText, recText).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))

@@ -142,14 +142,21 @@ class HideTest {
         return g to ns
     }
 
-    private fun withModes(unhide: Boolean = false, showNeighbours: Boolean = false, body: () -> Unit) {
+    private fun withModes(
+        unhide: Boolean = false,
+        showParents: Boolean = false,
+        showChildren: Boolean = false,
+        body: () -> Unit,
+    ) {
         ViewModes.unhide = unhide
-        ViewModes.showNeighbours = showNeighbours
+        ViewModes.showParents = showParents
+        ViewModes.showChildren = showChildren
         try {
             body()
         } finally {
             ViewModes.unhide = false
-            ViewModes.showNeighbours = false
+            ViewModes.showParents = false
+            ViewModes.showChildren = false
         }
     }
 
@@ -172,18 +179,27 @@ class HideTest {
     }
 
     @Test
-    fun `show-neighbours shows neighbours of shown nodes only`() = withModes(showNeighbours = true) {
+    fun `show-children shows children of shown nodes only`() = withModes(showChildren = true) {
         val (g, ns) = chain("B", "C", "D")
-        assertTrue(g.isVisible(ns.getValue("B")))   // neighbour of A
-        assertFalse(g.isVisible(ns.getValue("C")))  // only next to hidden B
+        assertTrue(g.isVisible(ns.getValue("B")))   // child of A
+        assertFalse(g.isVisible(ns.getValue("C")))  // only below hidden B
         g.select(ns.getValue("B"))
-        assertTrue(g.isVisible(ns.getValue("C")))   // neighbour of selected B
+        assertTrue(g.isVisible(ns.getValue("C")))   // child of selected B
         assertFalse(g.isVisible(ns.getValue("D")))
         assertEquals(setOf("A", "B", "C"), g.visibleNodes().map { it.attributes.text }.toSet())
     }
 
     @Test
-    fun `without show-neighbours a selected hidden node stays invisible`() {
+    fun `show-parents shows parents, not children`() = withModes(showParents = true) {
+        val (g, ns) = chain("A", "B", "D")          // only C is not hidden
+        assertTrue(g.isVisible(ns.getValue("B")))   // parent of C
+        assertFalse(g.isVisible(ns.getValue("D")))  // child of C
+        assertFalse(g.isVisible(ns.getValue("A")))  // parent of hidden B
+        assertEquals(setOf("B", "C"), g.visibleNodes().map { it.attributes.text }.toSet())
+    }
+
+    @Test
+    fun `without show modes a selected hidden node stays invisible`() {
         val (g, ns) = chain("B")
         g.select(ns.getValue("B"))
         assertFalse(g.isVisible(ns.getValue("B")))
