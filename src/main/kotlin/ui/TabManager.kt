@@ -190,7 +190,7 @@ class TabManager(
     }
 
     /**
-     * Load [path] as a DOT graph into a new tab (`gf`, the open
+     * Load [path] as a DOT graph into a new tab (Ctrl+T/N, the open
      * dialog). Parse errors are reported via a dialog.
      */
     fun openPath(path: Path) {

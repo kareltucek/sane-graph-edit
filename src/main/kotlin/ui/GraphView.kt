@@ -387,15 +387,21 @@ class GraphView(
      * the current graph untouched on failure.
      */
     fun openFile() {
-        val path = FileOps.openDialog(this) ?: return
+        FileOps.openDialog(this)?.let { loadInPlace(it) }
+    }
+
+    /** Replace this tab's graph with [path] (Ctrl+O, `gf`). */
+    private fun loadInPlace(path: Path) {
         try {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
             replaceGraph(loaded)
             currentFile = path
+            untitledName = null
             onStateChange()
             boundScreen()
             repaint()
             tabManager?.saveSession()
+            AppState.lastOpenDir = path.toAbsolutePath().parent
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
                 this,
@@ -424,14 +430,7 @@ class GraphView(
             )
             return
         }
-        val confirmed = force || !isDirty || JOptionPane.showConfirmDialog(
-            this,
-            "Discard unsaved changes and reload ${path.fileName}?",
-            "Reload",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.WARNING_MESSAGE,
-        ) == JOptionPane.OK_OPTION
-        if (!confirmed) return
+        if (!force && !confirmDiscard("reload ${path.fileName}")) return
         try {
             replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
             repaint()
@@ -445,10 +444,22 @@ class GraphView(
         }
     }
 
+    /** True when there are no unsaved changes, or the user agrees to lose them to [action]. */
+    private fun confirmDiscard(action: String): Boolean =
+        !isDirty || JOptionPane.showConfirmDialog(
+            this,
+            "Discard unsaved changes and $action?",
+            "Unsaved changes",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE,
+        ) == JOptionPane.OK_OPTION
+
     /**
      * `gf`: follow the selected node's `link` attribute
-     * ([FileLink]) — a file opens in a new tab, a directory opens a
-     * `:browse` tab. Needs exactly one selected node.
+     * ([FileLink]) in this tab, like vim — a file is opened, a
+     * directory is shown as a [FileTree], so repeated `gf` walks the
+     * filesystem. Needs exactly one selected node; asks first if the
+     * tab has unsaved changes.
      */
     fun followFileLink() {
         val node = g.selectedNodes.singleOrNull()
@@ -458,13 +469,24 @@ class GraphView(
             link == null -> messageArea?.show("follow-file-link: the node has no `${FileLink.ATTRIBUTE}` attribute")
             else -> {
                 val path = FileLink.resolve(link, currentFile)
-                if (java.nio.file.Files.isDirectory(path)) {
-                    tabManager?.browse(path)
-                } else {
-                    tabManager?.openPath(path)
+                if (confirmDiscard("open ${path.fileName ?: path}")) {
+                    if (java.nio.file.Files.isDirectory(path)) browseInPlace(path) else loadInPlace(path)
                 }
             }
         }
+    }
+
+    /**
+     * Replace this tab's graph with the [FileTree] of [dir]. The
+     * browsed directory sits at the origin; centre the view on it.
+     */
+    fun browseInPlace(dir: Path) {
+        replaceGraph(FileTree.build(dir))
+        currentFile = null
+        untitledName = "browse: ${dir.toAbsolutePath().normalize()}"
+        onStateChange()
+        setViewTo(Vector2.Zero)
+        tabManager?.saveSession()
     }
 
     /**

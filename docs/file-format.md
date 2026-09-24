@@ -75,8 +75,11 @@ n2 [ label="docs"; link="/home/me/graphs/" ];
   resolved against the directory of the file that contains the node
   (for an unsaved tab: the editor's working directory). `~/` is
   expanded to the home directory. No URLs.
-- `gf` (command `follow-file-link`), with exactly one node selected:
-  - a file → opened in a new tab as a DOT graph;
-  - a directory → a new `:browse` tab (file tree) rooted there.
+- `gf` (command `follow-file-link`), with exactly one node selected,
+  replaces the current tab's graph (asking first if it has unsaved
+  changes):
+  - a file → opened as a DOT graph;
+  - a directory → a file tree of it (as `:browse`), so repeated `gf`
+    walks the filesystem.
 - The `:browse` command generates file-tree graphs whose nodes use
   `link`, so it doubles as a file picker.

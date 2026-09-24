@@ -246,7 +246,7 @@ navigation, not data.
 | `Ctrl+S`        | Save — writes to the current file, prompts on first save |
 | `Ctrl+Shift+S`  | Save As — always prompts                               |
 | `F5`            | Reload the current file from disk (asks if unsaved)    |
-| `gf`            | Follow the selected node's `link`: open the file in a new tab, or browse the directory |
+| `gf`            | Follow the selected node's `link` in this tab: open the file, or show the directory's file tree |
 | `:browse [dir]` | New tab with a file tree of `dir` (default: working directory); `gf` on a node opens it |
 | `Ctrl+E`        | Export graph as SVG                                    |
 | `Ctrl+Shift+E`  | Export only the selected nodes as SVG                  |
