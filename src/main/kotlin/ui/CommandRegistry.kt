@@ -129,6 +129,7 @@ fun registerAllCommands() {
     r.register("save") { it.saveFile() }
     r.register("saveas") { it.saveFileAs() }
     r.register("open") { it.openFile() }
+    r.register("reload") { it.reloadFile() }
     r.register("export-svg") { it.exportSvg() }
     r.register("export-selection") { it.exportSelection() }
 

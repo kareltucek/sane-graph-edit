@@ -635,11 +635,13 @@ class KeyMapper(
                     CommandRegistry.execute("save", gv)
                 }
             }
-            "q" -> CommandRegistry.execute("tabclose", gv)
-            "q!" -> gv.tabManager?.closeCurrent()
+            "q" -> gv.tabManager?.quitCurrent(force = false)
+            "q!" -> gv.tabManager?.quitCurrent(force = true)
+            "qa" -> gv.tabManager?.window?.quit(force = false)
+            "qa!" -> gv.tabManager?.window?.quit(force = true)
             "wq" -> {
-                if (CommandRegistry.execute("save", gv)) {
-                    CommandRegistry.execute("tabclose", gv)
+                if (gv.saveFile()) {
+                    gv.tabManager?.quitCurrent(force = false)
                 }
             }
             "help" -> {
@@ -707,9 +709,11 @@ class KeyMapper(
                         System.err.println("sane-graph-edit: :e failed: ${t.message}")
                     }
                 } else {
-                    CommandRegistry.execute("open", gv)
+                    // vim: bare :e re-reads the current file
+                    CommandRegistry.execute("reload", gv)
                 }
             }
+            "e!" -> gv.reloadFile(force = true)
             else -> {
                 // Try as a registered command name
                 CommandRegistry.execute(cmd, gv)
@@ -856,19 +860,23 @@ class KeyMapper(
         // not registered in CommandRegistry).
         val builtins = listOf(
             "e <path>                — open file (new tab)",
+            "e                       — reload current file (asks if unsaved)",
+            "e!                      — reload current file, discarding changes",
             "export <fmt> <path>     — write graph in <fmt> (svg|dot) to <path>",
             "export-selection <fmt> <path> — write selection in <fmt> (svg|dot)",
             "help [topic]            — this page (topic: commands, keys)",
             "map <lhs> <rhs>         — add non-recursive key mapping",
             "noremap <lhs> <rhs>     — alias for :map",
-            "q                       — close current tab",
-            "q!                      — close current tab, no prompt",
+            "q                       — close current tab (quit if last)",
+            "q!                      — same, discarding unsaved changes",
+            "qa                      — quit (asks about unsaved tabs)",
+            "qa!                     — quit, discarding unsaved changes",
             "remap <lhs> <rhs>       — add recursive key mapping",
             "set <opt>=<val>         — change a setting (e.g. timeoutlen)",
             "source <path>           — load commands from a file",
             "unmap <lhs>             — remove a user mapping",
             "w [<path>]              — save (to <path> if given)",
-            "wq                      — save then close tab",
+            "wq                      — save then close tab (quit if last)",
         )
         val sb = StringBuilder()
         sb.appendLine("Command-bar built-ins (type after `:` and press Enter):")
@@ -1080,6 +1088,7 @@ class KeyMapper(
             "<C-s>" to "save",
             "<C-S-s>" to "saveas",
             "<C-o>" to "open",
+            "<F5>" to "reload",
             "<C-n>" to "tabedit",
             "<C-t>" to "tabedit",
             "<C-w>" to "tabclose",

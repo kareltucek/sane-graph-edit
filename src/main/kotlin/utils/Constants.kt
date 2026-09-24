@@ -134,6 +134,7 @@ object Constants {
 
         Files
           Ctrl+O       - open
+          F5 / :e      - reload file from disk
           Ctrl+S       - save
           Ctrl+Shift+S - save as
           Ctrl+E       - export SVG

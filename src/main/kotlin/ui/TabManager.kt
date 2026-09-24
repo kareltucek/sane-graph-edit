@@ -202,13 +202,13 @@ class TabManager(
 
     /**
      * Close the tab at [idx] after prompting if it has unsaved
-     * changes. Returns true if the tab was actually closed (or
-     * cleared, on the last-tab path) and false if the user
-     * cancelled.
+     * changes (unless [force]). Returns true if the tab was actually
+     * closed (or cleared, on the last-tab path) and false if the
+     * user cancelled.
      */
-    fun closeTab(idx: Int): Boolean {
+    fun closeTab(idx: Int, force: Boolean = false): Boolean {
         val gv = views.getOrNull(idx) ?: return false
-        if (gv.isDirty && !promptSaveDiscardCancel(gv)) return false
+        if (!force && gv.isDirty && !promptSaveDiscardCancel(gv)) return false
 
         if (views.size == 1) {
             // Never leave the window with zero tabs. Reset the
@@ -232,6 +232,19 @@ class TabManager(
      * binding — pure delegation to [closeTab].
      */
     fun closeCurrent(): Boolean = closeTab(tabbedPane.selectedIndex)
+
+    /**
+     * vim's `:q` / `:q!`: close the current tab, or quit the
+     * application when it is the last one (unlike Ctrl+W, which
+     * clears the last tab). [force] skips the unsaved-changes prompt.
+     */
+    fun quitCurrent(force: Boolean) {
+        if (views.size == 1) {
+            window.quit(force)
+        } else {
+            closeTab(tabbedPane.selectedIndex, force)
+        }
+    }
 
     /** Switch to the next tab, wrapping around at the end. */
     fun selectNext() {

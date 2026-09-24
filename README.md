@@ -234,7 +234,7 @@ navigation, not data.
 | `Ctrl+O`        | Open — file chooser dialog                             |
 | `Ctrl+S`        | Save — writes to the current file, prompts on first save |
 | `Ctrl+Shift+S`  | Save As — always prompts                               |
-| `Ctrl+N`        | New tab                                                |
+| `F5`            | Reload the current file from disk (asks if unsaved)    |
 | `Ctrl+E`        | Export graph as SVG                                    |
 | `Ctrl+Shift+E`  | Export only the selected nodes as SVG                  |
 

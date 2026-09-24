@@ -136,6 +136,27 @@ class KeyNotationTest {
     }
 
     @Test
+    fun `tokenize normalizes function keys`() {
+        assertEquals(listOf("<F5>"), KeyNotation.tokenize("<f5>"))
+        assertEquals(listOf("<C-F12>"), KeyNotation.tokenize("<c-f12>"))
+    }
+
+    @Test
+    fun `fromKeyPressed names function keys`() {
+        val press = { code: Int, mods: Int ->
+            java.awt.event.KeyEvent(
+                javax.swing.JPanel(), java.awt.event.KeyEvent.KEY_PRESSED, 0L, mods, code,
+                java.awt.event.KeyEvent.CHAR_UNDEFINED,
+            )
+        }
+        assertEquals("<F5>", KeyNotation.fromKeyPressed(press(java.awt.event.KeyEvent.VK_F5, 0)))
+        assertEquals(
+            "<C-F1>",
+            KeyNotation.fromKeyPressed(press(java.awt.event.KeyEvent.VK_F1, java.awt.event.InputEvent.CTRL_DOWN_MASK)),
+        )
+    }
+
+    @Test
     fun `tokenize normalizes modifier casing`() {
         assertEquals(listOf("<C-s>"), KeyNotation.tokenize("<c-s>"))
         assertEquals(listOf("<C-S-z>"), KeyNotation.tokenize("<c-s-z>"))

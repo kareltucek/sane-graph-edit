@@ -149,8 +149,11 @@ object KeyNotation {
         "down" -> "Down"
         "left" -> "Left"
         "right" -> "Right"
+        in functionKeyNames -> name.uppercase()
         else -> name  // preserve case for letters (C-s vs C-S)
     }
+
+    private val functionKeyNames: Set<String> = (1..12).map { "f$it" }.toSet()
 
     // --- internal helpers ---
 
@@ -167,6 +170,7 @@ object KeyNotation {
         VK_RIGHT -> "Right"
         VK_BACK_SPACE -> "BS"
         VK_DELETE -> "Del"
+        in VK_F1..VK_F12 -> "F${keyCode - VK_F1 + 1}"
         else -> null
     }
 

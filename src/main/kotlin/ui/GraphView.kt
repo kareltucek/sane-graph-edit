@@ -400,6 +400,45 @@ class GraphView(
     }
 
     /**
+     * Re-read [currentFile] from disk, e.g. after an external tool
+     * regenerated it. Unsaved changes are lost (and so is the undo
+     * history, which belongs to the old graph), so a dirty tab asks
+     * first unless [force] is set (`:e!`). The view transform is
+     * kept, so the user keeps looking at the same spot.
+     */
+    fun reloadFile(force: Boolean = false) {
+        val path = currentFile
+        if (path == null) {
+            JOptionPane.showMessageDialog(
+                this,
+                "This tab has no file to reload.",
+                "Reload",
+                JOptionPane.INFORMATION_MESSAGE,
+            )
+            return
+        }
+        val confirmed = force || !isDirty || JOptionPane.showConfirmDialog(
+            this,
+            "Discard unsaved changes and reload ${path.fileName}?",
+            "Reload",
+            JOptionPane.OK_CANCEL_OPTION,
+            JOptionPane.WARNING_MESSAGE,
+        ) == JOptionPane.OK_OPTION
+        if (!confirmed) return
+        try {
+            replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
+            repaint()
+        } catch (t: Throwable) {
+            JOptionPane.showMessageDialog(
+                this,
+                "Could not reload $path:\n${t.message}",
+                "Reload error",
+                JOptionPane.ERROR_MESSAGE,
+            )
+        }
+    }
+
+    /**
      * Export the full graph as SVG. Prompts for a file path via
      * the save dialog; default filename matches the current DOT
      * file with a `.svg` extension.
@@ -626,12 +665,7 @@ class Window(
         defaultCloseOperation = DO_NOTHING_ON_CLOSE
         addWindowListener(object : WindowAdapter() {
             override fun windowClosing(e: WindowEvent) {
-                if (tabManager.confirmCloseAll()) {
-                    tabManager.saveSession()
-                    autosave.stop()
-                    dispose()
-                    System.exit(0)
-                }
+                quit()
             }
         })
 
@@ -641,5 +675,20 @@ class Window(
 
         validate()
         repaint()
+    }
+
+    /**
+     * Exit the application: window close button, `:qa`, and `:q` on
+     * the last tab. Prompts Save / Discard / Cancel for each dirty
+     * tab unless [force] is set (`:qa!`, `:q!`). The session keeps
+     * every open tab either way, so the next start restores them.
+     */
+    fun quit(force: Boolean = false) {
+        if (force || tabManager.confirmCloseAll()) {
+            tabManager.saveSession()
+            autosave.stop()
+            dispose()
+            System.exit(0)
+        }
     }
 }
