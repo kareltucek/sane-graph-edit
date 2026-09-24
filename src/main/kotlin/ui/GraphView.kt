@@ -226,7 +226,11 @@ class GraphView(
         val stylePickerText = if (stylePicker.isVisible) styleScaleLabel() else ""
         val recording = keyMapper?.isRecording == true
         val recText = if (recording) "recording" else ""
-        val parts = listOf(gesture, stylePickerText, recText).filter { it.isNotEmpty() }
+        val modes = listOfNotNull(
+            "[unhide]".takeIf { graph_tools.ViewModes.unhide },
+            "[show-neighbours]".takeIf { graph_tools.ViewModes.showNeighbours },
+        ).joinToString(" ")
+        val parts = listOf(modes, gesture, stylePickerText, recText).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))
     }
 
@@ -449,7 +453,7 @@ class GraphView(
             ?: "untitled.svg"
         val path = FileOps.exportSvgDialog(this, baseName) ?: return
         // Export only visible nodes so hidden nodes stay hidden in the SVG.
-        val visible = g.nodes.filter { it.isVisible }.toSet()
+        val visible = g.visibleNodes()
         writeExport(path, SvgWriter.write(g, visible))
     }
 
@@ -532,7 +536,7 @@ class GraphView(
     }
 
     fun centerScreen() {
-        val visible = g.nodes.filter { it.isVisible }
+        val visible = g.visibleNodes()
         val center =
             g.selectedNodes
                 .takeIf { it.isNotEmpty() }
@@ -543,7 +547,7 @@ class GraphView(
     }
 
     fun boundScreen() {
-        val visible = g.nodes.filter { it.isVisible }
+        val visible = g.visibleNodes()
         val box =
             g.selectedNodes
                 .takeIf { it.isNotEmpty() }

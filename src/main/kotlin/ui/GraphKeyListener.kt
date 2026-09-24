@@ -15,8 +15,10 @@ import graph_tools.MoveNodesCommand
 import graph_tools.Node
 import graph_tools.RemoveEdgesCommand
 import graph_tools.RemoveNodesCommand
+import graph_tools.RevealCommand
 import graph_tools.StyleNodesCommand
 import graph_tools.UnhideCommand
+import graph_tools.ViewModes
 import utils.Vector2
 // Stale impl imports removed — dispatch now goes through KeyMapper + CommandRegistry
 import utils.Utils.orElse
@@ -139,7 +141,7 @@ class GraphKeyListener(
          * clutter.
          */
         fun invertSelection(graphView: GraphView) {
-            val visible = graphView.g.nodes.filter { it.isVisible }.toSet()
+            val visible = graphView.g.visibleNodes()
             val inverted = visible - graphView.g.selectedNodes
             graphView.g.cleanSelect(inverted)
             graphView.repaint()
@@ -221,7 +223,7 @@ class GraphKeyListener(
             if (!mark.isLetter()) return
             val g = graphView.g
             val marked = g.nodes
-                .filter { it.isVisible && it.hasMark(mark) }
+                .filter { g.isVisible(it) && it.hasMark(mark) }
                 .toSet()
             g.cleanSelect(marked)
             graphView.repaint()
@@ -335,14 +337,24 @@ class GraphKeyListener(
         }
 
         fun selectClosure(graphView: GraphView, forward: Boolean) {
-            val nextGen = computeClosure(graphView.g, graphView.g.selectedNodes, forward)
-            graphView.g.selectAll(nextGen)
-            graphView.repaint()
+            selectTraversed(graphView, computeClosure(graphView.g, graphView.g.selectedNodes, forward))
         }
 
         fun selectLinked(graphView: GraphView, forward: Boolean) {
-            val nextGen = computeGeneration(graphView.g, graphView.g.selectedNodes, forward)
-            graphView.g.selectAll(nextGen)
+            selectTraversed(graphView, computeGeneration(graphView.g, graphView.g.selectedNodes, forward))
+        }
+
+        /**
+         * Add [reached] to the selection. In unhide mode traversal
+         * also reaches hidden nodes; those are unhidden (one undo
+         * step) so the selection never holds nodes you can't see.
+         */
+        private fun selectTraversed(graphView: GraphView, reached: Set<Node>) {
+            val hidden = reached.filter { ViewModes.unhide && it.isHidden }
+            if (hidden.isNotEmpty()) {
+                graphView.g.commit(RevealCommand(hidden.associateWith { it.cache.hideLevel }))
+            }
+            graphView.g.selectAll(reached)
             graphView.repaint()
         }
 
@@ -540,7 +552,7 @@ class GraphKeyListener(
         }
 
         fun selectAll(graphView: GraphView) {
-            val visible = graphView.g.nodes.filter { it.isVisible }.toSet()
+            val visible = graphView.g.visibleNodes()
             if (graphView.g.selectedNodes == visible) {
                 graphView.g.cleanSelect(setOf())
             } else {

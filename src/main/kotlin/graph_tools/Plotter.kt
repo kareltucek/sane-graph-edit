@@ -78,12 +78,13 @@ object Plotter {
     fun drawGraph(g2d: Graphics2D, g: Graph) {
         g2d.paint = defaultBgColor
         g2d.stroke = thinStroke
+        val visible = g.visibleNodes()
         g.edges
-            .filter { it.src.isVisible && it.dst.isVisible }
+            .filter { it.src in visible && it.dst in visible }
             .forEach { drawEdge(g2d, it) }
         g2d.stroke = thinStroke
         g.nodes
-            .filter { it.isVisible }
+            .filter { it in visible }
             .forEach { drawNode(g2d, it, g.selectedNodes.contains(it)) }
     }
 

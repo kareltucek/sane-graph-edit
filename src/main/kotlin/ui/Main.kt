@@ -17,7 +17,7 @@ object Clicker {
 
     fun selectClickedNode(g: Graph, clickCoordinates: Vector2): MutableSet<Node> {
         return g.nodes
-            .filter { it.isVisible }
+            .filter { g.isVisible(it) }
             .filter {
                 it.cache?.shapeBounds?.let { bounds ->
                     clickCoordinates.isInSquare(

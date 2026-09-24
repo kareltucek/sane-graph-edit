@@ -213,6 +213,22 @@ class Graph(
             .filter { from.contains(it.src) && to.contains(it.dst) }
     }
 
+    /**
+     * True when [n] should be drawn and is clickable. Normally: not
+     * hidden. With [ViewModes.showNeighbours]: not hidden, or
+     * selected, or a neighbour of a node that is one of those.
+     */
+    fun isVisible(n: Node): Boolean {
+        val shown = { m: Node -> !m.isHidden || m in selectedNodesRestricted }
+        val nearShown = ViewModes.showNeighbours && (
+            shown(n) || edgeMap[n].orEmpty().any { e -> shown(if (e.src == n) e.dst else e.src) }
+        )
+        return !n.isHidden || nearShown
+    }
+
+    /** All nodes passing [isVisible]; linear in nodes + edges. */
+    fun visibleNodes(): Set<Node> = nodesRestricted.filter { isVisible(it) }.toSet()
+
     fun findInEdges(n: Node): List<Edge> = edgeMap[n].orEmpty().filter { it.dst == n }
 
     fun findOutEdges(n: Node): List<Edge> = edgeMap[n].orEmpty().filter { it.src == n }

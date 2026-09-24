@@ -38,7 +38,7 @@ object GraphTools {
                 }
             }
             .filter { !root.contains(it) }
-            .filter { it.isVisible }
+            .filter { ViewModes.unhide || graph.isVisible(it) }
             .toSet()
     }
 

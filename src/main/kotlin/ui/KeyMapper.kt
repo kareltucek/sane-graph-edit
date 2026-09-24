@@ -609,6 +609,8 @@ class KeyMapper(
                         val optName = args.substring(0, eqIdx).trim()
                         val optVal = args.substring(eqIdx + 1).trim()
                         applySetting(optName, optVal)
+                    } else {
+                        applyFlag(args.trim())
                     }
                 }
                 return
@@ -664,7 +666,7 @@ class KeyMapper(
                     if (parsed != null) {
                         val (fmt, path) = parsed
                         try {
-                            val visible = gv.g.nodes.filter { it.isVisible }.toSet()
+                            val visible = gv.g.visibleNodes()
                             java.nio.file.Files.writeString(
                                 resolvePath(path),
                                 renderExport(gv.g, visible, fmt),
@@ -729,6 +731,33 @@ class KeyMapper(
             else -> System.err.println("sane-graph-edit: unknown setting '$name'")
         }
     }
+
+    /**
+     * vim-style boolean options: `:set <flag>` turns it on,
+     * `:set no<flag>` off, `:set <flag>!` / `:set inv<flag>` toggles.
+     * The modes are global, so every tab repaints; the status bar of
+     * the active tab shows them (others refresh on tab switch).
+     */
+    private fun applyFlag(spec: String) {
+        val (name, change) = when {
+            spec.endsWith("!") -> spec.dropLast(1) to { v: Boolean -> !v }
+            spec.startsWith("inv") -> spec.removePrefix("inv") to { v: Boolean -> !v }
+            spec.startsWith("no") && spec.removePrefix("no") in flagNames ->
+                spec.removePrefix("no") to { _: Boolean -> false }
+            else -> spec to { _: Boolean -> true }
+        }
+        when (name) {
+            "unhide" -> graph_tools.ViewModes.unhide = change(graph_tools.ViewModes.unhide)
+            "show-neighbours" -> graph_tools.ViewModes.showNeighbours = change(graph_tools.ViewModes.showNeighbours)
+            else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
+        }
+        activeView?.let { gv ->
+            gv.refreshStatus()
+            gv.tabManager?.forEachView { it.repaint() } ?: gv.repaint()
+        }
+    }
+
+    private val flagNames = setOf("unhide", "show-neighbours")
 
     /**
      * Load an init file. Each line is a command-bar command
@@ -841,6 +870,19 @@ class KeyMapper(
         sb.appendLine("                    of holding `-`'. Values closer to 1.0 are")
         sb.appendLine("                    gentler; lower values are more aggressive.")
         sb.appendLine("                    Session-only. Default: 0.8. Current: ${graph_tools.LayoutOptimizer.springScaleStep}.")
+        sb.appendLine()
+        sb.appendLine("Modes (on/off: `:set <mode>`, `:set no<mode>`, toggle `:set <mode>!`;")
+        sb.appendLine("shown in the status bar while on; global, session-only):")
+        sb.appendLine()
+        sb.appendLine("  unhide            Traversal (select linked / closure, G) also")
+        sb.appendLine("                    steps into hidden nodes and unhides the ones")
+        sb.appendLine("                    it selects (one undo step).")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.unhide) "on" else "off"}.")
+        sb.appendLine()
+        sb.appendLine("  show-neighbours   Also show hidden nodes that are selected or")
+        sb.appendLine("                    adjacent to a shown node. Display only; hide")
+        sb.appendLine("                    levels are untouched.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showNeighbours) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("Related:")
         sb.appendLine("  :source <path>    Load a different init file.")

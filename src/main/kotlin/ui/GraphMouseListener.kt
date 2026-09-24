@@ -774,7 +774,7 @@ class GraphMouseListener(
             selectionBoxFrom?.let { box ->
                 val (ul, br) = Vector2.computeCorners(lastPosition, box)
                 graphView.g.nodes
-                    .filter { it.isVisible }
+                    .filter { graphView.g.isVisible(it) }
                     .filter { ul.lt(it.position) && it.position.lt(br) }
                     .let {
                         selectionBoxInitial?.let { graphView.g.cleanSelect(it, false) }

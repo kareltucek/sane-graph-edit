@@ -302,6 +302,7 @@ class TabManager(
         val gv = currentOrNull ?: return
         Plotter.t = gv.viewTransform
         window.refreshTitle()
+        gv.refreshStatus()  // global modes may have changed while another tab was active
         gv.graphCanvas.requestFocusInWindow()
         gv.repaint()
     }

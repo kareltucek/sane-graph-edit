@@ -48,8 +48,11 @@ class Node(
         var sessionMarks: String = "",
     )
 
-    /** True when this node should be drawn and is clickable. */
-    val isVisible: Boolean get() = cache.hideLevel == 0
+    /**
+     * True when hidden with `h`. Whether the node is drawn and
+     * clickable also depends on [ViewModes]; ask [Graph.isVisible].
+     */
+    val isHidden: Boolean get() = cache.hideLevel > 0
 
     /**
      * Get the mark string for [mark]'s case: uppercase reads

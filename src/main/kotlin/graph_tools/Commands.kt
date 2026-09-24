@@ -353,6 +353,23 @@ class HideCommand(
 }
 
 /**
+ * Reveal: set [Node.cache.hideLevel] to 0 on the given nodes,
+ * whatever their level (unhide-mode traversal). Undo restores
+ * each node's previous level.
+ */
+class RevealCommand(
+    private val before: Map<Node, Int>,
+) : Command {
+    override fun redo() {
+        before.keys.forEach { it.cache.hideLevel = 0 }
+    }
+
+    override fun undo() {
+        before.forEach { (n, level) -> n.cache.hideLevel = level }
+    }
+}
+
+/**
  * Unhide: decrement [Node.cache.hideLevel] on every node in
  * [affected] (nodes that had hideLevel > 0 when `H` was
  * pressed). One `H` undoes one layer of hiding.

@@ -28,9 +28,9 @@ class HideTest {
         val affected = g.nodes.filter { it !== a }
         g.commit(HideCommand(affected))
 
-        assertTrue(a.isVisible)
-        assertFalse(b.isVisible)
-        assertFalse(c.isVisible)
+        assertTrue(g.isVisible(a))
+        assertFalse(g.isVisible(b))
+        assertFalse(g.isVisible(c))
         assertEquals(0, a.cache.hideLevel)
         assertEquals(1, b.cache.hideLevel)
         assertEquals(1, c.cache.hideLevel)
@@ -47,9 +47,9 @@ class HideTest {
         val hidden = g.nodes.filter { it.cache.hideLevel > 0 }
         g.commit(UnhideCommand(hidden))
 
-        assertTrue(a.isVisible)
-        assertTrue(b.isVisible)
-        assertTrue(c.isVisible)
+        assertTrue(g.isVisible(a))
+        assertTrue(g.isVisible(b))
+        assertTrue(g.isVisible(c))
     }
 
     @Test
@@ -78,15 +78,15 @@ class HideTest {
 
         // First unhide: decrement all hidden.
         g.commit(UnhideCommand(g.nodes.filter { it.cache.hideLevel > 0 }))
-        assertTrue(a.isVisible)
-        assertTrue(b.isVisible)
-        assertTrue(c.isVisible)
-        assertFalse(d.isVisible)  // still at level 1
+        assertTrue(g.isVisible(a))
+        assertTrue(g.isVisible(b))
+        assertTrue(g.isVisible(c))
+        assertFalse(g.isVisible(d))  // still at level 1
         assertEquals(1, d.cache.hideLevel)
 
         // Second unhide: everything visible.
         g.commit(UnhideCommand(g.nodes.filter { it.cache.hideLevel > 0 }))
-        assertTrue(d.isVisible)
+        assertTrue(g.isVisible(d))
     }
 
     @Test
@@ -95,31 +95,31 @@ class HideTest {
         val c = g.nodes.first { it.attributes.text == "C" }
 
         g.commit(HideCommand(listOf(b, c)))
-        assertFalse(b.isVisible)
+        assertFalse(g.isVisible(b))
 
         g.history.undo()
-        assertTrue(b.isVisible)
-        assertTrue(c.isVisible)
+        assertTrue(g.isVisible(b))
+        assertTrue(g.isVisible(c))
 
         g.history.redo()
-        assertFalse(b.isVisible)
-        assertFalse(c.isVisible)
+        assertFalse(g.isVisible(b))
+        assertFalse(g.isVisible(c))
     }
 
     @Test
     fun `unhide is undoable`() {
         val (g, a, b) = threeNodeGraph()
         g.commit(HideCommand(listOf(b)))
-        assertFalse(b.isVisible)
+        assertFalse(g.isVisible(b))
 
         g.commit(UnhideCommand(listOf(b)))
-        assertTrue(b.isVisible)
+        assertTrue(g.isVisible(b))
 
         g.history.undo()
-        assertFalse(b.isVisible)  // undo of unhide = re-hide
+        assertFalse(g.isVisible(b))  // undo of unhide = re-hide
 
         g.history.redo()
-        assertTrue(b.isVisible)
+        assertTrue(g.isVisible(b))
     }
 
     @Test
@@ -130,5 +130,62 @@ class HideTest {
 
         val gen = GraphTools.computeGeneration(g, setOf(a), forward = true)
         assertFalse(gen.contains(b))
+    }
+
+    /** A -> B -> C -> D, with the given nodes hidden. */
+    private fun chain(vararg hidden: String): Pair<Graph, Map<String, Node>> {
+        val g = Graph()
+        val ns = listOf("A", "B", "C", "D").mapIndexed { i, s -> s to Node(s, Vector2(100 * i, 0)) }.toMap()
+        ns.values.forEach { g.add(it) }
+        ns.values.zipWithNext().forEach { (x, y) -> g.add(Edge(x, y)) }
+        hidden.forEach { ns.getValue(it).cache.hideLevel = 1 }
+        return g to ns
+    }
+
+    private fun withModes(unhide: Boolean = false, showNeighbours: Boolean = false, body: () -> Unit) {
+        ViewModes.unhide = unhide
+        ViewModes.showNeighbours = showNeighbours
+        try {
+            body()
+        } finally {
+            ViewModes.unhide = false
+            ViewModes.showNeighbours = false
+        }
+    }
+
+    @Test
+    fun `unhide mode lets traversal reach hidden nodes`() = withModes(unhide = true) {
+        val (g, ns) = chain("B", "C")
+        assertEquals(setOf(ns["B"]), GraphTools.computeGeneration(g, setOf(ns.getValue("A")), forward = true))
+        assertEquals(ns.values.toSet(), GraphTools.computeClosure(g, setOf(ns.getValue("A")), forward = true))
+    }
+
+    @Test
+    fun `reveal clears any hide level and undo restores it`() {
+        val (g, ns) = chain("B")
+        val b = ns.getValue("B")
+        b.cache.hideLevel = 3
+        g.commit(RevealCommand(mapOf(b to 3)))
+        assertTrue(g.isVisible(b))
+        g.history.undo()
+        assertEquals(3, b.cache.hideLevel)
+    }
+
+    @Test
+    fun `show-neighbours shows neighbours of shown nodes only`() = withModes(showNeighbours = true) {
+        val (g, ns) = chain("B", "C", "D")
+        assertTrue(g.isVisible(ns.getValue("B")))   // neighbour of A
+        assertFalse(g.isVisible(ns.getValue("C")))  // only next to hidden B
+        g.select(ns.getValue("B"))
+        assertTrue(g.isVisible(ns.getValue("C")))   // neighbour of selected B
+        assertFalse(g.isVisible(ns.getValue("D")))
+        assertEquals(setOf("A", "B", "C"), g.visibleNodes().map { it.attributes.text }.toSet())
+    }
+
+    @Test
+    fun `without show-neighbours a selected hidden node stays invisible`() {
+        val (g, ns) = chain("B")
+        g.select(ns.getValue("B"))
+        assertFalse(g.isVisible(ns.getValue("B")))
     }
 }

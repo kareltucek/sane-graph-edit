@@ -206,6 +206,17 @@ Flags:
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |
 
+Two modes change how hiding interacts with selection. Turn them on
+with `:set <mode>`, off with `:set no<mode>`, toggle with
+`:set <mode>!`. They apply to all tabs and show in the status bar
+while on:
+
+- `unhide` — `t`/`T`/`l`/`L` (and `G`) also step into hidden nodes,
+  and unhide the ones they select (one undo step).
+- `show-neighbours` — besides non-hidden nodes, also show selected
+  nodes and every neighbour of a shown node. Display only; hide
+  levels are untouched.
+
 ### Keyboard — styling
 
 | Key        | Action                                                    |

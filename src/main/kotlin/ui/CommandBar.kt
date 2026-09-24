@@ -88,7 +88,7 @@ class CommandBar(
             return
         }
         val matches = g.nodes
-            .filter { it.isVisible }
+            .filter { g.isVisible(it) }
             .filter { SearchState.matches(it.attributes.text, query) }
         g.cleanSelect(matches.toSet())
         graphView.repaint()
@@ -214,7 +214,7 @@ class CommandBar(
         }
 
         ss.results = graphView.g.nodes
-            .filter { it.isVisible }
+            .filter { graphView.g.isVisible(it) }
             .filter { SearchState.matches(it.attributes.text, query) }
             .sortedWith(compareBy({ it.position.y }, { it.position.x }))
 
