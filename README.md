@@ -352,8 +352,10 @@ Attributes the editor understands and round-trips:
 - `fontsize` — maps to an internal scale factor
 - `shape` — `box` or `oval`
 
-Anything else (graph-level settings, unknown attributes, comments) is
-preserved verbatim on open/save.
+Unknown node / edge attributes and comments are preserved on
+open/save; graph-level settings are dropped. The full specification,
+including the `link` attribute (`gf` follows it), is in
+[`docs/file-format.md`](docs/file-format.md).
 
 ## Why "sane" graph edit?
 
