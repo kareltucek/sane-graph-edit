@@ -383,11 +383,14 @@ class GraphView(
 
     /**
      * Prompt for a file, load it into this view, and fit the view
-     * to the new graph. Reports parse errors via a dialog; leaves
-     * the current graph untouched on failure.
+     * to the new graph. Asks before discarding unsaved changes.
+     * Reports parse errors via a dialog; leaves the current graph
+     * untouched on failure.
      */
     fun openFile() {
-        FileOps.openDialog(this)?.let { loadInPlace(it) }
+        FileOps.openDialog(this)
+            ?.takeIf { confirmDiscard("open ${it.fileName}") }
+            ?.let { loadInPlace(it) }
     }
 
     /** Replace this tab's graph with [path] (Ctrl+O, `gf`). */
@@ -462,18 +465,32 @@ class GraphView(
      * tab has unsaved changes.
      */
     fun followFileLink() {
+        selectedLink("follow-file-link")
+            ?.takeIf { confirmDiscard("open ${it.fileName ?: it}") }
+            ?.let { path ->
+                if (java.nio.file.Files.isDirectory(path)) browseInPlace(path) else loadInPlace(path)
+            }
+    }
+
+    /** `gF`: like [followFileLink], but into a new tab. */
+    fun followFileLinkInTab() {
+        selectedLink("follow-file-link-in-tab")?.let { path ->
+            if (java.nio.file.Files.isDirectory(path)) tabManager?.browse(path) else tabManager?.openPath(path)
+        }
+    }
+
+    /**
+     * The resolved `link` of the single selected node, or null after
+     * telling the user why there is none ([command] names the caller).
+     */
+    private fun selectedLink(command: String): Path? {
         val node = g.selectedNodes.singleOrNull()
         val link = node?.attributes?.other?.get(FileLink.ATTRIBUTE)
         when {
-            node == null -> messageArea?.show("follow-file-link: select exactly one node")
-            link == null -> messageArea?.show("follow-file-link: the node has no `${FileLink.ATTRIBUTE}` attribute")
-            else -> {
-                val path = FileLink.resolve(link, currentFile)
-                if (confirmDiscard("open ${path.fileName ?: path}")) {
-                    if (java.nio.file.Files.isDirectory(path)) browseInPlace(path) else loadInPlace(path)
-                }
-            }
+            node == null -> messageArea?.show("$command: select exactly one node")
+            link == null -> messageArea?.show("$command: the node has no `${FileLink.ATTRIBUTE}` attribute")
         }
+        return link?.let { FileLink.resolve(it, currentFile) }
     }
 
     /**

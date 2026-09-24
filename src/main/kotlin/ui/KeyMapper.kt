@@ -1130,6 +1130,7 @@ class KeyMapper(
             "gt" to "tabnext",
             "gT" to "tabprevious",
             "gf" to "follow-file-link",
+            "gF" to "follow-file-link-in-tab",
             "G" to "subgraph-focus",
             "s" to "scale",
 

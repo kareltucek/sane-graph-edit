@@ -81,5 +81,6 @@ n2 [ label="docs"; link="/home/me/graphs/" ];
   - a file → opened as a DOT graph;
   - a directory → a file tree of it (as `:browse`), so repeated `gf`
     walks the filesystem.
+- `gF` (command `follow-file-link-in-tab`) does the same in a new tab.
 - The `:browse` command generates file-tree graphs whose nodes use
   `link`, so it doubles as a file picker.
