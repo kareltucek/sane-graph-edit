@@ -135,6 +135,8 @@ object Constants {
         Files
           Ctrl+O       - open
           F5 / :e      - reload file from disk
+          gf           - follow the node's file link
+          :browse      - file tree of the working dir (gf opens)
           Ctrl+S       - save
           Ctrl+Shift+S - save as
           Ctrl+E       - export SVG

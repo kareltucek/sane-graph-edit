@@ -192,9 +192,12 @@ class GraphView(
      * the file's basename if there is one, `(untitled)` otherwise,
      * prefixed with `*` while the graph is dirty.
      */
+    /** Tab title while there is no [currentFile] (e.g. `browse: /home`). */
+    var untitledName: String? = null
+
     val title: String
         get() {
-            val base = currentFile?.fileName?.toString() ?: "(untitled)"
+            val base = currentFile?.fileName?.toString() ?: untitledName ?: "(untitled)"
             return if (isDirty) "*$base" else base
         }
 
@@ -439,6 +442,28 @@ class GraphView(
                 "Reload error",
                 JOptionPane.ERROR_MESSAGE,
             )
+        }
+    }
+
+    /**
+     * `gf`: follow the selected node's `link` attribute
+     * ([FileLink]) — a file opens in a new tab, a directory opens a
+     * `:browse` tab. Needs exactly one selected node.
+     */
+    fun followFileLink() {
+        val node = g.selectedNodes.singleOrNull()
+        val link = node?.attributes?.other?.get(FileLink.ATTRIBUTE)
+        when {
+            node == null -> messageArea?.show("follow-file-link: select exactly one node")
+            link == null -> messageArea?.show("follow-file-link: the node has no `${FileLink.ATTRIBUTE}` attribute")
+            else -> {
+                val path = FileLink.resolve(link, currentFile)
+                if (java.nio.file.Files.isDirectory(path)) {
+                    tabManager?.browse(path)
+                } else {
+                    tabManager?.openPath(path)
+                }
+            }
         }
     }
 

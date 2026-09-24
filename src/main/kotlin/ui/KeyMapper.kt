@@ -716,6 +716,11 @@ class KeyMapper(
                 }
             }
             "e!" -> gv.reloadFile(force = true)
+            "browse" -> {
+                // :browse [dir] — file-tree tab; no arg = working directory
+                val dir = args?.let { resolvePath(it) } ?: java.nio.file.Paths.get("").toAbsolutePath()
+                gv.tabManager?.browse(dir)
+            }
             else -> {
                 // Try as a registered command name
                 CommandRegistry.execute(cmd, gv)
@@ -901,6 +906,7 @@ class KeyMapper(
         // Built-in :bar verbs (handled inline in executeCommandLine,
         // not registered in CommandRegistry).
         val builtins = listOf(
+            "browse [<dir>]          — file-tree tab (gf opens / browses)",
             "e <path>                — open file (new tab)",
             "e                       — reload current file (asks if unsaved)",
             "e!                      — reload current file, discarding changes",
@@ -1123,6 +1129,7 @@ class KeyMapper(
             "g" to "grab",
             "gt" to "tabnext",
             "gT" to "tabprevious",
+            "gf" to "follow-file-link",
             "G" to "subgraph-focus",
             "s" to "scale",
 

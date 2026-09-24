@@ -186,10 +186,18 @@ class TabManager(
      * reported via a dialog.
      */
     fun openInNewTab() {
-        val path = FileOps.openDialog(window) ?: return
+        FileOps.openDialog(window)?.let { openPath(it) }
+    }
+
+    /**
+     * Load [path] as a DOT graph into a new tab (`gf`, the open
+     * dialog). Parse errors are reported via a dialog.
+     */
+    fun openPath(path: Path) {
         try {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
             newTab(graph = loaded, path = path)
+            AppState.lastOpenDir = path.toAbsolutePath().parent
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
                 window,
@@ -198,6 +206,16 @@ class TabManager(
                 JOptionPane.ERROR_MESSAGE,
             )
         }
+    }
+
+    /**
+     * `:browse`: a new untitled tab with the [FileTree] of [dir],
+     * a file picker driven by `gf`.
+     */
+    fun browse(dir: Path) {
+        val gv = newTab(graph = FileTree.build(dir))
+        gv.untitledName = "browse: ${dir.toAbsolutePath().normalize()}"
+        gv.onStateChange()
     }
 
     /**
