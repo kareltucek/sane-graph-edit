@@ -232,15 +232,16 @@ class GraphView(
 
     /**
      * Describe the current selection's node-scale values for the
-     * status bar while the style picker is open. Null scale
-     * means "default" (1.0). With mixed scales across multiple
+     * status bar while the style picker is open. The scale is
+     * logarithmic (font × 1.3^scale), so null means "default" (0).
+     * With mixed scales across multiple
      * selected nodes, renders a range; single selection shows
      * just that node's value.
      */
     private fun styleScaleLabel(): String {
         val sel = g.selectedNodes
         if (sel.isEmpty()) return "node scale: (no selection)"
-        val scales = sel.map { it.attributes.nodeScale ?: 1.0 }
+        val scales = sel.map { it.attributes.nodeScale ?: 0.0 }
         val minV = scales.min()
         val maxV = scales.max()
         val label = if (minV == maxV) {
