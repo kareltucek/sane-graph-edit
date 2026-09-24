@@ -119,6 +119,15 @@ class TabManager(
         if (views.isEmpty()) {
             newTab(persistSession = false)
         }
+        // Point the open/save dialogs at the last restored file's
+        // directory — that's where the user was working, which beats
+        // whatever directory a dialog happened to visit last.
+        views.lastOrNull { it.currentFile != null }
+            ?.currentFile?.toAbsolutePath()?.parent
+            ?.let { dir ->
+                AppState.lastOpenDir = dir
+                AppState.lastSaveDir = dir
+            }
         // Restore the previously active tab by matching its file
         // path; if it's no longer among the open tabs, leave the
         // JTabbedPane's default (index 0).
@@ -140,7 +149,7 @@ class TabManager(
     fun newTab(
         // Default to the help/keystroke reference graph rather than a
         // truly empty document. A fresh tab is also "first contact"
-        // for any new user, and the help text being one Ctrl+T away
+        // for any new user, and the help text being one `:tabnew` away
         // is more useful than a blank canvas.
         graph: Graph = Graph.defaultGraph(),
         path: Path? = null,
@@ -169,6 +178,26 @@ class TabManager(
         tabbedPane.selectedIndex = views.size - 1
         if (persistSession) saveSession()
         return gv
+    }
+
+    /**
+     * Prompt for a file and open it in a new tab. Cancelling the
+     * dialog leaves the tab bar untouched. Parse errors are
+     * reported via a dialog.
+     */
+    fun openInNewTab() {
+        val path = FileOps.openDialog(window) ?: return
+        try {
+            val loaded = DotGraphLoader.loadFromFile(path.toString())
+            newTab(graph = loaded, path = path)
+        } catch (t: Throwable) {
+            JOptionPane.showMessageDialog(
+                window,
+                "Could not open $path:\n${t.message}",
+                "Open error",
+                JOptionPane.ERROR_MESSAGE,
+            )
+        }
     }
 
     /**

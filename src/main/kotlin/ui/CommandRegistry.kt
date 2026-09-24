@@ -134,6 +134,7 @@ fun registerAllCommands() {
 
     // Tabs
     r.register("tabnew") { it.tabManager?.newTab() }
+    r.register("tabedit") { it.tabManager?.openInNewTab() }
     r.register("tabclose") { it.tabManager?.closeCurrent() }
     r.register("tabnext") { it.tabManager?.selectNext() }
     r.register("tabprevious") { it.tabManager?.selectPrevious() }

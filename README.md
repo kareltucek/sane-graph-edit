@@ -297,7 +297,7 @@ don't.
 
 | Key                | Action                                               |
 |--------------------|------------------------------------------------------|
-| `Ctrl+T`           | Open a new empty tab                                 |
+| `Ctrl+T` / `Ctrl+N` | Pick a file and open it in a new tab                |
 | `Ctrl+W`           | Close current tab (prompt if unsaved)                |
 | `Ctrl+Tab`         | Next tab                                             |
 | `Ctrl+Shift+Tab`   | Previous tab                                         |

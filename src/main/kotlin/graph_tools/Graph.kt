@@ -236,7 +236,7 @@ class Graph(
     companion object {
         /**
          * The graph shown in a fresh tab — both the very first launch
-         * and every Ctrl+T / Ctrl+N afterward. Holds the in-app
+         * and every `:tabnew` afterward. Holds the in-app
          * keystroke and command reference, so a new user can read it
          * by just opening the editor without having to find a manual.
          *

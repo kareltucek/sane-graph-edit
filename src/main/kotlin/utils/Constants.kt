@@ -140,7 +140,7 @@ object Constants {
           Ctrl+Shift+E - export selection as SVG
 
         Tabs
-          Ctrl+N / Ctrl+T           - new tab
+          Ctrl+N / Ctrl+T           - open file in new tab
           Ctrl+W                    - close tab (prompt if dirty)
           Ctrl+Tab / Ctrl+Shift+Tab - next / previous tab
           Ctrl+PgDn / Ctrl+PgUp     - next / previous tab (alias)
