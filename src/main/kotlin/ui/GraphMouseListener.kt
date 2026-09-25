@@ -79,10 +79,36 @@ class GraphMouseListener(
         graphView.repaint()
     }
 
+    private val cursorWrap = CursorWrap()
+
+    /** Gesture the [cursorWrap] offset belongs to; a different one starts from zero. */
+    private var wrapGesture: GraphMouseController.States? = null
+
+    /** The status bar overlays the canvas bottom; wrap above it. */
+    private val statusBarInset: Int
+        get() = if (graphView.statusBar != null) StatusBar.HEIGHT_PX else 0
+
+    /** Pan and the three transforms wrap the cursor; box select doesn't. */
+    private val wrapsCursor: Boolean
+        get() = controller.state == GraphMouseController.States.PanningWorkspace ||
+            controller.state?.isTransformGesture == true
+
+    /**
+     * Cursor position for the gesture code, in canvas pixels:
+     * virtual (unwrapped) while a wrapping gesture runs. Null for
+     * a stale event from before a warp, which is to be ignored.
+     */
+    private fun gesturePosition(e: MouseEvent): Vector2? {
+        if (controller.state != wrapGesture) {
+            cursorWrap.reset()
+            wrapGesture = controller.state
+        }
+        return if (wrapsCursor) cursorWrap.virtualPosition(e) else e.toScreenspaceVector()
+    }
+
     override fun mouseDragged(e: MouseEvent) {
-        //graph_tools.Plotter.screenDimensions = utils.Vector2(e.x, e.y)
-        val pos = e.toWorkspaceVector()
-        val screen = Vector2(e.x.toDouble(), e.y.toDouble())
+        val screen = gesturePosition(e) ?: return
+        val pos = screen.toWorkspaceVector()
 
         when {
             controller.state == GraphMouseController.States.MovingNodes -> {
@@ -106,17 +132,17 @@ class GraphMouseListener(
             }
         }
 
-        val newPos = e.toWorkspaceVector()
+        // Re-read: panning changed the transform, so the same screen point is a new workspace point.
+        val newPos = screen.toWorkspaceVector()
         graphView.lastCursorPosition = newPos
         graphView.lastScreenCursorPosition = screen
         controller.lastPosition = newPos
+        if (wrapsCursor) cursorWrap.wrapIfAtEdge(e, statusBarInset)
     }
 
-
-
     override fun mouseMoved(e: MouseEvent) {
-        val pos = e.toWorkspaceVector()
-        val screen = Vector2(e.x.toDouble(), e.y.toDouble())
+        val screen = gesturePosition(e) ?: return
+        val pos = screen.toWorkspaceVector()
 
         when {
             controller.state == GraphMouseController.States.MovingNodes -> {
@@ -133,10 +159,12 @@ class GraphMouseListener(
         graphView.lastCursorPosition = pos
         graphView.lastScreenCursorPosition = screen
         controller.lastPosition = pos
+        if (wrapsCursor) cursorWrap.wrapIfAtEdge(e, statusBarInset)
     }
 
     override fun mouseReleased(e: MouseEvent) {
-        val pos = e.toWorkspaceVector()
+        // virtual, so a drag that wrapped around isn't mistaken for a click
+        val pos = (gesturePosition(e) ?: e.toScreenspaceVector()).toWorkspaceVector()
 
         //handle release
         if (e.button == BUTTON1) {
@@ -153,7 +181,10 @@ class GraphMouseListener(
 
 
     override fun mouseEntered(e: MouseEvent?) {}
-    override fun mouseExited(e: MouseEvent?) {}
+    /** A fast modal move can leave the canvas between two move events; wrap from outside too. */
+    override fun mouseExited(e: MouseEvent) {
+        if (wrapsCursor && gesturePosition(e) != null) cursorWrap.wrapIfAtEdge(e, statusBarInset)
+    }
 
 
     override fun mouseWheelMoved(e: MouseWheelEvent) {
