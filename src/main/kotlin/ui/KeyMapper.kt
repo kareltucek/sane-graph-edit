@@ -785,7 +785,7 @@ class KeyMapper(
         when (name) {
             "unhide" -> graph_tools.ViewModes.unhide = change(graph_tools.ViewModes.unhide)
             "show-parents" -> graph_tools.ViewModes.showParents = change(graph_tools.ViewModes.showParents)
-            "show-children" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
+            "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
             else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
@@ -796,7 +796,8 @@ class KeyMapper(
         }
     }
 
-    private val flagNames = FLAG_SETTINGS.toSet()
+    /** [FLAG_SETTINGS] plus aliases (not offered by completion). */
+    private val flagNames = FLAG_SETTINGS.toSet() + "show-childs"
 
     /**
      * Load an init file. Each line is a command-bar command
@@ -932,7 +933,7 @@ class KeyMapper(
         sb.appendLine("                    Display only; hide levels are untouched.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showParents) "on" else "off"}.")
         sb.appendLine()
-        sb.appendLine("  show-children     Same, for children.")
+        sb.appendLine("  show-children     Same, for children. Alias: show-childs.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showChildren) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("  dynamic           Nodes that become visible are moved next to")

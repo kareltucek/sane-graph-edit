@@ -362,4 +362,17 @@ class KeyMapperTest {
         assertEquals(listOf("grab", "delete"), executed)
         assertEquals(emptyList(), followed)
     }
+
+    @Test
+    fun `show-childs is an alias of show-children, se of set`() {
+        val mapper = KeyMapper(emptyMap())
+        try {
+            mapper.executeCommandLine("se show-childs")
+            assertTrue(graph_tools.ViewModes.showChildren)
+            mapper.executeCommandLine("set noshow-childs")
+            assertFalse(graph_tools.ViewModes.showChildren)
+        } finally {
+            graph_tools.ViewModes.showChildren = false
+        }
+    }
 }
