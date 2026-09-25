@@ -73,6 +73,9 @@ class GraphCanvas(
             withPerformanceCheck("Recomputation", 5.0, onIssue = { parent.g.printStats()}) {
                  parent.g.recompute(g2d)
             }
+            // after recompute: placement needs the node sizes
+            graph_tools.DynamicPlacement.place(parent.g)
+            parent.g.recompute(g2d)
 
             Plotter.drawGraph(g2d,  parent.g)
 

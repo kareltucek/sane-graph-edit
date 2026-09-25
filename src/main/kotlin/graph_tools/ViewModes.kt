@@ -23,4 +23,7 @@ object ViewModes {
 
     /** `:set show-children` — like [showParents], for children (edge targets). */
     var showChildren: Boolean = false
+
+    /** `:set dynamic` — nodes that become visible are moved next to the visible ones ([DynamicPlacement]). */
+    var dynamic: Boolean = false
 }

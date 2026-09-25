@@ -773,6 +773,7 @@ class KeyMapper(
             "unhide" -> graph_tools.ViewModes.unhide = change(graph_tools.ViewModes.unhide)
             "show-parents" -> graph_tools.ViewModes.showParents = change(graph_tools.ViewModes.showParents)
             "show-children" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
+            "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
         }
         activeView?.let { gv ->
@@ -781,7 +782,7 @@ class KeyMapper(
         }
     }
 
-    private val flagNames = setOf("unhide", "show-parents", "show-children")
+    private val flagNames = setOf("unhide", "show-parents", "show-children", "dynamic")
 
     /**
      * Load an init file. Each line is a command-bar command
@@ -910,6 +911,12 @@ class KeyMapper(
         sb.appendLine()
         sb.appendLine("  show-children     Same, for children.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showChildren) "on" else "off"}.")
+        sb.appendLine()
+        sb.appendLine("  dynamic           Nodes that become visible are moved next to")
+        sb.appendLine("                    their visible neighbours (towards where they")
+        sb.appendLine("                    were, without overlapping). A real move: one")
+        sb.appendLine("                    undo step, saved with the file.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.dynamic) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("Related:")
         sb.appendLine("  :source <path>    Load a different init file.")

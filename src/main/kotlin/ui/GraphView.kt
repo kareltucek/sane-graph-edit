@@ -233,6 +233,7 @@ class GraphView(
             "[unhide]".takeIf { graph_tools.ViewModes.unhide },
             "[show-parents]".takeIf { graph_tools.ViewModes.showParents },
             "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
+            "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
         ).joinToString(" ")
         val parts = listOf(modes, gesture, stylePickerText, recText).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))

@@ -59,6 +59,9 @@ class Graph(
      */
     val attributes: MutableMap<String, String> = linkedMapOf()
 
+    /** Visible set at the last [DynamicPlacement.place]; null while `:set dynamic` is off. */
+    var dynamicBaseline: Set<Node>? = null
+
     /**
      * Undo/redo stack attached to this graph. Every user-visible mutation
      * should go through [commit] (or be pushed via [History.commitWithoutRun]
