@@ -35,9 +35,12 @@ class Serializer(
         }.exhaustive()
     }
 
+    /** Unquoted only what Graphviz reads unquoted: a name or a number (not `link-d`, `a.b`, `x:y`). */
+    private val graphvizId = "[a-zA-Z_][a-zA-Z0-9_]*|-?(\\.[0-9]+|[0-9]+(\\.[0-9]*)?)".toRegex()
+
     fun serialize(s: String, f: Boolean = false): String {
         return when {
-            "[a-zA-Z0-9:_,.-]*".toRegex().matches(s) && !f -> s
+            graphvizId.matches(s) && !f -> s
             "<.*>".toRegex().matches(s) -> s
             else -> {
                 s

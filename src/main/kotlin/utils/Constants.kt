@@ -136,6 +136,7 @@ object Constants {
           Ctrl+O       - open
           F5 / :e      - reload file from disk
           gf / gF      - follow the node's file link (here / new tab)
+          g<letter>    - follow the node's link-<letter>
           :browse      - file tree of the working dir (gf opens)
           Ctrl+S       - save
           Ctrl+Shift+S - save as

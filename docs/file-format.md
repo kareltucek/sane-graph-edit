@@ -34,15 +34,16 @@ digraph storage {
 
 ## Identifiers and strings
 
-- Unquoted ids: `[a-zA-Z0-9:._-]+`. Anything else must be quoted.
-  (Graphviz itself does not allow `-`, `:` or `.` inside an unquoted
-  name, so quote those if Graphviz must read the file too.)
+- The editor reads unquoted ids of `[a-zA-Z0-9:._-]+`; Graphviz only
+  `[a-zA-Z_][a-zA-Z0-9_]*` or a number. Quote anything else
+  (`"link-d"`, `"my.node"`) so both can read the file. The editor
+  writes it that way too.
 - Quoted strings: `\n`, `\l` and `\r` become a line break, `\"` is a
   quote. Any other backslash sequence is kept as-is (backslash
   included); there is no way to write a lone literal backslash
   followed by `n`, `l`, `r` or `"`.
-- Node ids are internal names; the editor may rename them on save.
-  Put anything meaningful in attributes.
+- Node ids are kept on save (nodes created in the editor get fresh
+  `n<k>` ids), so links can target them (`file.dot:<nodeid>`).
 
 ## Node attributes the editor interprets
 
@@ -55,32 +56,47 @@ digraph storage {
 | `fontsize`  | number | Node size. The editor stores a logarithmic scale `s = log₁.₃(fontsize / 12)`: each step of `s` is ×1.3. Missing → `s = 0` (12). Write `12 × 1.3^s` for a whole step count `s` (e.g. 3 steps → `26.364`). |
 | `shape`     | `box` / `oval` | Default `box`. |
 | `marks`     | letters | Persistent marks (uppercase `A`–`Z`), recalled with `'<letter>` in the editor. |
-| `link`      | path | Link to another file; see below. |
+| `link-<letter>`, `link` | `path[:nodeid]` | Links to other graphs (or nodes), followed with `g<letter>`; see below. |
 
 ## Custom attributes
 
 Any other attribute on a node or edge (`kind`, `src`, `via`, …) is
-kept verbatim across open/save and ignored otherwise. Use plain
-names matching `[a-zA-Z_][a-zA-Z0-9_]*` so Graphviz reads them too;
-Graphviz ignores attributes it doesn't know.
+kept verbatim across open/save and ignored otherwise. Graphviz
+ignores attributes it doesn't know (quote names that aren't plain
+`[a-zA-Z_][a-zA-Z0-9_]*`).
 
-## `link` — link to another graph
+## `link-<letter>` — links to other graphs and nodes
 
 ```dot
 n1 [ label="invoices"; link="tables/invoices.dot" ];
-n2 [ label="docs"; link="/home/me/graphs/" ];
+n2 [ label="Billing"; "link-d"="docs/billing.dot"; "link-s"="src.dot:BillingService" ];
+n3 [ label="see caller"; link=":n1" ];
+n4 [ label="docs"; link="/home/me/graphs/" ];
 ```
 
-- A filesystem path, absolute or relative. A relative path is
-  resolved against the directory of the file that contains the node
-  (for an unsaved tab: the editor's working directory). `~/` is
-  expanded to the home directory. No URLs.
-- `gf` (command `follow-file-link`), with exactly one node selected,
-  replaces the current tab's graph (asking first if it has unsaved
-  changes):
-  - a file → opened as a DOT graph;
-  - a directory → a file tree of it (as `:browse`), so repeated `gf`
-    walks the filesystem.
-- `gF` (command `follow-file-link-in-tab`) does the same in a new tab.
+- A node may carry any number of `link-<letter>` attributes, one per
+  letter (`a`–`z`, `A`–`Z`). **`link` is an alias for `link-f`**; if a
+  node has both, `link-f` wins. Quote the names with `-` for Graphviz.
+- Value: `<path>` or `<path>:<nodeid>`.
+  - `<path>`: absolute or relative; a relative path is resolved
+    against the directory of the file that contains the node (for an
+    unsaved tab: the editor's working directory). `~/` is the home
+    directory. No URLs.
+  - `:<nodeid>` (the part after the last `:`, when it is non-empty,
+    has no `/`, and the whole value isn't an existing path): after
+    opening, that node (by its DOT id) is selected and centred.
+  - An empty `<path>` (`:n5`) means the graph the link is in; so does
+    a path to the file that's already open in the tab. Nothing is
+    reloaded then, the node is just focused.
+- Following, with exactly one node selected:
+  - `g<letter>` follows `link-<letter>` in the current tab (asking
+    first if it has unsaved changes) — **unless `g<letter>` is mapped
+    to something else** (defaults: `gt`, `gT` switch tabs, `gF` below;
+    user `:map`s too); then the mapping wins. `gf` is the command
+    `follow-file-link` and so works for `link` / `link-f`.
+  - `gF` (command `follow-file-link-in-tab`) follows `link-f` into a
+    new tab.
+  - A file is opened as a DOT graph; a directory is shown as a file
+    tree (as `:browse`), so repeated `gf` walks the filesystem.
 - The `:browse` command generates file-tree graphs whose nodes use
   `link`, so it doubles as a file picker.

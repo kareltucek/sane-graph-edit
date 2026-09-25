@@ -318,4 +318,48 @@ class KeyMapperTest {
         mapper.feedKey("<Esc>")  // not a valid register name
         assertFalse(mapper.isRecording)
     }
+
+    // --- g<letter> link following ---
+
+    /** `g` = grab, `gt` = tabnext; the link follower knows only `link-d`. */
+    private fun linkMapper(executed: MutableList<String>, followed: MutableList<Char>): KeyMapper {
+        val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "x" to "delete"))
+        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
+        mapper.linkFollower = { _, letter -> (letter == 'd').also { if (it) followed.add(letter) } }
+        return mapper
+    }
+
+    @Test
+    fun `unmapped g-letter follows the node's link`() {
+        val executed = mutableListOf<String>()
+        val followed = mutableListOf<Char>()
+        val mapper = linkMapper(executed, followed)
+        mapper.feedKey("g")
+        mapper.feedKey("d")
+        assertEquals(listOf('d'), followed)
+        assertEquals(emptyList(), executed)
+    }
+
+    @Test
+    fun `mapped g-sequence wins over a link`() {
+        val executed = mutableListOf<String>()
+        val followed = mutableListOf<Char>()
+        val mapper = linkMapper(executed, followed)
+        mapper.feedKey("g")
+        mapper.feedKey("t")
+        assertEquals(listOf("tabnext"), executed)
+        assertEquals(emptyList(), followed)
+    }
+
+    @Test
+    fun `g-letter without a link resolves as before`() {
+        val executed = mutableListOf<String>()
+        val followed = mutableListOf<Char>()
+        val mapper = linkMapper(executed, followed)
+        mapper.feedKey("g")
+        mapper.feedKey("x")
+        assertEquals(listOf("grab", "delete"), executed)
+        assertEquals(emptyList(), followed)
+    }
 }

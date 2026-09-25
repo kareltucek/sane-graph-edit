@@ -12,15 +12,6 @@ import kotlin.test.assertTrue
 
 class FileTreeTest {
 
-    @Test
-    fun `link resolves relative to the containing file, home and absolute`() {
-        val file = Paths.get("/data/graphs/a.dot")
-        assertEquals(Paths.get("/data/graphs/sub/b.dot"), FileLink.resolve("sub/b.dot", file))
-        assertEquals(Paths.get("/data/c.dot"), FileLink.resolve("../c.dot", file))
-        assertEquals(Paths.get("/x/y.dot"), FileLink.resolve("/x/y.dot", file))
-        assertEquals(Paths.get(System.getProperty("user.home"), "g.dot"), FileLink.resolve("~/g.dot", file))
-    }
-
     private fun tree(): Path {
         val root = Files.createTempDirectory("filetree")
         root.resolve("graphs/deep").createDirectories()

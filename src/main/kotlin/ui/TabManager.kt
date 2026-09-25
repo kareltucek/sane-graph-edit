@@ -193,11 +193,11 @@ class TabManager(
      * Load [path] as a DOT graph into a new tab (Ctrl+T/N, gF, the open
      * dialog). Parse errors are reported via a dialog.
      */
-    fun openPath(path: Path) {
-        try {
+    fun openPath(path: Path): GraphView? {
+        return try {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
-            newTab(graph = loaded, path = path)
             AppState.lastOpenDir = path.toAbsolutePath().parent
+            newTab(graph = loaded, path = path)
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
                 window,
@@ -205,6 +205,7 @@ class TabManager(
                 "Open error",
                 JOptionPane.ERROR_MESSAGE,
             )
+            null
         }
     }
 

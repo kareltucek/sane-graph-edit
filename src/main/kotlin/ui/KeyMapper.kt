@@ -166,6 +166,13 @@ class KeyMapper(
     var markRecaller: ((GraphView, Char) -> Unit)? = null
 
     /**
+     * Callback for an unmapped `g<letter>`: follow the selected
+     * node's `link-<letter>`. Returns false when there is no such
+     * link, and the keys are then resolved as before. Set by Window.
+     */
+    var linkFollower: ((GraphView, Char) -> Boolean)? = null
+
+    /**
      * When non-null, we're accumulating characters into a
      * command-bar line (after `:` was fed). `<CR>` ends
      * accumulation and dispatches via [executeCommandLine].
@@ -384,7 +391,7 @@ class KeyMapper(
                 // isn't a prefix. Try to salvage by resolving the
                 // longest matching prefix and reprocessing the rest.
                 pending = ""
-                if (accumulated.length > 1) {
+                if (accumulated.length > 1 && !followLink(accumulated)) {
                     resolvePartial(accumulated)
                 }
                 // Single key with no binding → ignore.
@@ -423,6 +430,17 @@ class KeyMapper(
         if (command != null) {
             executeCommand(command)
         }
+    }
+
+    /**
+     * `g<letter>` that no mapping claims: try the selected node's
+     * `link-<letter>` via [linkFollower]. True if it was followed.
+     */
+    private fun followLink(accumulated: String): Boolean {
+        val letter = accumulated.getOrNull(1)
+        val isGLetter = accumulated.length == 2 && accumulated[0] == 'g' && letter != null && letter.isLetter()
+        val gv = activeView
+        return isGLetter && gv != null && linkFollower?.invoke(gv, letter!!) == true
     }
 
     /**

@@ -44,6 +44,8 @@ class GraphCanvas(
             if (Plotter.t.isIdentity) {
                 Plotter.t.translate(this.width.toDouble() / 2, this.height.toDouble() / 2)
             }
+            // a link into this new tab asked to focus a node; only now is the size known
+            this.parent.pendingFocus?.let { this.parent.pendingFocus = null; this.parent.focusNode(it) }
             this.requestFocus()
         }
 

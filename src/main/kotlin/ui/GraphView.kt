@@ -395,8 +395,9 @@ class GraphView(
     }
 
     /** Replace this tab's graph with [path] (Ctrl+O, `gf`). */
-    private fun loadInPlace(path: Path) {
-        try {
+    /** True if the file was loaded. */
+    private fun loadInPlace(path: Path): Boolean {
+        return try {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
             replaceGraph(loaded)
             currentFile = path
@@ -406,6 +407,7 @@ class GraphView(
             repaint()
             tabManager?.saveSession()
             AppState.lastOpenDir = path.toAbsolutePath().parent
+            true
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
                 this,
@@ -413,6 +415,7 @@ class GraphView(
                 "Open error",
                 JOptionPane.ERROR_MESSAGE,
             )
+            false
         }
     }
 
@@ -465,33 +468,67 @@ class GraphView(
      * filesystem. Needs exactly one selected node; asks first if the
      * tab has unsaved changes.
      */
-    fun followFileLink() {
-        selectedLink("follow-file-link")
-            ?.takeIf { confirmDiscard("open ${it.fileName ?: it}") }
-            ?.let { path ->
-                if (java.nio.file.Files.isDirectory(path)) browseInPlace(path) else loadInPlace(path)
-            }
+    fun followFileLink(letter: Char = 'f', quiet: Boolean = false): Boolean {
+        val target = selectedLink("follow-file-link", letter, quiet)
+        val path = target?.path
+        val inThisGraph = target != null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
+        when {
+            target == null -> Unit
+            inThisGraph -> focusNode(target.nodeId)
+            path == null || !confirmDiscard("open ${path.fileName ?: path}") -> Unit
+            java.nio.file.Files.isDirectory(path) -> browseInPlace(path)
+            loadInPlace(path) -> focusNode(target.nodeId)
+        }
+        return target != null
     }
 
     /** `gF`: like [followFileLink], but into a new tab. */
-    fun followFileLinkInTab() {
-        selectedLink("follow-file-link-in-tab")?.let { path ->
-            if (java.nio.file.Files.isDirectory(path)) tabManager?.browse(path) else tabManager?.openPath(path)
+    fun followFileLinkInTab(letter: Char = 'f') {
+        val target = selectedLink("follow-file-link-in-tab", letter, quiet = false)
+        val path = target?.path
+        when {
+            target == null -> Unit
+            path == null -> focusNode(target.nodeId)
+            java.nio.file.Files.isDirectory(path) -> tabManager?.browse(path)
+            // the new tab has no size yet; its first paint does the focusing
+            else -> tabManager?.openPath(path)?.pendingFocus = target.nodeId
         }
     }
 
     /**
-     * The resolved `link` of the single selected node, or null after
-     * telling the user why there is none ([command] names the caller).
+     * The resolved `link-<letter>` of the single selected node, or
+     * null after telling the user why there is none ([command] names
+     * the caller; [quiet] skips the telling).
      */
-    private fun selectedLink(command: String): Path? {
+    private fun selectedLink(command: String, letter: Char, quiet: Boolean): FileLink.Target? {
         val node = g.selectedNodes.singleOrNull()
-        val link = node?.attributes?.other?.get(FileLink.ATTRIBUTE)
-        when {
-            node == null -> messageArea?.show("$command: select exactly one node")
-            link == null -> messageArea?.show("$command: the node has no `${FileLink.ATTRIBUTE}` attribute")
+        val link = node?.let { FileLink.of(it, letter) }
+        val problem = when {
+            node == null -> "select exactly one node"
+            link == null -> "the node has no `${FileLink.attributeName(letter)}` attribute"
+            else -> null
         }
+        if (problem != null && !quiet) messageArea?.show("$command: $problem")
         return link?.let { FileLink.resolve(it, currentFile) }
+    }
+
+    /** Node id to focus on the first paint (a link opened this tab). */
+    var pendingFocus: String? = null
+
+    /**
+     * Select the node whose DOT id is [nodeId] and centre the view on
+     * it, keeping the zoom. No-op for null; a message if it's missing.
+     */
+    fun focusNode(nodeId: String?) {
+        val node = nodeId?.let { id -> g.nodes.find { it.attributes.name == id } }
+        when {
+            nodeId == null -> Unit
+            node == null -> messageArea?.show("no node `$nodeId` in ${currentFile?.fileName ?: "this graph"}")
+            else -> {
+                g.cleanSelect(setOf(node))
+                setViewTo(node.position, Plotter.t.scaleX)
+            }
+        }
     }
 
     /**
@@ -682,6 +719,7 @@ class Window(
         keyMapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
         keyMapper.markSetter = { gv, letter -> GraphKeyListener.impl.setMark(gv, letter) }
         keyMapper.markRecaller = { gv, letter -> GraphKeyListener.impl.recallMark(gv, letter) }
+        keyMapper.linkFollower = { gv, letter -> gv.followFileLink(letter, quiet = true) }
         keyMapper.installDefaultTransformBindings()
         // Mode changes (Normal ↔ Transform) → refresh the active
         // view's status bar. We can't know which tab the change
