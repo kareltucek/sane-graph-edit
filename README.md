@@ -23,7 +23,7 @@ Selecting:
 Registers, macros, mappings:
 
 - record vim macros with `q` + `<letter>` and replay with `@` + `<letter>`. 
-- map stuff `map gf tih0<Esc>` - gf hides everything except subtree of the current node and moves view to it.
+- map stuff `map gh tih0<Esc>` - gh hides everything except subtree of the current node and moves view to it. (Mapping a `g<letter>` shadows the built-in meaning — `gf` follows links — and `link-<letter>` for that letter.)
 - `m<letter>` + `'<letter>` mark graph subsets .
 - some `:` commands.
 - headless mode.

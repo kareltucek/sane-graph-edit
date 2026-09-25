@@ -41,6 +41,25 @@ class FileTreeTest {
     }
 
     @Test
+    fun `gf on directory nodes re-renders with parents, also for the root`() {
+        val root = tree()
+        val gv = GraphView(initialGraph = FileTree.build(root))
+        fun node(label: String) = gv.g.nodes.first { it.attributes.text == label }
+        fun labels() = gv.g.nodes.map { it.attributes.text }.toSet()
+
+        gv.g.cleanSelect(setOf(node("graphs/")))
+        gv.followFileLink()
+        assertTrue("/" in labels(), "parents shown after gf: ${labels()}")
+        assertTrue("${root.fileName}/" in labels())
+        assertTrue("deep/" in labels())
+
+        gv.g.cleanSelect(setOf(node("/")))
+        gv.followFileLink()
+        assertTrue("tmp/" in labels() || labels().size > 1, "root browsed: ${labels()}")
+        assertEquals("browse: /", gv.untitledName)
+    }
+
+    @Test
     fun `layout goes left to right with the browsed directory at the origin`() {
         val root = tree()
         val g = FileTree.build(root)
