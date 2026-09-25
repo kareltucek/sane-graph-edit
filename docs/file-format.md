@@ -99,7 +99,9 @@ m -> m_args; m -> m_ret;
   attached nodes are laid out first, and neighbours fan out from the
   block's edges.
 - The attached nodes are ordinary nodes otherwise: they have their own
-  edges, labels, links, and can be selected and followed.
+  edges, labels, links, and can be selected (click) and followed. The
+  selection-walking commands (`l` / `L`, `t` / `T`, `G`) don't step
+  onto them.
 
 ## `link-<letter>` — links to other graphs and nodes
 

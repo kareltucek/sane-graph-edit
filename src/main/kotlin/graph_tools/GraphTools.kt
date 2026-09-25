@@ -28,7 +28,13 @@ object GraphTools {
         }
     }
 
+    /**
+     * One step along the edges from [root]. Attached nodes ([Attachments])
+     * are never stepped onto: they're part of their owner's block, not
+     * places to move the selection to.
+     */
     fun computeGeneration(graph: Graph, root: Set<Node>, forward: Boolean): Set<Node> {
+        val attached = graph.attachmentOwners
         return root
             .flatMap { n ->
                 if (forward) {
@@ -38,6 +44,7 @@ object GraphTools {
                 }
             }
             .filter { !root.contains(it) }
+            .filter { it !in attached }
             .filter { ViewModes.unhide || graph.isVisible(it) }
             .toSet()
     }

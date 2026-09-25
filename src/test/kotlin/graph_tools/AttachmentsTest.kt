@@ -88,6 +88,15 @@ class AttachmentsTest {
     }
 
     @Test
+    fun `traversal doesn't step onto attached nodes`() {
+        val (g, n) = load()
+        val gen = GraphTools.computeGeneration(g, setOf(n.getValue("m")), forward = true)
+        assertTrue(gen.isEmpty(), "m -> args / ret are attachments: $gen")
+        val closure = GraphTools.computeClosure(g, setOf(n.getValue("m")), forward = true)
+        assertEquals(setOf(n.getValue("m")), closure)
+    }
+
+    @Test
     fun `dynamic placement fans out from whole blocks`() {
         val g = DotGraphLoader.parse(DotGraphLoader.tokenize("""
             digraph g {
