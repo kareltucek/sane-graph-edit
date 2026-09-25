@@ -168,9 +168,11 @@ object LayoutOptimizer {
                 null
             }
 
+            // forces on an attached node push its owner (the node itself is re-glued)
+            val owners = g.attachmentOwners
             val springMap = springSet
                 .flatMap { (it.first)() }
-                .groupBy { it.n }
+                .groupBy { Attachments.root(it.n, owners) }
 
             springMap.forEach { (n, springs) ->
                 val weight = when (tgt) {

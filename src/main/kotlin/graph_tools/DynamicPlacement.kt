@@ -42,9 +42,11 @@ object DynamicPlacement {
         val before = g.dynamicBaseline
         g.dynamicBaseline = visible
         // While undoing / redoing (redo stack non-empty), a new command would wipe the redo history.
-        val fresh = if (visible != null && before != null && !g.history.canRedo) visible - before else emptySet()
+        val appeared = if (visible != null && before != null && !g.history.canRedo) visible - before else emptySet()
+        // attached nodes follow their owner (Attachments.reglue), they aren't placed themselves
+        val fresh = appeared.filter { it !in g.attachmentOwners }.toSet()
         if (fresh.isNotEmpty()) {
-            val targets = positionsFor(g, fresh, fixed = visible!! - fresh)
+            val targets = positionsFor(g, fresh, fixed = visible!! - appeared)
             if (targets.isNotEmpty()) {
                 g.commit(
                     MoveNodesCommand(

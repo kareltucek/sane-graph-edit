@@ -62,6 +62,18 @@ class Graph(
     /** Visible set at the last [DynamicPlacement.place]; null while `:set dynamic` is off. */
     var dynamicBaseline: Set<Node>? = null
 
+    private var attachmentOwnersCache: Map<Node, Node>? = null
+
+    /** Attached node → its owner ([Attachments]); recomputed after nodes are added or removed. */
+    val attachmentOwners: Map<Node, Node>
+        get() = attachmentOwnersCache ?: Attachments.owners(this).also { attachmentOwnersCache = it }
+
+    /** What moving [nodes] really moves: attached nodes are replaced by their (top) owners. */
+    fun movable(nodes: Set<Node>): Set<Node> {
+        val owners = attachmentOwners
+        return if (owners.isEmpty()) nodes else nodes.map { Attachments.root(it, owners) }.toSet()
+    }
+
     /**
      * Undo/redo stack attached to this graph. Every user-visible mutation
      * should go through [commit] (or be pushed via [History.commitWithoutRun]
@@ -109,6 +121,7 @@ class Graph(
     }
 
     fun addAllNodes(i: Iterable<Node>) {
+        attachmentOwnersCache = null
         nodesRestricted.addAll(i)
         edgeMapRestricted.putAll(i.map { it to mutableSetOf() })
         needsRecomputing(i)
@@ -133,6 +146,7 @@ class Graph(
     }
 
     fun removeAllNodes(i: Iterable<Node>) {
+        attachmentOwnersCache = null
         i.forEach {
             edgesRestricted.removeAll(edgeMapRestricted[it]!!)
             edgeMapRestricted.remove(it)
@@ -185,8 +199,10 @@ class Graph(
 
     fun recompute(g2d: Graphics2D) {
         val nodes = needsRecomputing
-        val edges = needsRecomputing.flatMap { edgeMapRestricted[it].orEmpty() }
         Plotter.recomputeNodes(g2d, nodes)
+        // after the sizes: attached nodes follow their owners' new positions / sizes
+        val glued = Attachments.reglue(this)
+        val edges = (nodes + glued).flatMap { edgeMapRestricted[it].orEmpty() }
         Plotter.recomputeEdges(edges)
         needsRecomputing.clear()
     }
@@ -228,14 +244,17 @@ class Graph(
      * hidden. With [ViewModes.showParents] / [ViewModes.showChildren]
      * on, "shown" nodes are the non-hidden and the selected ones, and
      * [n] is also visible when it is shown, or a parent / child of a
-     * shown node.
+     * shown node. An attached node ([Attachments]) is visible only
+     * while its owner is.
      */
     fun isVisible(n: Node): Boolean {
         val shown = { m: Node -> !m.isHidden || m in selectedNodesRestricted }
         val anyMode = ViewModes.showParents || ViewModes.showChildren
         val parentOfShown = ViewModes.showParents && findOutEdges(n).any { shown(it.dst) }
         val childOfShown = ViewModes.showChildren && findInEdges(n).any { shown(it.src) }
-        return !n.isHidden || (anyMode && shown(n)) || parentOfShown || childOfShown
+        val own = !n.isHidden || (anyMode && shown(n)) || parentOfShown || childOfShown
+        // glued nodes go with their owner
+        return own && attachmentOwners[n]?.let { isVisible(it) } != false
     }
 
     /** All nodes passing [isVisible]; linear in nodes + edges. */

@@ -407,7 +407,7 @@ class GraphMouseListener(
          * state regardless of how many intermediate drag events fire.
          */
         private fun captureMoveStart() {
-            moveStartPositions = graphView.g.selectedNodes.associateWith { it.position }
+            moveStartPositions = graphView.g.movable(graphView.g.selectedNodes).associateWith { it.position }
         }
 
         fun startOrEndMove() {
@@ -466,7 +466,7 @@ class GraphMouseListener(
         }
 
         private fun captureRotateStart(): Boolean {
-            val sel = graphView.g.selectedNodes
+            val sel = graphView.g.movable(graphView.g.selectedNodes)
             if (sel.isEmpty()) return false
             val box = GraphTools.computeBoundingBox(sel) ?: return false
             val center = Vector2(
@@ -549,7 +549,7 @@ class GraphMouseListener(
         }
 
         private fun captureScaleStart(): Boolean {
-            val sel = graphView.g.selectedNodes
+            val sel = graphView.g.movable(graphView.g.selectedNodes)
             if (sel.isEmpty()) return false
             // Anchor = the selection's bounding-box centre (world
             // coords). Selection grows/shrinks in place around
@@ -720,7 +720,7 @@ class GraphMouseListener(
                     if (lockX) 0.0 else raw.x,
                     if (lockY) 0.0 else raw.y,
                 )
-                graphView.g.selectedNodes.forEach {
+                graphView.g.movable(graphView.g.selectedNodes).forEach {
                     it.position = it.position + diff
                     graphView.g.needsRecomputing(it)
                 }

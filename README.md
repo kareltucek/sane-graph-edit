@@ -376,10 +376,13 @@ Attributes the editor understands and round-trips:
 - `fillcolor` / `color` — background / foreground
 - `fontsize` — maps to an internal scale factor
 - `shape` — `box` or `oval`
+- `marks` — persistent marks
+- `link-<letter>` / `link` — links to other graphs / nodes (`g<letter>`)
+- `attachTo` / `attachSide` — glue a node to a side of another one;
+  it then moves, hides and lays out with its owner
 
 Graph-level settings, unknown node / edge attributes and comments
-are preserved on open/save. The full specification,
-including the `link` attribute (`gf` follows it), is in
+are preserved on open/save. The full specification is in
 [`docs/file-format.md`](docs/file-format.md).
 
 ## Why "sane" graph edit?

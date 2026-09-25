@@ -57,6 +57,7 @@ digraph storage {
 | `shape`     | `box` / `oval` | Default `box`. |
 | `marks`     | letters | Persistent marks (uppercase `A`–`Z`), recalled with `'<letter>` in the editor. |
 | `link-<letter>`, `link` | `path[:nodeid]` | Links to other graphs (or nodes), followed with `g<letter>`; see below. |
+| `attachTo`, `attachSide` | node id; `above` / `below` / `left` / `right` | Glue this node to another one; see below. |
 
 ## Custom attributes
 
@@ -66,6 +67,34 @@ interprets no edge attributes at all: `a -> b [via="read"]` keeps
 `via`, but edges are always drawn the same way. Graphviz
 ignores attributes it doesn't know (quote names that aren't plain
 `[a-zA-Z_][a-zA-Z0-9_]*`).
+
+## `attachTo` / `attachSide` — nodes glued to another node
+
+```dot
+m  [ label="Billing.charge" ];
+m_args [ label="(customer: Id, amount: Money)"; attachTo="m"; attachSide="above" ];
+m_ret  [ label="IO[Receipt]"; attachTo="m"; attachSide="below" ];
+m_doc  [ label="Charges the card…"; attachTo="m_ret"; attachSide="below" ];
+m -> m_args; m -> m_ret;
+```
+
+- `attachTo` is the **DOT node id** of the owner (in the file, not a
+  generator-internal id). `attachSide` is `above`, `below`, `left` or
+  `right`; missing or anything else → `below`.
+- The editor keeps an attached node glued to that side of its owner:
+  touching it with a 2-unit gap, centred on the owner (horizontally
+  for `above` / `below`, vertically for `left` / `right`). Several
+  nodes on the same side stack outwards in file order. An attached
+  node can be an owner itself (chains); cycles and ids that don't
+  exist make the node an ordinary one.
+- Its `pos` is **derived**: the editor recomputes it from the owner
+  whenever something moves or resizes, and writes the result on save.
+  Generators should still write a correct `pos` (other tools read it).
+- Moving (drag, grab, rotate, scale, mirror) a selection that contains
+  an attached node moves its owner instead, so the group stays
+  together. An attached node is shown only while its owner is.
+- The attached nodes are ordinary nodes otherwise: they have their own
+  edges, labels, links, and can be selected and followed.
 
 ## `link-<letter>` — links to other graphs and nodes
 

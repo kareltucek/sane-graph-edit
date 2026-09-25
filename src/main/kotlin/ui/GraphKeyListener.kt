@@ -381,7 +381,7 @@ class GraphKeyListener(
          * reverts the whole flip in one step.
          */
         fun mirror(graphView: GraphView, horizontal: Boolean) {
-            val sel = graphView.g.selectedNodes
+            val sel = graphView.g.movable(graphView.g.selectedNodes)
             if (sel.isEmpty()) return
             val box = GraphTools.computeBoundingBox(sel) ?: return
             val cx = (box.ul.x + box.br.x) / 2
