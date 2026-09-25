@@ -100,5 +100,7 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     new tab.
   - A file is opened as a DOT graph; a directory is shown as a file
     tree (as `:browse`), so repeated `gf` walks the filesystem.
+  - `Ctrl+O` jumps back to where the link was followed from (and
+    `Ctrl+I` forward again), like vim's jump list.
 - The `:browse` command generates file-tree graphs whose nodes use
   `link`, so it doubles as a file picker.

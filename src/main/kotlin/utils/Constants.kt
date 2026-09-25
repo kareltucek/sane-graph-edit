@@ -133,7 +133,8 @@ object Constants {
         =======================
 
         Files
-          Ctrl+O       - open
+          :open        - open (file dialog)
+          Ctrl+O / Ctrl+I - jump back / forward (after gf etc.)
           F5 / :e      - reload file from disk
           gf / gF      - follow the node's file link (here / new tab)
           g<letter>    - follow the node's link-<letter>

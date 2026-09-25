@@ -405,17 +405,20 @@ class GraphView(
     fun openFile() {
         FileOps.openDialog(this)
             ?.takeIf { confirmDiscard("open ${it.fileName}") }
-            ?.let { loadInPlace(it) }
+            ?.let { path ->
+                val from = currentLocation()
+                if (loadInPlace(path)) jumps.record(from)
+            }
     }
 
-    /** Replace this tab's graph with [path] (Ctrl+O, `gf`). */
-    /** True if the file was loaded. */
+    /** Replace this tab's graph with [path] (`:open`, `gf`). True if the file was loaded. */
     private fun loadInPlace(path: Path): Boolean {
         return try {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
             replaceGraph(loaded)
             currentFile = path
             untitledName = null
+            browseDir = null
             onStateChange()
             boundScreen()
             repaint()
@@ -486,27 +489,105 @@ class GraphView(
         val target = selectedLink("follow-file-link", letter, quiet)
         val path = target?.path
         val inThisGraph = target != null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
+        val from = currentLocation()
         when {
             target == null -> Unit
-            inThisGraph -> focusNode(target.nodeId)
+            inThisGraph -> if (target.nodeId != null) {
+                jumps.record(from)
+                focusNode(target.nodeId)
+            }
             path == null || !confirmDiscard("open ${path.fileName ?: path}") -> Unit
-            java.nio.file.Files.isDirectory(path) -> browseInPlace(path)
-            loadInPlace(path) -> focusNode(target.nodeId)
+            java.nio.file.Files.isDirectory(path) -> {
+                jumps.record(from)
+                browseInPlace(path)
+            }
+            loadInPlace(path) -> {
+                jumps.record(from)
+                focusNode(target.nodeId)
+            }
         }
         return target != null
     }
 
-    /** `gF`: like [followFileLink], but into a new tab. */
+    /** `gF`: like [followFileLink], but into a new tab, which inherits this tab's jump list. */
     fun followFileLinkInTab(letter: Char = 'f') {
         val target = selectedLink("follow-file-link-in-tab", letter, quiet = false)
         val path = target?.path
-        when {
-            target == null -> Unit
-            path == null -> focusNode(target.nodeId)
+        val opened = when {
+            target == null -> null
+            path == null -> {
+                jumps.record(currentLocation())
+                focusNode(target.nodeId)
+                null
+            }
             java.nio.file.Files.isDirectory(path) -> tabManager?.browse(path)
             // the new tab has no size yet; its first paint does the focusing
-            else -> tabManager?.openPath(path)?.pendingFocus = target.nodeId
+            else -> tabManager?.openPath(path)?.also { it.pendingFocus = target.nodeId }
         }
+        opened?.jumps = jumps.copy().also { it.record(currentLocation()) }
+    }
+
+    // --- jump list (Ctrl+O / Ctrl+I) ---
+
+    /** This tab's jump history; see [JumpList]. */
+    var jumps: JumpList = JumpList()
+
+    /** Directory shown when this tab is a [FileTree] (`:browse`, `gf` on a directory). */
+    var browseDir: Path? = null
+
+    /** Where this tab is now, as a [JumpList] entry. */
+    fun currentLocation(): JumpList.Location {
+        val m = DoubleArray(6).also { viewTransform.getMatrix(it) }
+        return JumpList.Location(
+            file = currentFile?.toAbsolutePath()?.normalize(),
+            browseDir = browseDir,
+            selection = g.selectedNodes.map { nodeKey(it) }.toSet(),
+            transform = m.toList(),
+        )
+    }
+
+    /** How a node is recognised in a reloaded graph: its DOT id, or its label if it has none. */
+    private fun nodeKey(n: graph_tools.Node): String = n.attributes.name.ifBlank { n.attributes.text }
+
+    /** `Ctrl+O`: back to where the last jump started. */
+    fun jumpBack() {
+        val before = jumps.position()
+        val target = jumps.back(currentLocation())
+        if (target != null && !goTo(target)) jumps.restorePosition(before)
+    }
+
+    /** `Ctrl+I`: forward again after [jumpBack]. */
+    fun jumpForward() {
+        val before = jumps.position()
+        val target = jumps.forward()
+        if (target != null && !goTo(target)) jumps.restorePosition(before)
+    }
+
+    /**
+     * Show [loc]: reload its file or directory unless the tab shows
+     * it already (asking first about unsaved changes), then restore its
+     * selection and view. False if it couldn't be opened.
+     */
+    private fun goTo(loc: JumpList.Location): Boolean {
+        val here = currentLocation()
+        val file = loc.file
+        val dir = loc.browseDir
+        val opened = when {
+            loc.sameGraph(here) -> true
+            file == null && dir == null -> false  // an untitled graph that is gone
+            !confirmDiscard("go back to ${(file ?: dir)?.fileName ?: file ?: dir}") -> false
+            dir != null -> java.nio.file.Files.isDirectory(dir).also { if (it) browseInPlace(dir) }
+            else -> loadInPlace(file!!)
+        }
+        if (opened) {
+            viewTransform.setTransform(
+                loc.transform[0], loc.transform[1], loc.transform[2],
+                loc.transform[3], loc.transform[4], loc.transform[5],
+            )
+            g.cleanSelect(g.nodes.filter { nodeKey(it) in loc.selection })
+            repaint()
+        }
+        return opened
     }
 
     /**
@@ -552,7 +633,8 @@ class GraphView(
     fun browseInPlace(dir: Path) {
         replaceGraph(FileTree.build(dir))
         currentFile = null
-        untitledName = "browse: ${dir.toAbsolutePath().normalize()}"
+        browseDir = dir.toAbsolutePath().normalize()
+        untitledName = "browse: $browseDir"
         onStateChange()
         setViewTo(Vector2.Zero)
         tabManager?.saveSession()

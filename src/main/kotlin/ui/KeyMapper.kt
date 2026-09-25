@@ -1179,7 +1179,8 @@ class KeyMapper(
             // Modifier-based
             "<C-s>" to "save",
             "<C-S-s>" to "saveas",
-            "<C-o>" to "open",
+            "<C-o>" to "jump-back",
+            "<C-i>" to "jump-forward",
             "<F5>" to "reload",
             "<C-n>" to "tabedit",
             "<C-t>" to "tabedit",

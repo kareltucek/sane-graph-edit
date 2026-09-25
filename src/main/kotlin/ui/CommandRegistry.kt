@@ -132,6 +132,8 @@ fun registerAllCommands() {
     r.register("reload") { it.reloadFile() }
     r.register("follow-file-link") { it.followFileLink() }
     r.register("follow-file-link-in-tab") { it.followFileLinkInTab() }
+    r.register("jump-back") { it.jumpBack() }
+    r.register("jump-forward") { it.jumpForward() }
     r.register("browse") { it.tabManager?.browse(java.nio.file.Paths.get("").toAbsolutePath()) }
     r.register("export-svg") { it.exportSvg() }
     r.register("export-selection") { it.exportSelection() }

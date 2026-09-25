@@ -213,10 +213,12 @@ class TabManager(
      * `:browse`: a new untitled tab with the [FileTree] of [dir],
      * a file picker driven by `gf`.
      */
-    fun browse(dir: Path) {
+    fun browse(dir: Path): GraphView {
         val gv = newTab(graph = FileTree.build(dir))
-        gv.untitledName = "browse: ${dir.toAbsolutePath().normalize()}"
+        gv.browseDir = dir.toAbsolutePath().normalize()
+        gv.untitledName = "browse: ${gv.browseDir}"
         gv.onStateChange()
+        return gv
     }
 
     /**

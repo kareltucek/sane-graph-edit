@@ -247,7 +247,8 @@ navigation, not data.
 
 | Key             | Action                                                 |
 |-----------------|--------------------------------------------------------|
-| `Ctrl+O`        | Open — file chooser dialog                             |
+| `:open`         | Open into this tab — file chooser dialog               |
+| `Ctrl+O` / `Ctrl+I` | Jump back / forward (vim jump list): to where a `gf` / `g<letter>` / `:open` in this tab started, restoring selection and view |
 | `Ctrl+S`        | Save — writes to the current file, prompts on first save |
 | `Ctrl+Shift+S`  | Save As — always prompts                               |
 | `F5`            | Reload the current file from disk (asks if unsaved)    |

@@ -283,7 +283,7 @@ canonical list:
 | `1`    | centre view on selection                               |
 
 Ctrl-modified shortcuts go through `keyPressed` instead of
-`keyTyped`: `Ctrl+S` save, `Ctrl+O` open, `Ctrl+R` redo, `Ctrl+A`
+`keyTyped`: `Ctrl+S` save, `Ctrl+O` / `Ctrl+I` jump back / forward, `Ctrl+R` redo, `Ctrl+A`
 select-all, `Escape` deselect, `Space` edit active node.
 
 See `Constants.helpCommands` for the in-app help text.
