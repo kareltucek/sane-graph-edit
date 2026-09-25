@@ -364,6 +364,38 @@ class KeyMapperTest {
     }
 
     @Test
+    fun `gt and gT switch tabs with the default bindings and a typical init`() {
+        val executed = mutableListOf<String>()
+        val mapper = KeyMapper(KeyMapper.defaultBindings())
+        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
+        listOf("map gg tw0", "map gf tih0<Esc>", "map gp :follow-file-link<Enter>", "set timeoutlen=300")
+            .forEach { mapper.executeCommandLine(it) }
+        mapper.feedKey("g")
+        mapper.feedKey("t")
+        mapper.feedKey("g")
+        mapper.feedKey("T")
+        assertEquals(listOf("tabnext", "tabprevious"), executed)
+    }
+
+    @Test
+    fun `pressing Shift while g waits restarts the timeout, so gT isn't cut into g + T`() {
+        val executed = java.util.Collections.synchronizedList(mutableListOf<String>())
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), timeoutMs = 300)
+        val edt = { f: () -> Unit -> javax.swing.SwingUtilities.invokeAndWait { f() } }
+        edt {
+            mapper.activeView = GraphView(initialGraph = Graph())
+            mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
+            mapper.feedKey("g")
+        }
+        Thread.sleep(200)
+        edt { mapper.modifierPressed() }  // Shift goes down
+        Thread.sleep(200)                 // 400 ms after g: past the original timeout
+        edt { mapper.feedKey("T") }
+        assertEquals(listOf("tabprevious"), executed.toList())
+    }
+
+    @Test
     fun `show-childs is an alias of show-children, se of set`() {
         val mapper = KeyMapper(emptyMap())
         try {

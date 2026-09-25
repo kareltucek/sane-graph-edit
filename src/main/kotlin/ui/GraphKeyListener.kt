@@ -75,6 +75,7 @@ class GraphKeyListener(
     }
 
     override fun keyPressed(e: KeyEvent) {
+        if (e.keyCode in modifierKeys) graphView.keyMapper?.modifierPressed()
         val notation = KeyNotation.fromKeyPressed(e) ?: return
 
         val mapper = graphView.keyMapper ?: return
@@ -84,6 +85,8 @@ class GraphKeyListener(
     }
 
     override fun keyReleased(e: KeyEvent) {}
+
+    private val modifierKeys = setOf(VK_SHIFT, VK_CONTROL, VK_ALT, VK_META, VK_ALT_GRAPH)
 
     /**
      * Command implementations. Each method is a `(GraphView) -> Unit`

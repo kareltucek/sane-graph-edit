@@ -819,6 +819,18 @@ class KeyMapper(
 
     // --- timer ---
 
+    /**
+     * A modifier (Shift, Ctrl, …) went down: if a key sequence is
+     * waiting for its timeout, restart the wait, so reaching for Shift
+     * in `gT` doesn't let `g` fire on its own (and grab eat the `T`).
+     */
+    fun modifierPressed() {
+        if (pendingTimer != null) {
+            cancelTimer()
+            startTimeout()
+        }
+    }
+
     private fun startTimeout() {
         val timer = Timer(timeoutMs) { onTimeout() }
         timer.isRepeats = false
