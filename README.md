@@ -221,6 +221,8 @@ while on:
   child in a column right of its parents, a parent left of its
   children, stacked vertically without overlapping anything visible.
   A real move: one undo step per batch, saved with the file.
+- `discard` — never ask about unsaved changes: opening, following
+  links, reloading, jumping, closing tabs and quitting discard them.
 
 ### Keyboard — styling
 

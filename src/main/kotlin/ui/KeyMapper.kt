@@ -787,6 +787,7 @@ class KeyMapper(
             "show-parents" -> graph_tools.ViewModes.showParents = change(graph_tools.ViewModes.showParents)
             "show-children" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
+            "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
             else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
         }
         activeView?.let { gv ->
@@ -795,7 +796,7 @@ class KeyMapper(
         }
     }
 
-    private val flagNames = setOf("unhide", "show-parents", "show-children", "dynamic")
+    private val flagNames = setOf("unhide", "show-parents", "show-children", "dynamic", "discard")
 
     /**
      * Load an init file. Each line is a command-bar command
@@ -940,6 +941,11 @@ class KeyMapper(
         sb.appendLine("                    of their children, stacked without overlap.")
         sb.appendLine("                    A real move: one undo step, saved with the file.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.dynamic) "on" else "off"}.")
+        sb.appendLine()
+        sb.appendLine("  discard           Never ask about unsaved changes: opening,")
+        sb.appendLine("                    following links, reloading, jumping, closing")
+        sb.appendLine("                    tabs and quitting discard them silently.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.discard) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("Related:")
         sb.appendLine("  :source <path>    Load a different init file.")

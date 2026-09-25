@@ -41,6 +41,24 @@ class JumpListTest {
     }
 
     @Test
+    fun `with discard set a dirty tab follows a link without asking`() {
+        val dir = Files.createTempDirectory("discard")
+        val a = dir.resolve("a.dot").also { it.writeText("digraph a {\n  s [ link=\"b.dot\" ];\n}\n") }
+        dir.resolve("b.dot").writeText("digraph b {\n  t;\n}\n")
+        val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(a.toString()), initialFile = a)
+        gv.g.commit(graph_tools.HideCommand(emptyList()))  // any command makes the tab dirty
+        assertEquals(true, gv.isDirty)
+        gv.g.cleanSelect(gv.g.nodes)
+        graph_tools.ViewModes.discard = true
+        try {
+            gv.followFileLink()  // a dialog would throw in a headless test
+        } finally {
+            graph_tools.ViewModes.discard = false
+        }
+        assertEquals("b.dot", gv.currentFile?.fileName.toString())
+    }
+
+    @Test
     fun `gf then Ctrl+O and Ctrl+I move between the files`() {
         val dir = Files.createTempDirectory("jumps")
         val a = dir.resolve("a.dot").also {

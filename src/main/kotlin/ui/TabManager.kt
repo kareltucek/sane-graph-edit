@@ -363,7 +363,8 @@ class TabManager(
      * its own error dialog).
      */
     private fun promptSaveDiscardCancel(gv: GraphView): Boolean {
-        val result = JOptionPane.showConfirmDialog(
+        // `:set discard`: don't ask, discard
+        val result = if (graph_tools.ViewModes.discard) JOptionPane.NO_OPTION else JOptionPane.showConfirmDialog(
             window,
             "Save changes to ${gv.currentFile?.fileName ?: "(untitled)"}?",
             "Unsaved changes",

@@ -234,6 +234,7 @@ class GraphView(
             "[show-parents]".takeIf { graph_tools.ViewModes.showParents },
             "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
             "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
+            "[discard]".takeIf { graph_tools.ViewModes.discard },
         ).joinToString(" ")
         val parts = listOf(modes, gesture, stylePickerText, recText, linkStatus()).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))
@@ -469,9 +470,12 @@ class GraphView(
         }
     }
 
-    /** True when there are no unsaved changes, or the user agrees to lose them to [action]. */
+    /**
+     * True when there are no unsaved changes, the user agrees to lose
+     * them to [action], or `:set discard` says not to ask.
+     */
     private fun confirmDiscard(action: String): Boolean =
-        !isDirty || JOptionPane.showConfirmDialog(
+        !isDirty || graph_tools.ViewModes.discard || JOptionPane.showConfirmDialog(
             this,
             "Discard unsaved changes and $action?",
             "Unsaved changes",

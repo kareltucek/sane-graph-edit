@@ -26,4 +26,11 @@ object ViewModes {
 
     /** `:set dynamic` — nodes that become visible are moved next to the visible ones ([DynamicPlacement]). */
     var dynamic: Boolean = false
+
+    /**
+     * `:set discard` — never ask about unsaved changes: opening,
+     * following links, reloading, jumping, closing tabs and quitting
+     * just discard them.
+     */
+    var discard: Boolean = false
 }
