@@ -132,6 +132,7 @@ fun registerAllCommands() {
     r.register("reload") { it.reloadFile() }
     r.register("follow-file-link") { it.followFileLink() }
     r.register("follow-file-link-in-tab") { it.followFileLinkInTab() }
+    r.register("pick-file") { FilePicker.run(it) }
     r.register("jump-back") { it.jumpBack() }
     r.register("jump-forward") { it.jumpForward() }
     r.register("browse") { it.tabManager?.browse(java.nio.file.Paths.get("").toAbsolutePath()) }

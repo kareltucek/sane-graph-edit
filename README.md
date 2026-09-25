@@ -248,6 +248,7 @@ navigation, not data.
 | Key             | Action                                                 |
 |-----------------|--------------------------------------------------------|
 | `:open`         | Open into this tab — file chooser dialog               |
+| `Ctrl+P`        | Pick a file with an external command (`:set picker=…`; default: xterm + fzf over `*.dot`), open it here (more lines: new tabs) |
 | `Ctrl+O` / `Ctrl+I` | Jump back / forward (vim jump list): to where a `gf` / `g<letter>` / `:open` in this tab started, restoring selection and view |
 | `Ctrl+S`        | Save — writes to the current file, prompts on first save |
 | `Ctrl+Shift+S`  | Save As — always prompts                               |
@@ -262,6 +263,20 @@ navigation, not data.
 On close, the editor prompts Save / Discard / Cancel for every
 unsaved tab. Last-used open/save directories are remembered in
 `~/.sanegrapedit.properties`.
+
+The `Ctrl+P` picker runs `sh -c "<picker>"` in the background with
+`SGE_DIR` (current file's / browsed directory) and `SGE_FILE` set,
+and opens the `path[:nodeid]` lines it prints (relative to
+`SGE_DIR`). Opening a terminal is the command's job; a terminal's
+stdout isn't the picker's, hence the temp file. E.g. st + television
+in the init file:
+
+```
+set picker=out=$(mktemp); st -c sge-picker -e sh -c 'cd "$SGE_DIR" && tv --source-command "find . -name \"*.dot\"" > "$1"' sh "$out"; cat "$out"; rm -f "$out"
+```
+
+With i3, `for_window [class="sge-picker"] floating enable` makes it
+a popup.
 
 ### Session persistence
 

@@ -487,11 +487,25 @@ class GraphView(
      */
     fun followFileLink(letter: Char = 'f', quiet: Boolean = false): Boolean {
         val target = selectedLink("follow-file-link", letter, quiet)
-        val path = target?.path
-        val inThisGraph = target != null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
+        target?.let { openTarget(it) }
+        return target != null
+    }
+
+    /** `gF`: like [followFileLink], but into a new tab, which inherits this tab's jump list. */
+    fun followFileLinkInTab(letter: Char = 'f') {
+        selectedLink("follow-file-link-in-tab", letter, quiet = false)?.let { openTargetInTab(it) }
+    }
+
+    /**
+     * Show [target] in this tab (link following, the picker): a file
+     * is loaded, a directory browsed, the node focused. Recorded in the
+     * [jumps]; asks first about unsaved changes.
+     */
+    fun openTarget(target: FileLink.Target) {
+        val path = target.path
+        val inThisGraph = path == null || path == currentFile?.toAbsolutePath()?.normalize()
         val from = currentLocation()
         when {
-            target == null -> Unit
             inThisGraph -> if (target.nodeId != null) {
                 jumps.record(from)
                 focusNode(target.nodeId)
@@ -506,15 +520,12 @@ class GraphView(
                 focusNode(target.nodeId)
             }
         }
-        return target != null
     }
 
-    /** `gF`: like [followFileLink], but into a new tab, which inherits this tab's jump list. */
-    fun followFileLinkInTab(letter: Char = 'f') {
-        val target = selectedLink("follow-file-link-in-tab", letter, quiet = false)
-        val path = target?.path
+    /** Like [openTarget], into a new tab that inherits this tab's jump list. */
+    fun openTargetInTab(target: FileLink.Target) {
+        val path = target.path
         val opened = when {
-            target == null -> null
             path == null -> {
                 jumps.record(currentLocation())
                 focusNode(target.nodeId)

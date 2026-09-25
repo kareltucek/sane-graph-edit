@@ -47,8 +47,12 @@ object FileLink {
      * whole value isn't itself an existing path. An empty `<path>`
      * means the graph the link is in.
      */
-    fun resolve(link: String, containingFile: Path?): Target {
-        val whole = resolvePath(link, containingFile)
+    fun resolve(link: String, containingFile: Path?): Target =
+        resolveIn(link, containingFile?.toAbsolutePath()?.parent ?: Paths.get("").toAbsolutePath())
+
+    /** Like [resolve], with relative paths relative to [baseDir] (e.g. a picker's output). */
+    fun resolveIn(link: String, baseDir: Path): Target {
+        val whole = resolvePath(link, baseDir)
         val colon = link.lastIndexOf(':')
         val nodeId = link.substring(colon + 1).takeIf { colon >= 0 && it.isNotEmpty() && '/' !in it }
         val split = nodeId != null && !Files.exists(whole)
@@ -56,22 +60,17 @@ object FileLink {
         return when {
             !split -> Target(whole, null)
             pathPart.isEmpty() -> Target(null, nodeId)
-            else -> Target(resolvePath(pathPart, containingFile), nodeId)
+            else -> Target(resolvePath(pathPart, baseDir), nodeId)
         }
     }
 
-    /**
-     * `~/` is the home directory; a relative path is relative to the
-     * directory of [containingFile] (the file the node lives in), or
-     * to the working directory when the tab has no file.
-     */
-    private fun resolvePath(path: String, containingFile: Path?): Path {
+    /** `~/` is the home directory; a relative path is relative to [baseDir]. */
+    private fun resolvePath(path: String, baseDir: Path): Path {
         val expanded = if (path == "~" || path.startsWith("~/")) {
             System.getProperty("user.home") + path.removePrefix("~")
         } else {
             path
         }
-        val base = containingFile?.toAbsolutePath()?.parent ?: Paths.get("").toAbsolutePath()
-        return base.resolve(expanded).normalize()
+        return baseDir.resolve(expanded).normalize()
     }
 }

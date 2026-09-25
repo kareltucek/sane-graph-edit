@@ -763,6 +763,7 @@ class KeyMapper(
             "timeoutlen" -> value.toIntOrNull()?.let { timeoutMs = it }
             "spring-scale" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScale = it }
             "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
+            "picker" -> FilePicker.command = value.ifBlank { FilePicker.DEFAULT_COMMAND }
             else -> System.err.println("sane-graph-edit: unknown setting '$name'")
         }
     }
@@ -907,6 +908,15 @@ class KeyMapper(
         sb.appendLine("                    of holding `-`'. Values closer to 1.0 are")
         sb.appendLine("                    gentler; lower values are more aggressive.")
         sb.appendLine("                    Session-only. Default: 0.8. Current: ${graph_tools.LayoutOptimizer.springScaleStep}.")
+        sb.appendLine()
+        sb.appendLine("  picker=<command>  Shell command behind Ctrl+P (pick-file), run with")
+        sb.appendLine("                    `sh -c` in the background. Env: SGE_DIR (current")
+        sb.appendLine("                    file's / browsed directory), SGE_FILE. It prints")
+        sb.appendLine("                    `path[:nodeid]` lines (relative to SGE_DIR); the")
+        sb.appendLine("                    first opens in this tab, the rest in new tabs.")
+        sb.appendLine("                    Opening a terminal is its job. Default: xterm +")
+        sb.appendLine("                    find + fzf, window class sge-picker.")
+        sb.appendLine("                    Empty value = default.")
         sb.appendLine()
         sb.appendLine("Modes (on/off: `:set <mode>`, `:set no<mode>`, toggle `:set <mode>!`;")
         sb.appendLine("shown in the status bar while on; global, session-only):")
@@ -1179,6 +1189,7 @@ class KeyMapper(
             // Modifier-based
             "<C-s>" to "save",
             "<C-S-s>" to "saveas",
+            "<C-p>" to "pick-file",
             "<C-o>" to "jump-back",
             "<C-i>" to "jump-forward",
             "<F5>" to "reload",
