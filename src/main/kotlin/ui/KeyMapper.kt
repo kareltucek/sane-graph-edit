@@ -632,7 +632,7 @@ class KeyMapper(
                 if (args != null) unmap(args.trim())
                 return
             }
-            "set" -> {
+            "set", "se" -> {
                 if (args != null) {
                     val eqIdx = args.indexOf('=')
                     if (eqIdx > 0) {
@@ -796,7 +796,7 @@ class KeyMapper(
         }
     }
 
-    private val flagNames = setOf("unhide", "show-parents", "show-children", "dynamic", "discard")
+    private val flagNames = FLAG_SETTINGS.toSet()
 
     /**
      * Load an init file. Each line is a command-bar command
@@ -1136,6 +1136,21 @@ class KeyMapper(
     companion object {
         const val MAX_RECURSION = 1000
         const val DEFAULT_TIMEOUT_MS = 500
+
+        /** Commands handled in [executeCommandLine] itself (the rest are [CommandRegistry] names). */
+        val BUILTIN_COMMANDS = listOf(
+            "map", "noremap", "remap", "unmap", "set", "se", "source",
+            "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse",
+        )
+
+        /** `:set <name>=<value>` settings ([applySetting]). */
+        val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker")
+
+        /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
+        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard")
+
+        /** `:help <topic>` topics. */
+        val HELP_TOPICS = listOf("commands", "keys", "map", "bindings", "init", "config", "settings")
 
         /** Build the defaults table from the editor's hardcoded bindings. */
         fun defaultBindings(): Map<String, String> = mapOf(

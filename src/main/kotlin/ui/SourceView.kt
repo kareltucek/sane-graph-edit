@@ -1,8 +1,10 @@
 package ui
 
 import Graph
+import graph_tools.Attachments
 import graph_tools.Node
 import utils.Vector2
+import java.awt.Color
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -10,48 +12,70 @@ import java.nio.file.Path
 
 /**
  * Graph for a `<file>:<line>` / `<file>:<from>-<to>` link
- * ([FileLink.Lines]): a single monospaced node with the text of those
- * lines — a line with [CONTEXT] lines around it (the line itself
- * marked `▶`), or exactly the range — numbered, under a header naming
- * the file. The node sits at the origin, so a fresh tab centres it.
+ * ([FileLink.Lines]; a single line is a one-line range): a monospaced
+ * node with the numbered lines of the range under a header naming the
+ * file, and grey context nodes with up to [CONTEXT] lines before and
+ * after it, attached above and below ([Attachments]). All lines are
+ * padded to one width, so the centred nodes line up column for column.
+ * The range node sits at the origin, so a fresh tab centres it.
  */
 object SourceView {
-    const val CONTEXT = 50
+    const val CONTEXT = 500
 
-    /** DOT id of the node, for focusing. */
+    /** DOT ids of the nodes. */
     const val NODE_ID = "source"
+    const val BEFORE_ID = "source-before"
+    const val AFTER_ID = "source-after"
 
     private const val TAB = "    "
+    private val contextFill = Color(0xEEEEEE)
+    private val contextText = Color(0x666666)
 
     fun title(path: Path, lines: FileLink.Lines): String = "view: ${path.fileName}:$lines"
 
     fun build(path: Path, lines: FileLink.Lines): Graph {
-        val (from, to) = window(lines)
-        val text = read(path, to).drop(from - 1)
-        val width = to.toString().length
-        val body = text.mapIndexed { i, line ->
-            val no = from + i
-            val mark = if (lines.to == null && no == lines.from) "▶" else " "
-            "$mark${no.toString().padStart(width)} │ ${line.replace("\t", TAB)}"
+        val (from, to) = range(lines)
+        val first = (from - CONTEXT).coerceAtLeast(1)
+        val file = read(path, to + CONTEXT)
+        val numberWidth = file.size.coerceAtLeast(to).toString().length
+        val numbered = { range: IntRange ->
+            range.filter { it <= file.size }.map { no ->
+                "${no.toString().padStart(numberWidth)} │ ${file[no - 1].replace("\t", TAB)}"
+            }
         }
         val header = "$path:$lines"
-        val content = if (body.isEmpty()) listOf("(the file has fewer than $from lines)") else body
-        val node = Node(name = NODE_ID).also {
-            it.attributes.text = (listOf(header, "─".repeat(header.length)) + content).joinToString("\n")
+        val body = numbered(from..to).ifEmpty { listOf("(the file has fewer than $from lines)") }
+        val before = numbered(first until from)
+        val after = numbered(to + 1..to + CONTEXT)
+        val width = (listOf(header) + body + before + after).maxOf { it.length }
+        val block = { ls: List<String> -> ls.joinToString("\n") { it.padEnd(width) } }
+
+        val g = Graph()
+        val main = sourceNode(NODE_ID, block(listOf(header, "─".repeat(width)) + body))
+        g.add(main)
+        listOf(BEFORE_ID to before, AFTER_ID to after).filter { it.second.isNotEmpty() }.forEach { (id, ls) ->
+            g.add(sourceNode(id, block(ls)).also {
+                it.attributes.bg = contextFill
+                it.attributes.fg = contextText
+                it.attributes.other[Attachments.ATTACH_TO] = NODE_ID
+                it.attributes.other[Attachments.ATTACH_SIDE] = if (id == BEFORE_ID) "above" else "below"
+            })
+        }
+        return g
+    }
+
+    private fun sourceNode(id: String, text: String): Node =
+        Node(name = id).also {
+            it.attributes.text = text
             it.attributes.other["fontname"] = "monospace"
             it.position = Vector2(0, 0)
         }
-        return Graph().also { it.add(node) }
-    }
 
-    /** First and last line to show, 1-based, inclusive. */
-    private fun window(lines: FileLink.Lines): Pair<Int, Int> {
-        val to = lines.to
-        return when {
-            to == null -> (lines.from - CONTEXT).coerceAtLeast(1) to lines.from + CONTEXT
-            to < lines.from -> to.coerceAtLeast(1) to lines.from
-            else -> lines.from.coerceAtLeast(1) to to
-        }
+    /** First and last line of the range, 1-based, inclusive; a single line is a one-line range. */
+    private fun range(lines: FileLink.Lines): Pair<Int, Int> {
+        val to = lines.to ?: lines.from
+        val from = minOf(lines.from, to).coerceAtLeast(1)
+        return from to maxOf(lines.from, to, from)
     }
 
     /** The first [upTo] lines of [path]; undecodable bytes become `�` (it may not be UTF-8 text). */

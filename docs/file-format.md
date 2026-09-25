@@ -122,10 +122,11 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     reloaded then, the node is just focused.
   - **Lines of a text file**: when `<path>` is not a `.dot` file and
     the suffix is a number or a range — `src/Billing.scala:42`,
-    `src/Billing.scala:40-60` — the link opens a graph with a single
-    monospaced node holding those lines, numbered: a line with 50
-    lines of context in both directions (the line marked `▶`), or
-    exactly the range. (In a `.dot` file a number is a node id.)
+    `src/Billing.scala:40-60` — the link opens a graph with a
+    monospaced node holding those lines, numbered (a single line is a
+    one-line range), plus grey context nodes with up to 500 lines
+    before and after it, attached above and below. (In a `.dot` file a
+    number is a node id.)
 - Following, with exactly one node selected:
   - `g<letter>` follows `link-<letter>` in the current tab (asking
     first if it has unsaved changes) — **unless `g<letter>` is mapped

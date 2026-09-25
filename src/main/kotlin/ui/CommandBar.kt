@@ -32,6 +32,8 @@ class CommandBar(
 
     init {
         isVisible = false
+        // Tab completes instead of moving the focus
+        focusTraversalKeysEnabled = false
         addKeyListener(object : KeyListener {
             override fun keyTyped(e: KeyEvent) {}
 
@@ -51,6 +53,14 @@ class CommandBar(
                     }
                     KeyEvent.VK_DOWN -> {
                         historyDown()
+                        e.consume()
+                    }
+                    KeyEvent.VK_TAB -> if (!searchMode) {
+                        completeTab(backward = e.isShiftDown)
+                        e.consume()
+                    }
+                    KeyEvent.VK_D -> if (!searchMode && e.isControlDown) {
+                        listCompletions()
                         e.consume()
                     }
                 }
@@ -93,6 +103,68 @@ class CommandBar(
         g.cleanSelect(matches.toSet())
         graphView.repaint()
     }
+
+    // --- completion (Tab / Shift+Tab / Ctrl+D) ---
+
+    /** Candidates being cycled by repeated Tabs, and where their word starts. */
+    private var cycle: List<String> = emptyList()
+    private var cycleIndex = 0
+    private var cycleWordStart = 0
+
+    /** The text after the last completion; Tab on unchanged text cycles. */
+    private var lastCompleted: String? = null
+
+    private fun completionFor(line: String): CommandCompletion.Result =
+        CommandCompletion.complete(line, KeyMapper.BUILTIN_COMMANDS + CommandRegistry.list())
+
+    /**
+     * vim-like: a single match is completed (plus a space after a whole
+     * word); several extend to their longest common prefix, then
+     * repeated Tabs cycle through them (Shift+Tab backwards).
+     */
+    private fun completeTab(backward: Boolean) {
+        val line = text.removePrefix(":")
+        if (text == lastCompleted && cycle.isNotEmpty()) {
+            cycleIndex = Math.floorMod(cycleIndex + if (backward) -1 else 1, cycle.size)
+            replaceWord(line, cycleWordStart, cycle[cycleIndex])
+        } else {
+            val r = completionFor(line)
+            val word = line.substring(r.wordStart)
+            val common = CommandCompletion.commonPrefix(r.candidates)
+            cycle = emptyList()
+            when {
+                r.candidates.size == 1 -> {
+                    val c = r.candidates.single()
+                    replaceWord(line, r.wordStart, if (c.endsWith("/") || c.endsWith("=")) c else "$c ")
+                }
+                r.candidates.size > 1 && common.length > word.length -> replaceWord(line, r.wordStart, common)
+                r.candidates.size > 1 -> {
+                    cycle = r.candidates
+                    cycleWordStart = r.wordStart
+                    cycleIndex = if (backward) cycle.size - 1 else 0
+                    replaceWord(line, r.wordStart, cycle[cycleIndex])
+                }
+            }
+        }
+        lastCompleted = text
+    }
+
+    private fun replaceWord(line: String, wordStart: Int, replacement: String) {
+        text = ":" + line.substring(0, wordStart) + replacement
+        caretPosition = text.length
+    }
+
+    /** Ctrl+D: show what Tab could complete to. */
+    private fun listCompletions() {
+        val r = completionFor(text.removePrefix(":"))
+        graphView.messageArea?.show(
+            if (r.candidates.isEmpty()) "(no completions)" else r.candidates.joinToString("\n")
+        )
+        showingCompletions = true
+    }
+
+    /** The message area holds a Ctrl+D list; closed with the bar. */
+    private var showingCompletions = false
 
     // --- history ---
 
@@ -150,6 +222,10 @@ class CommandBar(
 
     /** Close the bar (shared by execute and cancel). */
     private fun closeBar() {
+        if (showingCompletions) graphView.messageArea?.close()
+        showingCompletions = false
+        cycle = emptyList()
+        lastCompleted = null
         text = ""
         searchMode = false
         isVisible = false

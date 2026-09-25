@@ -65,16 +65,20 @@ class MessageArea(
         area.caretPosition = 0
         isVisible = true
 
-        // Dock to the bottom third of the GraphView.
+        // Dock to the bottom third of the GraphView — above the command
+        // bar while it is open (Ctrl+D completion lists), which keeps
+        // the keyboard focus then.
+        val barOpen = graphView.commandBar?.isVisible == true
+        val bottom = graphView.height - if (barOpen) 25 else 0
         val h = (graphView.height * 0.4).toInt().coerceAtLeast(150)
-        val y = graphView.height - h
+        val y = bottom - h
         graphView.placeMeAt(
             this,
             utils.Vector2(0.0, y.toDouble()),
-            utils.Vector2(graphView.width.toDouble(), graphView.height.toDouble()),
+            utils.Vector2(graphView.width.toDouble(), bottom.toDouble()),
         )
         graphView.validate()
-        area.requestFocusInWindow()
+        if (!barOpen) area.requestFocusInWindow()
         graphView.repaint()
     }
 

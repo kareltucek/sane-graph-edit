@@ -245,6 +245,15 @@ keystroke), style / shape / size changes, and layout-optimiser runs.
 Selection changes and view transforms are not tracked — they're
 navigation, not data.
 
+### Command line (`:`)
+
+| Key            | Action                                                   |
+|----------------|----------------------------------------------------------|
+| `Tab`          | Complete: commands, `:set` settings (`:se` works too), `:help` topics, `:export` formats, paths for `:e` / `:w` / `:source` / `:browse`. Several matches: first the common prefix, then each Tab cycles |
+| `Shift+Tab`    | Cycle backwards                                          |
+| `Ctrl+D`       | List what Tab could complete to                          |
+| `Up` / `Down`  | Command history                                          |
+
 ### Keyboard — files & export
 
 | Key             | Action                                                 |

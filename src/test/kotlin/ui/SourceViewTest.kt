@@ -31,26 +31,40 @@ class SourceViewTest {
     private fun source(lines: Int) =
         Files.createTempFile("src", ".scala").also { f -> f.writeText((1..lines).joinToString("\n") { "line $it\tx" }) }
 
-    private fun body(text: String) = text.lines().drop(2)  // header + rule
+    private fun nodes(f: java.nio.file.Path, lines: FileLink.Lines) =
+        SourceView.build(f, lines).nodes.associateBy { it.attributes.name }
+
+    private fun textLines(n: graph_tools.Node?) = n?.attributes?.text?.lines()?.map { it.trimEnd() }.orEmpty()
 
     @Test
-    fun `a line is shown with 50 lines of context and marked`() {
-        val f = source(200)
-        val node = SourceView.build(f, FileLink.Lines(100, null)).nodes.single()
-        val lines = body(node.attributes.text)
-        assertEquals(101, lines.size)
-        assertTrue(lines.first().contains(" 50 │ line 50"), lines.first())
-        assertTrue(lines.last().contains("150 │ line 150"), lines.last())
-        assertTrue(lines[50].startsWith("▶100 │ line 100    x"), lines[50])  // tab expanded
-        assertEquals("monospace", node.attributes.other["fontname"])
+    fun `a single line is a one-line range with 500 lines of context attached above and below`() {
+        val f = source(1200)
+        val ns = nodes(f, FileLink.Lines(600, null))
+        val main = textLines(ns[SourceView.NODE_ID]).drop(2)  // header + rule
+        assertEquals(listOf(" 600 │ line 600    x"), main)  // tab expanded, no marker
+        val before = textLines(ns[SourceView.BEFORE_ID])
+        val after = textLines(ns[SourceView.AFTER_ID])
+        assertEquals(500, before.size)
+        assertEquals(" 100 │ line 100    x", before.first())
+        assertEquals(" 599 │ line 599    x", before.last())
+        assertEquals(500, after.size)
+        assertEquals("1100 │ line 1100    x", after.last())
+        assertEquals("above", ns[SourceView.BEFORE_ID]?.attributes?.other?.get("attachSide"))
+        assertEquals(SourceView.NODE_ID, ns[SourceView.AFTER_ID]?.attributes?.other?.get("attachTo"))
+        assertEquals("monospace", ns[SourceView.AFTER_ID]?.attributes?.other?.get("fontname"))
+        // every line padded to one width, so the centred nodes line up
+        val widths = ns.values.flatMap { it.attributes.text.lines() }.map { it.length }.toSet()
+        assertEquals(1, widths.size)
     }
 
     @Test
-    fun `context is clipped at the file's ends, a range is shown as is`() {
+    fun `context is clipped at the file's ends`() {
         val f = source(30)
-        assertEquals(30, body(SourceView.build(f, FileLink.Lines(3, null)).nodes.single().attributes.text).size)
-        val range = body(SourceView.build(f, FileLink.Lines(5, 7)).nodes.single().attributes.text)
-        assertEquals(listOf(" 5 │ line 5    x", " 6 │ line 6    x", " 7 │ line 7    x"), range)
+        val ns = nodes(f, FileLink.Lines(5, 7))
+        assertEquals(listOf(" 5 │ line 5    x", " 6 │ line 6    x", " 7 │ line 7    x"), textLines(ns[SourceView.NODE_ID]).drop(2))
+        assertEquals(4, textLines(ns[SourceView.BEFORE_ID]).size)
+        assertEquals(23, textLines(ns[SourceView.AFTER_ID]).size)
+        assertEquals(null, nodes(f, FileLink.Lines(1, 30))[SourceView.BEFORE_ID])  // nothing before line 1
     }
 
     @Test
