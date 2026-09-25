@@ -27,11 +27,13 @@ class JumpList(
         val browseDir: Path?,
         val selection: Set<String>,
         val transform: List<Double>,
+        /** The lines shown when the tab is a [SourceView]. */
+        val sourceView: FileLink.Target? = null,
     ) {
-        fun sameSpot(other: Location): Boolean =
-            file == other.file && browseDir == other.browseDir && selection == other.selection
+        fun sameSpot(other: Location): Boolean = sameGraph(other) && selection == other.selection
 
-        fun sameGraph(other: Location): Boolean = file == other.file && browseDir == other.browseDir
+        fun sameGraph(other: Location): Boolean =
+            file == other.file && browseDir == other.browseDir && sourceView == other.sourceView
     }
 
     val size: Int get() = entries.size

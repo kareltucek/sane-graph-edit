@@ -97,7 +97,7 @@ object Plotter {
     fun recomputeNodes(g2d: Graphics2D, nodes: Iterable<Node>) = g2d.withIdentityTransform {
         nodes.forEach { n ->
             val fs = workspaceFontSize(n)
-            val fd = FontData.get(g2d, fs)
+            val fd = FontData.get(g2d, fs, FontData.isMonospace(n))
             n.cache.font = fd
             val fm = g2d.getFontMetrics(fd.font)
             recomputeBounds(n, fm)
@@ -223,7 +223,7 @@ object Plotter {
 
             g2d.paint = n.attributes.fg.orElse(Constants.defaultFgColor)
 
-            val screenspaceFD = FontData.get(g2d, screenspaceFontSize(n))
+            val screenspaceFD = FontData.get(g2d, screenspaceFontSize(n), FontData.isMonospace(n))
 
             /**
              * For small fonts (w.r.t. how it is shown on screen), output height is messed up because of integral height.
@@ -260,12 +260,19 @@ data class FontData(
 ) {
 
     companion object {
-        val cache: MutableMap<Double, FontData> = mutableMapOf()
+        val cache: MutableMap<Pair<Double, Boolean>, FontData> = mutableMapOf()
 
-        fun get(g2d: Graphics2D, fs: Double): FontData {
-            val fd = FontData.cache[fs].orElse {
+        private val monospaceBase = Font(Font.MONOSPACED, Font.PLAIN, 12)
+
+        /** `fontname` values (Graphviz attribute) that select a monospaced font. */
+        private val monospaceNames = setOf("monospace", "mono", "courier", "courier new", "monospaced")
+
+        fun isMonospace(n: Node): Boolean = n.attributes.other["fontname"]?.lowercase() in monospaceNames
+
+        fun get(g2d: Graphics2D, fs: Double, monospace: Boolean = false): FontData {
+            val fd = FontData.cache[fs to monospace].orElse {
                 g2d.withIdentityTransform {
-                    val mf = g2d.font.deriveFont(fs.toFloat())
+                    val mf = (if (monospace) monospaceBase else g2d.font).deriveFont(fs.toFloat())
                     val mfm = g2d.getFontMetrics(mf)
                     if (mfm.height == 0) {
                         val dbg = 7
@@ -276,7 +283,7 @@ data class FontData(
                         height = mfm.height.toDouble(),
                         scale = fs
                     )
-                    FontData.cache[fs] = fontData
+                    FontData.cache[fs to monospace] = fontData
                     fontData
                 }
             }

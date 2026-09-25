@@ -55,6 +55,7 @@ digraph storage {
 | `color`     | `#RRGGBB` | Text / border colour. |
 | `fontsize`  | number | Node size. The editor stores a logarithmic scale `s = log₁.₃(fontsize / 12)`: each step of `s` is ×1.3. Missing → `s = 0` (12). Write `12 × 1.3^s` for a whole step count `s` (e.g. 3 steps → `26.364`). |
 | `shape`     | `box` / `oval` | Default `box`. |
+| `fontname`  | `monospace` (also `mono`, `courier`) | Monospaced text, e.g. for source code; anything else → the default font. |
 | `marks`     | letters | Persistent marks (uppercase `A`–`Z`), recalled with `'<letter>` in the editor. |
 | `link-<letter>`, `link` | `path[:nodeid]` | Links to other graphs (or nodes), followed with `g<letter>`; see below. |
 | `attachTo`, `attachSide` | node id; `above` / `below` / `left` / `right` | Glue this node to another one; see below. |
@@ -119,6 +120,12 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
   - An empty `<path>` (`:n5`) means the graph the link is in; so does
     a path to the file that's already open in the tab. Nothing is
     reloaded then, the node is just focused.
+  - **Lines of a text file**: when `<path>` is not a `.dot` file and
+    the suffix is a number or a range — `src/Billing.scala:42`,
+    `src/Billing.scala:40-60` — the link opens a graph with a single
+    monospaced node holding those lines, numbered: a line with 50
+    lines of context in both directions (the line marked `▶`), or
+    exactly the range. (In a `.dot` file a number is a node id.)
 - Following, with exactly one node selected:
   - `g<letter>` follows `link-<letter>` in the current tab (asking
     first if it has unsaved changes) — **unless `g<letter>` is mapped

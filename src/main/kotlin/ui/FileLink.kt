@@ -14,12 +14,21 @@ object FileLink {
     /** Attribute written by [FileTree]; the same as `link-f`. */
     const val ATTRIBUTE = "link"
 
-    /** Where a link points: a file or directory, and optionally a node in it. */
+    /** Where a link points: a file or directory, and optionally a node in it, or lines of a text file. */
     data class Target(
         /** Null: the graph the link is in (`:<nodeid>`). */
         val path: Path?,
         val nodeId: String?,
+        /** `<file>:<line>` / `<file>:<from>-<to>` of a non-`.dot` file: shown as a [SourceView]. */
+        val lines: Lines? = null,
     )
+
+    /** A line (`to == null`: shown with context around it) or a range, 1-based, inclusive. */
+    data class Lines(val from: Int, val to: Int?) {
+        override fun toString(): String = if (to == null) "$from" else "$from-$to"
+    }
+
+    private val lineSpec = Regex("([0-9]+)(?:-([0-9]+))?")
 
     fun attributeName(letter: Char): String = "link-$letter"
 
@@ -57,9 +66,15 @@ object FileLink {
         val nodeId = link.substring(colon + 1).takeIf { colon >= 0 && it.isNotEmpty() && '/' !in it }
         val split = nodeId != null && !Files.exists(whole)
         val pathPart = link.substring(0, colon.coerceAtLeast(0))
+        // in a DOT file a number is a node id; in any other file it's a line (range)
+        val lines = nodeId
+            ?.takeIf { pathPart.isNotEmpty() && !pathPart.endsWith(".dot") }
+            ?.let { lineSpec.matchEntire(it) }
+            ?.let { m -> Lines(m.groupValues[1].toInt(), m.groupValues[2].takeIf { it.isNotEmpty() }?.toInt()) }
         return when {
             !split -> Target(whole, null)
             pathPart.isEmpty() -> Target(null, nodeId)
+            lines != null -> Target(resolvePath(pathPart, baseDir), null, lines)
             else -> Target(resolvePath(pathPart, baseDir), nodeId)
         }
     }

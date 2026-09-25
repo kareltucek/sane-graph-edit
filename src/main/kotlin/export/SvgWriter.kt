@@ -123,7 +123,9 @@ object SvgWriter {
                     // height for each subsequent line — matching the
                     // Plotter's drawString placement.
                     val y = textPos.y + fd.ascent + fd.height * i
-                    sb.appendLine("""      <text x="${fmt(textPos.x)}" y="${fmt(y)}" font-size="${fmt(fontSize)}" fill="$fg">${esc(line)}</text>""")
+                    // monospaced nodes (source code) keep their indentation
+                    val mono = if (graph_tools.FontData.isMonospace(n)) """ font-family="monospace" xml:space="preserve"""" else ""
+                    sb.appendLine("""      <text x="${fmt(textPos.x)}" y="${fmt(y)}" font-size="${fmt(fontSize)}"$mono fill="$fg">${esc(line)}</text>""")
                 }
             }
 

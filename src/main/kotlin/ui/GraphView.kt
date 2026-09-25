@@ -419,6 +419,7 @@ class GraphView(
             currentFile = path
             untitledName = null
             browseDir = null
+            sourceView = null
             onStateChange()
             boundScreen()
             repaint()
@@ -503,9 +504,12 @@ class GraphView(
      */
     fun openTarget(target: FileLink.Target) {
         val path = target.path
-        val inThisGraph = path == null || path == currentFile?.toAbsolutePath()?.normalize()
+        val inThisGraph = target.lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
         val from = currentLocation()
         when {
+            path != null && target.lines != null -> if (confirmDiscard("open ${path.fileName}:${target.lines}")) {
+                if (showSourceInPlace(path, target.lines)) jumps.record(from)
+            }
             inThisGraph -> if (target.nodeId != null) {
                 jumps.record(from)
                 focusNode(target.nodeId)
@@ -531,6 +535,7 @@ class GraphView(
                 focusNode(target.nodeId)
                 null
             }
+            target.lines != null -> tabManager?.newTab()?.takeIf { it.showSourceInPlace(path, target.lines) }
             java.nio.file.Files.isDirectory(path) -> tabManager?.browse(path)
             // the new tab has no size yet; its first paint does the focusing
             else -> tabManager?.openPath(path)?.also { it.pendingFocus = target.nodeId }
@@ -546,6 +551,33 @@ class GraphView(
     /** Directory shown when this tab is a [FileTree] (`:browse`, `gf` on a directory). */
     var browseDir: Path? = null
 
+    /** Lines shown when this tab is a [SourceView] (a `<file>:<line>` link). */
+    var sourceView: FileLink.Target? = null
+
+    /**
+     * Replace this tab's graph with a [SourceView] of [lines] of
+     * [path]. False (and a message) if the file can't be read.
+     */
+    fun showSourceInPlace(path: Path, lines: FileLink.Lines): Boolean {
+        val graph = try {
+            SourceView.build(path, lines)
+        } catch (e: Exception) {
+            messageArea?.show("cannot read $path: ${e.message}")
+            null
+        }
+        if (graph != null) {
+            replaceGraph(graph)
+            currentFile = null
+            browseDir = null
+            sourceView = FileLink.Target(path, null, lines)
+            untitledName = SourceView.title(path, lines)
+            onStateChange()
+            if (graphCanvas.width > 0) setViewTo(Vector2.Zero, Plotter.t.scaleX)
+            tabManager?.saveSession()
+        }
+        return graph != null
+    }
+
     /** Where this tab is now, as a [JumpList] entry. */
     fun currentLocation(): JumpList.Location {
         val m = DoubleArray(6).also { viewTransform.getMatrix(it) }
@@ -554,6 +586,7 @@ class GraphView(
             browseDir = browseDir,
             selection = g.selectedNodes.map { nodeKey(it) }.toSet(),
             transform = m.toList(),
+            sourceView = sourceView,
         )
     }
 
@@ -583,12 +616,16 @@ class GraphView(
         val here = currentLocation()
         val file = loc.file
         val dir = loc.browseDir
+        val source = loc.sourceView
+        val sourcePath = source?.path
+        val sourceLines = source?.lines
         val opened = when {
             loc.sameGraph(here) -> true
-            file == null && dir == null -> false  // an untitled graph that is gone
-            !confirmDiscard("go back to ${(file ?: dir)?.fileName ?: file ?: dir}") -> false
+            file == null && dir == null && source == null -> false  // an untitled graph that is gone
+            !confirmDiscard("go back to ${(file ?: dir ?: sourcePath)?.fileName}") -> false
+            sourcePath != null && sourceLines != null -> showSourceInPlace(sourcePath, sourceLines)
             dir != null -> java.nio.file.Files.isDirectory(dir).also { if (it) browseInPlace(dir) }
-            else -> loadInPlace(file!!)
+            else -> file?.let { loadInPlace(it) } == true
         }
         if (opened) {
             viewTransform.setTransform(
@@ -645,6 +682,7 @@ class GraphView(
         replaceGraph(FileTree.build(dir))
         currentFile = null
         browseDir = dir.toAbsolutePath().normalize()
+        sourceView = null
         untitledName = "browse: $browseDir"
         onStateChange()
         setViewTo(Vector2.Zero)

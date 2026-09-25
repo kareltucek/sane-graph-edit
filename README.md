@@ -377,7 +377,9 @@ Attributes the editor understands and round-trips:
 - `fontsize` — maps to an internal scale factor
 - `shape` — `box` or `oval`
 - `marks` — persistent marks
-- `link-<letter>` / `link` — links to other graphs / nodes (`g<letter>`)
+- `fontname` — `monospace` for source code
+- `link-<letter>` / `link` — links to other graphs / nodes (`g<letter>`),
+  or to lines of a source file (`file.scala:42`, `file.scala:40-60`)
 - `attachTo` / `attachSide` — glue a node to a side of another one;
   it then moves, hides and lays out with its owner
 
