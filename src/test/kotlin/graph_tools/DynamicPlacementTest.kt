@@ -50,7 +50,30 @@ class DynamicPlacementTest {
     }
 
     @Test
-    fun `a newly shown node lands near its visible neighbour, towards where it was`() {
+    fun `a shown parent goes left, shown siblings stack in their original order`() {
+        val g = Graph()
+        val a = Node("A", Vector2(0, 0))
+        val p = Node("P", Vector2(900, 900))      // parent of A, originally far right
+        val c1 = Node("C1", Vector2(-900, -50))   // children of A, originally far left
+        val c2 = Node("C2", Vector2(-900, 50))
+        listOf(a, p, c1, c2).forEach { g.add(it) }
+        g.add(Edge(p, a)); g.add(Edge(a, c1)); g.add(Edge(a, c2))
+        g.ensureCachesFresh(force = true)
+        listOf(p, c1, c2).forEach { it.cache.hideLevel = 1 }
+        ViewModes.dynamic = true
+        DynamicPlacement.place(g)
+        listOf(p, c1, c2).forEach { it.cache.hideLevel = 0 }
+        DynamicPlacement.place(g)
+
+        assertTrue(p.position.x < a.position.x, "parent left of A: ${p.position}")
+        assertTrue(c1.position.x > a.position.x && c2.position.x > a.position.x, "children right of A")
+        assertEquals(c1.position.x, c2.position.x, 1e-9)  // one column
+        assertTrue(c1.position.y < c2.position.y, "C1 above C2, as originally")
+        assertFalse(overlap(c1, c2))
+    }
+
+    @Test
+    fun `a newly shown child lands right of its visible parent`() {
         val (g, ns, b) = graph()
         ViewModes.dynamic = true
         DynamicPlacement.place(g)
@@ -58,7 +81,8 @@ class DynamicPlacementTest {
         DynamicPlacement.place(g)
 
         val a = ns.getValue("A")
-        assertTrue(b.position.x > a.position.x, "B stays on A's right: ${b.position}")
+        assertTrue(b.position.x > a.position.x, "B goes right of A: ${b.position}")
+        assertEquals(a.position.y, b.position.y, 1e-9)  // level with A: nothing in the way
         assertTrue((b.position - a.position).length() < 1000, "B is near A: ${b.position}")
         assertFalse(overlap(a, b))
         assertFalse(overlap(ns.getValue("D"), b))

@@ -61,7 +61,9 @@ digraph storage {
 ## Custom attributes
 
 Any other attribute on a node or edge (`kind`, `src`, `via`, …) is
-kept verbatim across open/save and ignored otherwise. Graphviz
+kept verbatim across open/save and ignored otherwise. The editor
+interprets no edge attributes at all: `a -> b [via="read"]` keeps
+`via`, but edges are always drawn the same way. Graphviz
 ignores attributes it doesn't know (quote names that aren't plain
 `[a-zA-Z_][a-zA-Z0-9_]*`).
 

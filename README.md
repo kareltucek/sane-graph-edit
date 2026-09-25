@@ -217,9 +217,10 @@ while on:
   show selected nodes and every parent / child of a non-hidden or
   selected node. Display only; hide levels are untouched.
 - `dynamic` — a node that becomes visible (by any of the above, or
-  `H`) is moved next to its visible neighbours, towards where it was,
-  without overlapping anything visible. A real move: one undo step per
-  batch, saved with the file.
+  `H`) is moved next to its visible neighbours, left to right: a
+  child in a column right of its parents, a parent left of its
+  children, stacked vertically without overlapping anything visible.
+  A real move: one undo step per batch, saved with the file.
 
 ### Keyboard — styling
 

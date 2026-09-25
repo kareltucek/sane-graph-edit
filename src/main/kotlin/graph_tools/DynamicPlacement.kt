@@ -3,8 +3,6 @@ package graph_tools
 import Graph
 import utils.Vector2
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
  * `:set dynamic` — nodes that become visible are moved next to the
@@ -13,27 +11,26 @@ import kotlin.math.sin
  * send it to the other end of the canvas.
  *
  * Called on every paint ([place]); compares the visible set with the
- * one from the previous call. Each newly visible node goes one typical
- * edge length away from its visible neighbours, towards its original
- * position (so the old layout's orientation survives), at the nearest
- * spot where it doesn't overlap a visible node. Chains of new nodes
- * are placed breadth-first from the already-visible ones. New nodes
- * with no visible neighbour stay where they are. The moves are one
- * undoable [MoveNodesCommand]; nodes shown by undo / redo are left
- * alone.
+ * one from the previous call. Placement follows the flow, left to
+ * right: a newly visible child goes in a column right of its visible
+ * parents, a newly visible parent left of its visible children (a node
+ * that is both goes between them). Vertically it starts level with its
+ * visible neighbours and stacks below / above, alternating, until it
+ * overlaps nothing visible. Chains of new nodes are placed
+ * breadth-first from the already-visible ones; siblings keep their
+ * original top-to-bottom order. New nodes with no visible neighbour
+ * stay where they are. The moves are one undoable [MoveNodesCommand];
+ * nodes shown by undo / redo are left alone.
  */
 object DynamicPlacement {
+    /** Horizontal gap between a node and the column of its parents / children. */
+    private const val COLUMN_GAP = 60.0
+
     /** Minimum gap between placed boxes. */
     private const val GAP = 12.0
 
-    /** Edge length used when the visible graph has no edges to learn from. */
-    private const val DEFAULT_EDGE_LENGTH = 150.0
-
-    /** Direction offsets tried around the preferred one, in degrees, nearest first. */
-    private val ANGLES = listOf(0, 20, -20, 40, -40, 60, -60, 90, -90, 120, -120, 150, -150, 180)
-
-    /** Distances tried, as multiples of the edge length. */
-    private val DISTANCES = listOf(1.0, 1.4, 1.8, 2.4, 3.0, 4.0, 5.5, 7.5)
+    /** How many rows up and down to try before giving up and overlapping. */
+    private const val MAX_ROWS = 500
 
     /**
      * Place the nodes that became visible since the last call. Tracks
@@ -65,47 +62,44 @@ object DynamicPlacement {
     fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>): Map<Node, Vector2> {
         val placed = fixed.associateWith { it.position }.toMutableMap()
         val result = mutableMapOf<Node, Vector2>()
-        val edgeLength = typicalEdgeLength(g, fixed)
-        val neighbours = { n: Node -> g.edgeMap[n].orEmpty().map { if (it.src == n) it.dst else it.src } }
+        val parents = { n: Node -> g.findInEdges(n).map { it.src } }
+        val children = { n: Node -> g.findOutEdges(n).map { it.dst } }
+        val topToBottom = compareBy<Node>({ it.position.y }, { it.position.x })
 
-        val queue = ArrayDeque(fresh.filter { n -> neighbours(n).any { it in placed } })
-        val queued = queue.toMutableSet()
-        while (queue.isNotEmpty()) {
-            val n = queue.removeFirst()
-            val anchors = neighbours(n).filter { it in placed }
-            val target = spotFor(n, anchors.map { placed.getValue(it) }, placed, edgeLength)
-            placed[n] = target
-            result[n] = target
-            neighbours(n).filter { it in fresh && it !in queued }.forEach { queue.addLast(it); queued.add(it) }
+        var layer = fresh.filter { n -> (parents(n) + children(n)).any { it in placed } }.sortedWith(topToBottom)
+        while (layer.isNotEmpty()) {
+            layer.forEach { n ->
+                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed)
+                placed[n] = target
+                result[n] = target
+            }
+            layer = layer
+                .flatMap { parents(it) + children(it) }
+                .filter { it in fresh && it !in placed }
+                .distinct()
+                .sortedWith(topToBottom)
         }
         return result
     }
 
-    /**
-     * Median length of edges between [fixed] nodes, so placed nodes
-     * match the spacing of what's on screen.
-     */
-    private fun typicalEdgeLength(g: Graph, fixed: Set<Node>): Double {
-        val lengths = g.edges
-            .filter { it.src in fixed && it.dst in fixed }
-            .map { (it.src.position - it.dst.position).length() }
-            .filter { it > 1.0 }
-            .sorted()
-        return lengths.getOrNull(lengths.size / 2) ?: DEFAULT_EDGE_LENGTH
-    }
-
-    private fun spotFor(n: Node, anchors: List<Vector2>, placed: Map<Node, Vector2>, edgeLength: Double): Vector2 {
-        val centre = Vector2(anchors.sumOf { it.x } / anchors.size, anchors.sumOf { it.y } / anchors.size)
-        val towardsOriginal = n.position - centre
-        val baseAngle = if (towardsOriginal.length() < 1.0) 0.0 else kotlin.math.atan2(towardsOriginal.y, towardsOriginal.x)
-        val candidates = DISTANCES.asSequence().flatMap { d ->
-            ANGLES.asSequence().map { a ->
-                val angle = baseAngle + Math.toRadians(a.toDouble())
-                centre + Vector2(cos(angle) * d * edgeLength, sin(angle) * d * edgeLength)
-            }
+    private fun spotFor(n: Node, visibleParents: List<Node>, visibleChildren: List<Node>, placed: Map<Node, Vector2>): Vector2 {
+        val half = { m: Node -> m.cache.shapeBounds.x / 2 }
+        val pos = { m: Node -> placed.getValue(m) }
+        // right of the parents' column / left of the children's column
+        val rightOfParents = visibleParents.maxOfOrNull { pos(it).x + half(it) }?.let { it + COLUMN_GAP + half(n) }
+        val leftOfChildren = visibleChildren.minOfOrNull { pos(it).x - half(it) }?.let { it - COLUMN_GAP - half(n) }
+        val x = when {
+            rightOfParents != null && leftOfChildren != null -> (rightOfParents + leftOfChildren) / 2
+            else -> rightOfParents ?: leftOfChildren!!
         }
-        return candidates.firstOrNull { spot -> placed.none { (m, p) -> overlaps(n, spot, m, p) } }
-            ?: (centre + Vector2(cos(baseAngle), sin(baseAngle)) * (DISTANCES.last() * edgeLength))
+        val anchors = visibleParents + visibleChildren
+        val y = anchors.sumOf { pos(it).y } / anchors.size
+        val step = n.cache.shapeBounds.y + GAP
+        val rows = (0..MAX_ROWS).asSequence().flatMap { k -> if (k == 0) sequenceOf(0) else sequenceOf(k, -k) }
+        return rows
+            .map { k -> Vector2(x, y + k * step) }
+            .firstOrNull { spot -> placed.none { (m, p) -> overlaps(n, spot, m, p) } }
+            ?: Vector2(x, y)
     }
 
     private fun overlaps(a: Node, pa: Vector2, b: Node, pb: Vector2): Boolean {
