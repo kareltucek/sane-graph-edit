@@ -235,8 +235,21 @@ class GraphView(
             "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
             "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
         ).joinToString(" ")
-        val parts = listOf(modes, gesture, stylePickerText, recText).filter { it.isNotEmpty() }
+        val parts = listOf(modes, gesture, stylePickerText, recText, linkStatus()).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))
+    }
+
+    /**
+     * Links of the single selected node as the keys that follow
+     * them (`links: gd gf`); a link whose `g<letter>` is mapped to
+     * something else is shown by name (`link-t (gt taken)`).
+     */
+    private fun linkStatus(): String {
+        val letters = g.selectedNodes.singleOrNull()?.let { FileLink.letters(it) }.orEmpty()
+        val keys = letters.map { l ->
+            if (keyMapper?.followsLink(l) != false) "g$l" else "${FileLink.attributeName(l)} (g$l taken)"
+        }
+        return if (keys.isEmpty()) "" else "links: ${keys.joinToString(" ")}"
     }
 
     /**

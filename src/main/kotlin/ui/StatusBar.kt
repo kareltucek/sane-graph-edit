@@ -63,8 +63,14 @@ class StatusBar(
      * keeps its height.
      */
     fun setLabel(text: String) {
-        this.text = text.ifEmpty { " " }
-        repaint()
+        val shown = text.ifEmpty { " " }
+        // Also called on every canvas paint (link letters follow the
+        // selection); repainting an unchanged bar would repaint the
+        // canvas under it again, forever.
+        if (shown != this.text) {
+            this.text = shown
+            repaint()
+        }
     }
 
     companion object {

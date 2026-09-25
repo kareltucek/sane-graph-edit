@@ -433,6 +433,18 @@ class KeyMapper(
     }
 
     /**
+     * True if typing `g<letter>` follows `link-<letter>`: either the
+     * keys are unclaimed (see [followLink]), or they run the
+     * `follow-file-link` command (`gf` for `link-f`).
+     */
+    fun followsLink(letter: Char): Boolean {
+        val keys = "g$letter"
+        val unclaimed = !hasExactMatch(keys) && !isPrefixOfLonger(keys)
+        val isGf = letter == 'f' && keys !in mappings && defaults[keys] == "follow-file-link"
+        return unclaimed || isGf
+    }
+
+    /**
      * `g<letter>` that no mapping claims: try the selected node's
      * `link-<letter>` via [linkFollower]. True if it was followed.
      */

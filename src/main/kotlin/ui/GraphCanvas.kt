@@ -78,6 +78,8 @@ class GraphCanvas(
             parent.g.recompute(g2d)
 
             Plotter.drawGraph(g2d,  parent.g)
+            // the link letters shown there follow the selection, which changes in many places
+            parent.refreshStatus()
 
             parent.mouseListener.controller.selectionBoxFrom?.let { box ->
                 val (ul, br) = Vector2.computeCorners(parent.mouseListener.controller.lastPosition, box)

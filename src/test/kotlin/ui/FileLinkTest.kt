@@ -7,7 +7,9 @@ import java.nio.file.Paths
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class FileLinkTest {
 
@@ -51,5 +53,16 @@ class FileLinkTest {
         assertNull(FileLink.of(n, 'x'))
         n.attributes.other["link-f"] = "explicit.dot"
         assertEquals("explicit.dot", FileLink.of(n, 'f'))  // link-f wins over the alias
+        n.attributes.other["linkage"] = "not a link"
+        assertEquals(listOf('d', 'f'), FileLink.letters(n))
+    }
+
+    @Test
+    fun `a letter is followable unless g-letter is taken`() {
+        val mapper = KeyMapper(KeyMapper.defaultBindings())
+        assertTrue(mapper.followsLink('d'))
+        assertTrue(mapper.followsLink('f'))   // gf = follow-file-link
+        assertFalse(mapper.followsLink('t'))  // gt = tabnext
+        assertFalse(mapper.followsLink('F'))  // gF = follow-file-link-in-tab
     }
 }

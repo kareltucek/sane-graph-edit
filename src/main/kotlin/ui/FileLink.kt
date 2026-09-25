@@ -23,6 +23,19 @@ object FileLink {
 
     fun attributeName(letter: Char): String = "link-$letter"
 
+    /** Letters of [node]'s links, sorted; `link` counts as `f`. */
+    fun letters(node: Node): List<Char> =
+        node.attributes.other.keys
+            .mapNotNull { k ->
+                when {
+                    k == ATTRIBUTE -> 'f'
+                    k.length == ATTRIBUTE.length + 2 && k.startsWith("$ATTRIBUTE-") && k.last().isLetter() -> k.last()
+                    else -> null
+                }
+            }
+            .distinct()
+            .sorted()
+
     /** The raw `link-<letter>` value of [node]; `link` counts as `link-f`. */
     fun of(node: Node, letter: Char): String? =
         node.attributes.other[attributeName(letter)]
