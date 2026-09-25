@@ -23,6 +23,8 @@ class FilePickerTest {
             SwingUtilities.invokeAndWait { }
             Thread.sleep(20)
         }
+        // done() can turn true mid-way through the EDT task that applies the result; let it finish
+        SwingUtilities.invokeAndWait { }
     }
 
     @Test
