@@ -93,7 +93,11 @@ m -> m_args; m -> m_ret;
   Generators should still write a correct `pos` (other tools read it).
 - Moving (drag, grab, rotate, scale, mirror) a selection that contains
   an attached node moves its owner instead, so the group stays
-  together. An attached node is shown only while its owner is.
+  together. An attached node inherits its owner's visibility (its own
+  hidden state doesn't matter). Layout (`:set dynamic` placement)
+  treats an owner with everything glued to it as one block: the
+  attached nodes are laid out first, and neighbours fan out from the
+  block's edges.
 - The attached nodes are ordinary nodes otherwise: they have their own
   edges, labels, links, and can be selected and followed.
 

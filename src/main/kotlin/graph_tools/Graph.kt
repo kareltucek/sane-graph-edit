@@ -244,8 +244,8 @@ class Graph(
      * hidden. With [ViewModes.showParents] / [ViewModes.showChildren]
      * on, "shown" nodes are the non-hidden and the selected ones, and
      * [n] is also visible when it is shown, or a parent / child of a
-     * shown node. An attached node ([Attachments]) is visible only
-     * while its owner is.
+     * shown node. An attached node ([Attachments]) is visible exactly
+     * when its owner is.
      */
     fun isVisible(n: Node): Boolean {
         val shown = { m: Node -> !m.isHidden || m in selectedNodesRestricted }
@@ -253,8 +253,9 @@ class Graph(
         val parentOfShown = ViewModes.showParents && findOutEdges(n).any { shown(it.dst) }
         val childOfShown = ViewModes.showChildren && findInEdges(n).any { shown(it.src) }
         val own = !n.isHidden || (anyMode && shown(n)) || parentOfShown || childOfShown
-        // glued nodes go with their owner
-        return own && attachmentOwners[n]?.let { isVisible(it) } != false
+        // glued nodes inherit their owner's visibility, whatever their own state
+        val owner = attachmentOwners[n]
+        return if (owner != null) isVisible(owner) else own
     }
 
     /** All nodes passing [isVisible]; linear in nodes + edges. */

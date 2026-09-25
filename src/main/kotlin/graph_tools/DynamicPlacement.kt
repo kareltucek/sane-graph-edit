@@ -62,6 +62,10 @@ object DynamicPlacement {
 
     /** New positions for [fresh] nodes, given the [fixed] visible ones. */
     fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>): Map<Node, Vector2> {
+        // attached nodes first: a node's box is its whole block (it + what's glued to it), measured
+        // relative to it, so the fanning out below starts from the block's edges
+        Attachments.reglue(g)
+        val boxes = (fresh + fixed).associateWith { Attachments.block(g, it) }
         val placed = fixed.associateWith { it.position }.toMutableMap()
         val result = mutableMapOf<Node, Vector2>()
         val parents = { n: Node -> g.findInEdges(n).map { it.src } }
@@ -71,7 +75,7 @@ object DynamicPlacement {
         var layer = fresh.filter { n -> (parents(n) + children(n)).any { it in placed } }.sortedWith(topToBottom)
         while (layer.isNotEmpty()) {
             layer.forEach { n ->
-                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed)
+                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed, boxes)
                 placed[n] = target
                 result[n] = target
             }
@@ -84,29 +88,39 @@ object DynamicPlacement {
         return result
     }
 
-    private fun spotFor(n: Node, visibleParents: List<Node>, visibleChildren: List<Node>, placed: Map<Node, Vector2>): Vector2 {
-        val half = { m: Node -> m.cache.shapeBounds.x / 2 }
+    private fun spotFor(
+        n: Node,
+        visibleParents: List<Node>,
+        visibleChildren: List<Node>,
+        placed: Map<Node, Vector2>,
+        boxes: Map<Node, Attachments.Box>,
+    ): Vector2 {
+        val box = { m: Node -> boxes.getValue(m) }
         val pos = { m: Node -> placed.getValue(m) }
-        // right of the parents' column / left of the children's column
-        val rightOfParents = visibleParents.maxOfOrNull { pos(it).x + half(it) }?.let { it + COLUMN_GAP + half(n) }
-        val leftOfChildren = visibleChildren.minOfOrNull { pos(it).x - half(it) }?.let { it - COLUMN_GAP - half(n) }
+        val left = { m: Node, at: Vector2 -> at.x + box(m).center.x - box(m).size.x / 2 }
+        val right = { m: Node, at: Vector2 -> at.x + box(m).center.x + box(m).size.x / 2 }
+        // n's block right of the parents' blocks / left of the children's blocks
+        val rightOfParents = visibleParents.maxOfOrNull { right(it, pos(it)) }
+            ?.let { it + COLUMN_GAP - left(n, Vector2.Zero) }
+        val leftOfChildren = visibleChildren.minOfOrNull { left(it, pos(it)) }
+            ?.let { it - COLUMN_GAP - right(n, Vector2.Zero) }
         val x = when {
             rightOfParents != null && leftOfChildren != null -> (rightOfParents + leftOfChildren) / 2
             else -> rightOfParents ?: leftOfChildren!!
         }
         val anchors = visibleParents + visibleChildren
         val y = anchors.sumOf { pos(it).y } / anchors.size
-        val step = n.cache.shapeBounds.y + GAP
+        val step = box(n).size.y + GAP
         val rows = (0..MAX_ROWS).asSequence().flatMap { k -> if (k == 0) sequenceOf(0) else sequenceOf(k, -k) }
         return rows
             .map { k -> Vector2(x, y + k * step) }
-            .firstOrNull { spot -> placed.none { (m, p) -> overlaps(n, spot, m, p) } }
+            .firstOrNull { spot -> placed.none { (m, p) -> overlaps(box(n), spot, box(m), p) } }
             ?: Vector2(x, y)
     }
 
-    private fun overlaps(a: Node, pa: Vector2, b: Node, pb: Vector2): Boolean {
-        val sa = a.cache.shapeBounds
-        val sb = b.cache.shapeBounds
-        return abs(pa.x - pb.x) < (sa.x + sb.x) / 2 + GAP && abs(pa.y - pb.y) < (sa.y + sb.y) / 2 + GAP
+    private fun overlaps(a: Attachments.Box, pa: Vector2, b: Attachments.Box, pb: Vector2): Boolean {
+        val ca = pa + a.center
+        val cb = pb + b.center
+        return abs(ca.x - cb.x) < (a.size.x + b.size.x) / 2 + GAP && abs(ca.y - cb.y) < (a.size.y + b.size.y) / 2 + GAP
     }
 }

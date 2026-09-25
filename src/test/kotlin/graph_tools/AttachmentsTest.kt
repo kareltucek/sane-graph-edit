@@ -82,6 +82,47 @@ class AttachmentsTest {
         assertFalse(g.isVisible(n.getValue("doc")))
         n.getValue("m").cache.hideLevel = 0
         assertTrue(g.isVisible(n.getValue("doc")))
+        // inherited, not combined: a hidden attached node shows with its visible owner
+        n.getValue("doc").cache.hideLevel = 1
+        assertTrue(g.isVisible(n.getValue("doc")))
+    }
+
+    @Test
+    fun `dynamic placement fans out from whole blocks`() {
+        val g = DotGraphLoader.parse(DotGraphLoader.tokenize("""
+            digraph g {
+              a [ label="A"; pos="0,0!" ];
+              b [ label="B"; pos="3000,0!" ];
+              tall [ label="1\n2\n3\n4\n5\n6\n7\n8"; attachTo="b"; pos="0,0!" ];
+              wide [ label="a much wider signature line than B"; attachTo="b"; attachSide="right"; pos="0,0!" ];
+              c [ label="C"; pos="3000,50!" ];
+              d [ label="D"; pos="5000,0!" ];
+              a -> b; a -> c; b -> d;
+            }
+        """.trimIndent()))
+        g.ensureCachesFresh(force = true)
+        val n = g.nodes.associateBy { it.attributes.name }
+        val (b, c, d) = listOf("b", "c", "d").map { n.getValue(it) }
+        listOf(b, c, d).forEach { it.cache.hideLevel = 1 }
+        ViewModes.dynamic = true
+        try {
+            DynamicPlacement.place(g)
+            listOf(b, c, d).forEach { it.cache.hideLevel = 0 }
+            DynamicPlacement.place(g)
+            g.ensureCachesFresh()
+        } finally {
+            ViewModes.dynamic = false
+        }
+        val blockB = Attachments.block(g, b)
+        val blockC = Attachments.block(g, c)
+        val bTop = b.position.y + blockB.center.y - blockB.size.y / 2
+        val bBottom = b.position.y + blockB.center.y + blockB.size.y / 2
+        val cTop = c.position.y + blockC.center.y - blockC.size.y / 2
+        val cBottom = c.position.y + blockC.center.y + blockC.size.y / 2
+        assertTrue(cTop >= bBottom || cBottom <= bTop, "C clear of B's block (incl. the attached node below)")
+        val bRight = b.position.x + blockB.center.x + blockB.size.x / 2
+        val dLeft = d.position.x - d.cache.shapeBounds.x / 2
+        assertTrue(dLeft > bRight, "D right of B's block (incl. the one attached right): $dLeft vs $bRight")
     }
 
     @Test

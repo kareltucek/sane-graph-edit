@@ -49,6 +49,30 @@ object Attachments {
     /** The owner at the top of [n]'s attachment chain ([n] itself if unattached). */
     fun root(n: Node, owners: Map<Node, Node>): Node = generateSequence(n) { owners[it] }.last()
 
+    /** A box relative to a node's position: [center] offset and full [size]. */
+    data class Box(val center: Vector2, val size: Vector2)
+
+    /**
+     * The box of [n] together with everything glued to it (directly or
+     * through chains), relative to [n]'s position, from the current
+     * (glued) positions and cached sizes. [n]'s own box if nothing is.
+     */
+    fun block(g: Graph, n: Node): Box {
+        val owners = g.attachmentOwners
+        val members = generateSequence(listOf(n)) { layer ->
+            owners.filterValues { it in layer }.keys.toList().takeIf { it.isNotEmpty() }
+        }.flatten().toList()
+        val lo = Vector2(
+            members.minOf { it.position.x - it.cache.shapeBounds.x / 2 },
+            members.minOf { it.position.y - it.cache.shapeBounds.y / 2 },
+        )
+        val hi = Vector2(
+            members.maxOf { it.position.x + it.cache.shapeBounds.x / 2 },
+            members.maxOf { it.position.y + it.cache.shapeBounds.y / 2 },
+        )
+        return Box((lo + hi) / 2 - n.position, hi - lo)
+    }
+
     /**
      * Put every attached node where its owner says; owners first, so
      * chains follow. Returns the nodes that moved (their edges need
