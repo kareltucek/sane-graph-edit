@@ -141,6 +141,8 @@ class GraphMouseListener(
     }
 
     override fun mouseMoved(e: MouseEvent) {
+        // a waiting `g` grabs right away
+        graphView.keyMapper?.mouseMoved()
         val screen = gesturePosition(e) ?: return
         val pos = screen.toWorkspaceVector()
 

@@ -857,6 +857,19 @@ class KeyMapper(
         }
     }
 
+    /**
+     * The mouse moved: if the key waiting for its timeout starts a
+     * mouse gesture (`g` = grab, which could still become `gt`), the
+     * gesture starts now instead of after the timeout.
+     */
+    fun mouseMoved() {
+        val gestureWaiting = pendingTimer != null && pending !in mappings && defaults[pending] in MOUSE_GESTURES
+        if (gestureWaiting) {
+            cancelTimer()
+            onTimeout()
+        }
+    }
+
     private fun startTimeout() {
         val timer = Timer(timeoutMs) { onTimeout() }
         timer.isRepeats = false
@@ -1183,6 +1196,9 @@ class KeyMapper(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
             "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
         )
+
+        /** Commands driven by moving the mouse ([mouseMoved]). */
+        val MOUSE_GESTURES = setOf("grab", "scale", "rotate")
 
         /** `:set <name>=<value>` settings ([applySetting]). */
         val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker")

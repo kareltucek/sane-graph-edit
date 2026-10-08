@@ -391,6 +391,28 @@ class KeyMapperTest {
     }
 
     @Test
+    fun `moving the mouse while g waits grabs at once, other waiting keys keep waiting`() {
+        val executed = mutableListOf<String>()
+        val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "d" to "delete", "dd" to "delete-reconnect"), timeoutMs = 60_000)
+        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
+
+        mapper.mouseMoved()  // nothing waiting
+        mapper.feedKey("d")
+        mapper.mouseMoved()  // not a mouse gesture
+        assertEquals(emptyList(), executed)
+        mapper.feedKey("d")
+        assertEquals(listOf("delete-reconnect"), executed)
+
+        mapper.feedKey("g")
+        mapper.mouseMoved()
+        assertEquals(listOf("delete-reconnect", "grab"), executed)
+        mapper.feedKey("t")  // a new sequence, not the end of gt
+        assertEquals(listOf("delete-reconnect", "grab"), executed)
+        mapper.reset()
+    }
+
+    @Test
     fun `pressing Shift while g waits restarts the timeout, so gT isn't cut into g + T`() {
         val executed = java.util.Collections.synchronizedList(mutableListOf<String>())
         val mapper = KeyMapper(KeyMapper.defaultBindings(), timeoutMs = 300)
