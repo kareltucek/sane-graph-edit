@@ -86,9 +86,33 @@ class Graph(
      */
     val history: History = History()
 
-    /** Execute [cmd] and push it onto the undo stack. Short-hand for `history.apply`. */
+    /**
+     * Set when this graph is a client's replica of a shared document:
+     * changes then go to the editor, which owns the undo history,
+     * and [history] stays empty.
+     */
+    var committer: Committer? = null
+
+    /** Execute [cmd] and record it as one undo step. */
     fun commit(cmd: Command) {
-        history.apply(cmd)
+        committer?.commit(cmd, applied = false) ?: history.apply(cmd)
+    }
+
+    /**
+     * Record [cmd], whose effect is already in the graph, as one undo
+     * step: for gestures that change the graph as they go (a drag)
+     * and are recorded once they end.
+     */
+    fun commitApplied(cmd: Command) {
+        committer?.commit(cmd, applied = true) ?: history.commitWithoutRun(cmd)
+    }
+
+    fun undo() {
+        committer?.undo() ?: history.undo()
+    }
+
+    fun redo() {
+        committer?.redo() ?: history.redo()
     }
 
     val nodes: Set<Node>

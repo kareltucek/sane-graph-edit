@@ -36,6 +36,14 @@ interface Command {
     fun coalesceInto(previous: Command): Boolean = false
 }
 
+/** Takes over [Graph.commit], [Graph.undo] and [Graph.redo]; see [Graph.committer]. */
+interface Committer {
+    /** Record [cmd] as one undo step, running it first unless it is already [applied]. */
+    fun commit(cmd: Command, applied: Boolean)
+    fun undo()
+    fun redo()
+}
+
 /**
  * Bounded undo/redo stack attached to a [Graph].
  *
