@@ -875,7 +875,7 @@ class Window(
         keyMapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
         keyMapper.markSetter = { gv, letter -> GraphKeyListener.impl.setMark(gv, letter) }
         keyMapper.markRecaller = { gv, letter -> GraphKeyListener.impl.recallMark(gv, letter) }
-        keyMapper.linkFollower = { gv, letter -> gv.followFileLink(letter, quiet = true) }
+        keyMapper.linkFollower = { gv, letter, quiet -> gv.followFileLink(letter, quiet) }
         keyMapper.installDefaultTransformBindings()
         // Mode changes (Normal ↔ Transform) → refresh the active
         // view's status bar. We can't know which tab the change

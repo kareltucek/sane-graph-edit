@@ -168,9 +168,10 @@ class KeyMapper(
     /**
      * Callback for an unmapped `g<letter>`: follow the selected
      * node's `link-<letter>`. Returns false when there is no such
-     * link, and the keys are then resolved as before. Set by Window.
+     * link — reporting it, unless the third argument (quiet) is set.
+     * Set by Window.
      */
-    var linkFollower: ((GraphView, Char) -> Boolean)? = null
+    var linkFollower: ((GraphView, Char, Boolean) -> Boolean)? = null
 
     /**
      * When non-null, we're accumulating characters into a
@@ -446,13 +447,23 @@ class KeyMapper(
 
     /**
      * `g<letter>` that no mapping claims: try the selected node's
-     * `link-<letter>` via [linkFollower]. True if it was followed.
+     * `link-<letter>` via [linkFollower]. True if the keys were
+     * consumed: the link was followed, or there is none and that was
+     * reported — a failed `gm` must not grab. Only a letter that
+     * means something during a grab (`gx`: grab along X) is left to
+     * be resolved as `g` + the letter.
      */
     private fun followLink(accumulated: String): Boolean {
         val letter = accumulated.getOrNull(1)
         val isGLetter = accumulated.length == 2 && accumulated[0] == 'g' && letter != null && letter.isLetter()
         val gv = activeView
-        return isGLetter && gv != null && linkFollower?.invoke(gv, letter!!) == true
+        val follower = linkFollower
+        return if (isGLetter && gv != null && follower != null) {
+            val continuesGrab = letter.toString() in transformModeBindings
+            follower(gv, letter!!, continuesGrab) || !continuesGrab
+        } else {
+            false
+        }
     }
 
     /**

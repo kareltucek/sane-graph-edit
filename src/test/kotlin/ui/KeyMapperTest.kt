@@ -326,7 +326,8 @@ class KeyMapperTest {
         val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "x" to "delete"))
         mapper.activeView = GraphView(initialGraph = Graph())
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
-        mapper.linkFollower = { _, letter -> (letter == 'd').also { if (it) followed.add(letter) } }
+        mapper.linkFollower = { _, letter, _ -> (letter == 'd').also { if (it) followed.add(letter) } }
+        mapper.installDefaultTransformBindings()
         return mapper
     }
 
@@ -353,7 +354,18 @@ class KeyMapperTest {
     }
 
     @Test
-    fun `g-letter without a link resolves as before`() {
+    fun `g-letter without a link does nothing, it doesn't grab`() {
+        val executed = mutableListOf<String>()
+        val followed = mutableListOf<Char>()
+        val mapper = linkMapper(executed, followed)
+        mapper.feedKey("g")
+        mapper.feedKey("m")
+        assertEquals(emptyList(), executed)
+        assertEquals(emptyList(), followed)
+    }
+
+    @Test
+    fun `g and a grab key without a link still grabs`() {
         val executed = mutableListOf<String>()
         val followed = mutableListOf<Char>()
         val mapper = linkMapper(executed, followed)
