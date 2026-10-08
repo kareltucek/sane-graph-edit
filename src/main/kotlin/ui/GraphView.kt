@@ -684,11 +684,13 @@ class GraphView(
     }
 
     /**
-     * Replace this tab's graph with the [FileTree] of [dir]. The
-     * browsed directory sits at the origin; centre the view on it.
+     * Replace this tab's graph with the [FileTree] of [dir], cut to
+     * fit this view. It is laid out around the origin; centre the
+     * view on it.
      */
     fun browseInPlace(dir: Path) {
-        replaceGraph(FileTree.build(dir))
+        val screen = Vector2(width, height).takeIf { it.x > 0 && it.y > 0 } ?: FileTree.DEFAULT_SCREEN
+        replaceGraph(FileTree.build(dir, screen))
         currentFile = null
         browseDir = dir.toAbsolutePath().normalize()
         sourceView = null

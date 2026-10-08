@@ -3,6 +3,7 @@ package ui
 import DotGraphLoader
 import Graph
 import graph_tools.Plotter
+import utils.Vector2
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JOptionPane
@@ -237,7 +238,9 @@ class TabManager(
      * a file picker driven by `gf`.
      */
     fun browse(dir: Path, persistSession: Boolean = true): GraphView {
-        val gv = newTab(graph = FileTree.build(dir), persistSession = persistSession)
+        // the new tab has no size yet; it gets the pane's (none before the window is shown)
+        val screen = Vector2(tabbedPane.width, tabbedPane.height).takeIf { it.x > 0 && it.y > 0 } ?: FileTree.DEFAULT_SCREEN
+        val gv = newTab(graph = FileTree.build(dir, screen), persistSession = persistSession)
         gv.browseDir = dir.toAbsolutePath().normalize()
         gv.untitledName = "browse: ${gv.browseDir}"
         gv.onStateChange()

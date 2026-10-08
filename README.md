@@ -267,7 +267,7 @@ navigation, not data.
 | `gf`            | Follow the selected node's `link` in this tab: open the file (and focus `:nodeid` if given), or show the directory's file tree |
 | `g<letter>`     | Same for `link-<letter>`, unless `g<letter>` is mapped to something else |
 | `gF`            | Same as `gf`, but into a new tab                       |
-| `:browse [dir]` | New tab with a file tree of `dir` (default: working directory); `gf` on a node opens it |
+| `:browse [dir]` | New tab with a file tree of `dir` (default: working directory); `gf` on a node opens it. Files are one column right of their directory, subdirectories two; the tree is cut to the depth that fits the window, the last level being `name/ …` |
 | `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line) |
 | `:cd <dir>`     | Switch the workspace to `dir` (see [Workspaces](#workspaces)); bare `:cd` shows it |
 | `Ctrl+E`        | Export graph as SVG                                    |
