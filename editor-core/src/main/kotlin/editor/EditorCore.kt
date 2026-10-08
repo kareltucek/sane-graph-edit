@@ -85,7 +85,7 @@ class EditorCore(private val files: FileStore) {
                 is Submit -> submit(client, document(request.document), request, now)
                 is Undo -> document(request.document).let { d -> step(client, d, d.undo, d.redo) { it.backward } }
                 is Redo -> document(request.document).let { d -> step(client, d, d.redo, d.undo) { it.forward } }
-                is Save -> save(document(request.document), request.path)
+                is Save -> save(document(request.document), request.path, request.copy)
                 is Reload -> reload(client, document(request.document))
             }
         }
@@ -166,14 +166,16 @@ class EditorCore(private val files: FileStore) {
         return toAll(d, Patched(d.id, d.revision, patch, client, opId)) + info
     }
 
-    private fun save(d: Document, path: String?): List<Outgoing> {
+    private fun save(d: Document, path: String?, copy: Boolean): List<Outgoing> {
         val target = path ?: d.file ?: throw IllegalStateException("the document has no file")
         val g = d.state.toGraph()
         d.graphName?.let { g.id = it }
         g.parseLog = d.parseLog
         files.write(target, DotGraphLoader.serialize(g))
-        d.file = target
-        d.dirty = false
+        if (!copy) {
+            d.file = target
+            d.dirty = false
+        }
         return toAll(d, DocumentChanged(d.info))
     }
 

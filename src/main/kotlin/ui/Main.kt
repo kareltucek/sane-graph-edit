@@ -34,6 +34,7 @@ object Clicker {
 }
 
 fun createAndShowGUI(initialFile: String? = null) {
+    Editor.start()
     val frame = Window("Sane Graph Edit", initialFile)
     frame.isVisible = true
 }
@@ -121,6 +122,7 @@ File:
 fun runHeadless(file: String?, execs: List<String>): Int {
     System.setProperty("java.awt.headless", "true")
     graph_tools.AwtTextMeasurer.install()
+    Editor.start()
 
     val resolvedFile = file?.let(::expandHome)
     val graph = if (resolvedFile != null) {

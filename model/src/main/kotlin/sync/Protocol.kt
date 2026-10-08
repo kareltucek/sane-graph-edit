@@ -29,8 +29,11 @@ data class Undo(val document: String) : Request
 
 data class Redo(val document: String) : Request
 
-/** Write the document to its file, or to [path] and make that its file. */
-data class Save(val document: String, val path: String? = null) : Request
+/**
+ * Write the document to its file, or to [path] and make that its
+ * file. With [copy] the document keeps its file and its dirty flag.
+ */
+data class Save(val document: String, val path: String? = null, val copy: Boolean = false) : Request
 
 /** Replace the content with the file's; drops the undo history. */
 data class Reload(val document: String) : Request

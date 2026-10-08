@@ -156,7 +156,7 @@ class ScaleTest {
         val b = g.nodes.first { it.attributes.text == "B" }
         assertEquals(150.0, b.position.x, absoluteTolerance = 0.001)
 
-        g.history.undo()
+        g.undo()
         for ((node, orig) in originals) {
             assertEquals(orig, node.position)
         }
@@ -189,7 +189,7 @@ class ScaleTest {
         assertTrue(v.isDirty)
         val b = g.nodes.first { it.attributes.text == "B" }
         assertEquals(150.0, b.position.x, absoluteTolerance = 0.001)
-        g.history.undo()
+        g.undo()
         for ((node, orig) in originals) {
             assertEquals(orig, node.position)
         }

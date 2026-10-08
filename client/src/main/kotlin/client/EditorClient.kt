@@ -43,8 +43,8 @@ class EditorClient(private val connection: EditorConnection) {
     /** Open the file at [path] (an absolute path), sharing the document with the clients that already have it open. */
     fun open(path: String): DocumentSession = attach(OpenFile(path))
 
-    /** A new document without a file, starting with the content of [graph]. */
-    fun create(graph: Graph, title: String? = null): DocumentSession = attach(CreateDocument(GraphState.of(graph), title))
+    /** A new document without a file, starting with the content of [graph]; [graph] itself becomes the replica. */
+    fun create(graph: Graph, title: String? = null): DocumentSession = attach(CreateDocument(GraphState.of(graph), title), graph)
 
     fun attach(document: String): DocumentSession = attach(Attach(document))
 
@@ -54,10 +54,10 @@ class EditorClient(private val connection: EditorConnection) {
         connection.close()
     }
 
-    private fun attach(request: Request): DocumentSession {
+    private fun attach(request: Request, replica: Graph? = null): DocumentSession {
         val answer = connection.call(request)
         val attached = answer as? Attached ?: throw EditorException((answer as? Failed)?.reason ?: "no answer from the editor")
-        val session = sessions.getOrPut(attached.info.document) { DocumentSession(this, attached) }
+        val session = sessions.getOrPut(attached.info.document) { DocumentSession(this, attached, replica ?: attached.state.toGraph()) }
         session.attachCount++
         return session
     }
@@ -90,8 +90,10 @@ class EditorClient(private val connection: EditorConnection) {
  * as patches; the editor's patches, this client's own included,
  * are applied as they arrive.
  */
-class DocumentSession internal constructor(private val client: EditorClient, attached: Attached) : Committer {
-    val graph: Graph = attached.state.toGraph().also { it.committer = this }
+class DocumentSession internal constructor(private val client: EditorClient, attached: Attached, val graph: Graph) : Committer {
+    init {
+        graph.committer = this
+    }
 
     var info: DocumentInfo = attached.info
         private set
@@ -115,16 +117,33 @@ class DocumentSession internal constructor(private val client: EditorClient, att
     /** The editor refused a change of ours; it has been taken back. */
     var onRejected: (reason: String) -> Unit = {}
 
+    /** The editor's copy as far as this client has seen it. */
+    private var base: GraphState = attached.state
+
     override fun commit(cmd: Command, applied: Boolean) {
         if (applied) cmd.undo()
         val before = GraphState.of(graph)
         cmd.redo()
-        submit(before.diff(GraphState.of(graph)))
+        val after = GraphState.of(graph)
+        val patch = before.diff(after)
+        // a command for something its caller already did to the graph changes nothing by running
+        submit(if (patch.isEmpty && !applied) effectOf(cmd, after) else patch)
     }
 
-    /** Send what changed in the replica since [before] (changes made without a [Command]). */
-    fun commitSince(before: GraphState) {
-        submit(before.diff(GraphState.of(graph)))
+    private fun effectOf(cmd: Command, after: GraphState): Patch {
+        cmd.undo()
+        val before = GraphState.of(graph)
+        cmd.redo()
+        return before.diff(after)
+    }
+
+    /**
+     * Send what the replica has that the editor does not: changes
+     * made without a [Command], such as nodes placed by the layout.
+     * For before saving.
+     */
+    fun flush() {
+        submit(pending.fold(base) { s, p -> s.apply(p.second) }.diff(GraphState.of(graph)))
     }
 
     private fun submit(patch: Patch) {
@@ -141,8 +160,14 @@ class DocumentSession internal constructor(private val client: EditorClient, att
     override fun redo() = client.send(Redo(info.document))
 
     /** Save to the document's file, or to [path]. Throws [EditorException] when it fails. */
-    fun save(path: String? = null) {
-        val answer = client.call(Save(info.document, path))
+    fun save(path: String? = null) = save(path, copy = false)
+
+    /** Write the document to [path]; it keeps its own file and stays as dirty as it was. */
+    fun saveCopy(path: String) = save(path, copy = true)
+
+    private fun save(path: String?, copy: Boolean) {
+        flush()
+        val answer = client.call(Save(info.document, path, copy))
         (answer as? Failed)?.let { throw EditorException(it.reason) }
         (answer as? DocumentChanged)?.let { infoChanged(it.info) }
     }
@@ -163,6 +188,7 @@ class DocumentSession internal constructor(private val client: EditorClient, att
             val own = e.origin == client.id && e.opId != null
             if (own && pending.firstOrNull()?.first == e.opId) pending.removeFirst()
             revision = e.revision
+            base = base.apply(e.patch)
             graph.applyPatch(e.patch)
             // ours are later in the editor's order, so they go on top
             pending.forEach { graph.applyPatch(it.second) }
@@ -180,6 +206,7 @@ class DocumentSession internal constructor(private val client: EditorClient, att
     internal fun resynced(a: Attached) {
         revision = a.revision
         info = a.info
+        base = a.state
         graph.applyPatch(GraphState.of(graph).diff(a.state))
         pending.forEach { graph.applyPatch(it.second) }
         onChange(false)

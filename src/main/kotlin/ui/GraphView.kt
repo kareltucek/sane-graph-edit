@@ -1,6 +1,7 @@
 package ui
 
 import Graph
+import client.DocumentSession
 import export.SvgWriter
 import graph_tools.GraphTools
 import graph_tools.AwtTextMeasurer
@@ -68,12 +69,45 @@ class GraphView(
     var defaultNodeStyle: NodeStyle = NodeStyle()
 
     /**
+     * The shared document [g] is this view's replica of, when there
+     * is an [Editor] session. Null without one (unit tests): the
+     * view then edits a graph of its own.
+     */
+    var document: DocumentSession? = null
+        private set
+
+    /**
      * The graph this view is currently editing. Swap it out via
      * [replaceGraph] — direct assignment would leave the previous
      * graph's history listener dangling.
      */
-    var g: Graph = initialGraph
+    var g: Graph = adopt(initialGraph, initialFile)
         private set
+
+    /**
+     * Make the document of [file] — or, without one, a new document
+     * holding [graph] — the one this view shows, and return the graph
+     * to edit.
+     */
+    private fun adopt(graph: Graph, file: Path?): Graph {
+        val doc = Editor.client?.let { c ->
+            if (file != null) c.open(file.toAbsolutePath().normalize().toString()) else c.create(graph)
+        }
+        // only now: opening may have failed, and then the view keeps what it had
+        document?.close()
+        document = doc
+        // our own changes repaint where they are made; these are other clients', undo and reload
+        doc?.onChange = { local -> if (!local) repaint() }
+        doc?.onInfo = { isDirty = doc.info.dirty }
+        doc?.onRejected = { reason -> messageArea?.show("change refused: $reason") }
+        return doc?.graph ?: graph
+    }
+
+    /** Leave the document; for when the view goes away. */
+    fun closeDocument() {
+        document?.close()
+        document = null
+    }
 
     /**
      * On-disk location the current graph was loaded from or last
@@ -171,6 +205,7 @@ class GraphView(
     init {
         AwtTextMeasurer.install()
         attachHistoryListener()
+        isDirty = document?.info?.dirty ?: false
     }
 
     /**
@@ -351,10 +386,11 @@ class GraphView(
      * Swap [g] for [newGraph], re-wire the history listener, and
      * reset the dirty flag. Used by open, new, and clear.
      */
-    private fun replaceGraph(newGraph: Graph) {
-        g = newGraph
+    private fun replaceGraph(newGraph: Graph, file: Path? = null) {
+        g = adopt(newGraph, file)
         attachHistoryListener()
-        isDirty = false
+        // a file somebody else has open may come with their unsaved changes
+        isDirty = document?.info?.dirty ?: false
         onStateChange()
     }
 
@@ -380,7 +416,7 @@ class GraphView(
 
     private fun writeTo(path: Path): Boolean {
         return try {
-            DotGraphLoader.saveToFile(g, path.toString())
+            document?.save(path.toAbsolutePath().normalize().toString()) ?: DotGraphLoader.saveToFile(g, path.toString())
             currentFile = path
             isDirty = false
             onStateChange()
@@ -424,7 +460,7 @@ class GraphView(
     private fun loadInPlace(path: Path): Boolean {
         return try {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
-            replaceGraph(loaded)
+            replaceGraph(loaded, path)
             currentFile = path
             untitledName = null
             browseDir = null
@@ -466,7 +502,8 @@ class GraphView(
         }
         if (!force && !confirmDiscard("reload ${path.fileName}")) return
         try {
-            replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
+            // with a document everyone attached gets the file's content; a failure comes back as a message
+            document?.reload() ?: replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
             repaint()
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(

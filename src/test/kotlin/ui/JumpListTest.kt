@@ -46,7 +46,7 @@ class JumpListTest {
         val a = dir.resolve("a.dot").also { it.writeText("digraph a {\n  s [ link=\"b.dot\" ];\n}\n") }
         dir.resolve("b.dot").writeText("digraph b {\n  t;\n}\n")
         val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(a.toString()), initialFile = a)
-        gv.g.commit(graph_tools.HideCommand(emptyList()))  // any command makes the tab dirty
+        gv.g.commit(graph_tools.EditTextCommand(gv.g, gv.g.nodes.first(), "s", "changed"))  // makes the tab dirty
         assertEquals(true, gv.isDirty)
         gv.g.cleanSelect(gv.g.nodes)
         graph_tools.ViewModes.discard = true

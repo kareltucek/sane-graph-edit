@@ -486,7 +486,7 @@ class GraphMouseListener(
             rotateCenter = null
             val after = before.keys.associateWith { it.position }.toMutableMap()
             if (before.any { (n, p) -> after[n] != p }) {
-                graphView.g.history.commitWithoutRun(
+                graphView.g.commitApplied(
                     MoveNodesCommand(graphView.g, before, after),
                 )
             }
@@ -578,7 +578,7 @@ class GraphMouseListener(
             scaleStartCursorScreen = null
             val after = before.keys.associateWith { it.position }.toMutableMap()
             if (before.any { (n, p) -> after[n] != p }) {
-                graphView.g.history.commitWithoutRun(
+                graphView.g.commitApplied(
                     MoveNodesCommand(graphView.g, before, after),
                 )
             }
@@ -797,7 +797,7 @@ class GraphMouseListener(
             moveAnchor = null
             val after = before.keys.associateWith { it.position }.toMutableMap()
             if (before.any { (n, p) -> after[n] != p }) {
-                graphView.g.history.commitWithoutRun(MoveNodesCommand(graphView.g, before, after))
+                graphView.g.commitApplied(MoveNodesCommand(graphView.g, before, after))
             }
         }
 

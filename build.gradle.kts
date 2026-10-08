@@ -30,12 +30,27 @@ application {
 }
 
 dependencies {
-    implementation(project(":model"))
+    implementation(project(":editor-host"))
     testImplementation(kotlin("test"))
 }
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// The same tests with every view attached to an editor session
+// instead of editing a graph of its own.
+val sessionTest = tasks.register<Test>("sessionTest") {
+    group = "verification"
+    description = "Runs the tests with views going through an editor session."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    systemProperty("sane-graph-edit.session", "true")
+}
+
+tasks.check {
+    dependsOn(sessionTest)
 }
 
 // Produce a runnable fat jar for distribution.

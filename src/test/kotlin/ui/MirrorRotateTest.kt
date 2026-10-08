@@ -119,7 +119,7 @@ class MirrorRotateTest {
         val a = g.nodes.first { it.attributes.text == "A" }
         assertEquals(100.0, a.position.x, absoluteTolerance = 0.001)
 
-        g.history.undo()
+        g.undo()
         for ((node, orig) in originals) {
             assertEquals(orig, node.position)
         }

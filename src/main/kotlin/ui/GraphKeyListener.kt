@@ -119,7 +119,7 @@ class GraphKeyListener(
         }
 
         fun undo(graphView: GraphView) {
-            graphView.g.history.undo()
+            graphView.g.undo()
             // Commands mark specific nodes dirty during their `undo`,
             // but recompute-on-paint is a full sweep of the dirty set
             // anyway — marking everything here costs nothing and covers
@@ -129,7 +129,7 @@ class GraphKeyListener(
         }
 
         fun redo(graphView: GraphView) {
-            graphView.g.history.redo()
+            graphView.g.redo()
             graphView.g.needsRecomputing(graphView.g.nodes)
             graphView.repaint()
         }
@@ -403,7 +403,7 @@ class GraphKeyListener(
             }
             val after = sel.associateWith { it.position }.toMutableMap()
             if (before != after) {
-                graphView.g.history.commitWithoutRun(
+                graphView.g.commitApplied(
                     MoveNodesCommand(graphView.g, before, after),
                 )
             }
@@ -550,7 +550,7 @@ class GraphKeyListener(
             LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
             val after = graphView.g.nodes.associateWith { it.position }.toMutableMap()
             if (before != after) {
-                graphView.g.history.commitWithoutRun(MoveNodesCommand(graphView.g, before, after))
+                graphView.g.commitApplied(MoveNodesCommand(graphView.g, before, after))
             }
             graphView.repaint()
         }

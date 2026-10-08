@@ -660,7 +660,8 @@ class KeyMapper(
             "w" -> {
                 if (args != null) {
                     try {
-                        DotGraphLoader.saveToFile(gv.g, resolvePath(args).toString())
+                        val target = resolvePath(args).toAbsolutePath().normalize().toString()
+                        gv.document?.saveCopy(target) ?: DotGraphLoader.saveToFile(gv.g, target)
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :w failed: ${t.message}")
                     }

@@ -150,6 +150,7 @@ class TabManager(
         saveSession()
         Workspace.dir = dir.toAbsolutePath().normalize()
         session = Workspace.session()
+        views.forEach { it.closeDocument() }
         views.clear()
         tabbedPane.removeAll()
         AppState.lastOpenDir = Workspace.dir
@@ -267,6 +268,7 @@ class TabManager(
 
         views.removeAt(idx)
         tabbedPane.remove(idx)
+        gv.closeDocument()
         saveSession()
         return true
     }
