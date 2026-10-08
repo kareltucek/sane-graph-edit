@@ -278,7 +278,7 @@ unsaved tab. Last-used open/save directories are remembered in
 `~/.sanegrapedit.properties`.
 
 The `Ctrl+P` picker runs `sh -c "<picker>"` in the background with
-`SGE_DIR` (current file's / browsed directory) and `SGE_FILE` set,
+`SGE_DIR` (the workspace directory) and `SGE_FILE` set,
 and opens the `path[:nodeid]` lines it prints (relative to
 `SGE_DIR`). Opening a terminal is the command's job; a terminal's
 stdout isn't the picker's, hence the temp file. E.g. st + television

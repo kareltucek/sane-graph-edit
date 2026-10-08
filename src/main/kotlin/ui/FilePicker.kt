@@ -8,8 +8,7 @@ import javax.swing.SwingUtilities
  * `:set picker=<command>` (see `:help init`).
  *
  * The command runs with `sh -c` in the background, with `SGE_DIR` (the
- * current file's directory, the browsed directory, or the working
- * directory) and `SGE_FILE` (the current file, or empty) in its
+ * [Workspace] directory) and `SGE_FILE` (the current file, or empty) in its
  * environment. It prints what to open on stdout, one `path[:nodeid]`
  * per line, relative paths relative to `SGE_DIR`; nothing = cancelled.
  * The first line opens in the tab (like `gf`, so `Ctrl+O` goes back),
@@ -36,9 +35,7 @@ object FilePicker {
     private var running = false
 
     fun run(gv: GraphView) {
-        val dir = gv.browseDir
-            ?: gv.currentFile?.toAbsolutePath()?.parent
-            ?: Workspace.dir
+        val dir = Workspace.dir
         val file = gv.currentFile?.toAbsolutePath()?.toString().orEmpty()
         val cmd = command
         if (!running) {

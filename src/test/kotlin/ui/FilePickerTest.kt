@@ -13,7 +13,10 @@ class FilePickerTest {
     @AfterTest
     fun restoreDefault() {
         FilePicker.command = FilePicker.DEFAULT_COMMAND
+        Workspace.dir = launchDir
     }
+
+    private val launchDir = Workspace.dir
 
     /** Run the picker and wait until its result has been applied on the EDT. */
     private fun pick(gv: GraphView, done: () -> Boolean) {
@@ -28,13 +31,15 @@ class FilePickerTest {
     }
 
     @Test
-    fun `the picked path opens in the tab, relative to the current file's directory, with node focus`() {
+    fun `the picked path opens in the tab, relative to the workspace, with node focus`() {
         val dir = Files.createTempDirectory("picker")
-        val a = dir.resolve("a.dot").also { it.writeText("digraph a {\n  s;\n}\n") }
+        Files.createDirectory(dir.resolve("sub"))
+        val a = dir.resolve("sub/a.dot").also { it.writeText("digraph a {\n  s;\n}\n") }
         dir.resolve("b.dot").writeText("digraph b {\n  target;\n  x;\n}\n")
         val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(a.toString()), initialFile = a)
-        // the command sees SGE_DIR and runs there
-        FilePicker.command = "test \"\$SGE_DIR\" = \"\$(pwd)\" && echo b.dot:target"
+        Workspace.dir = dir
+        // the command sees SGE_DIR (the workspace, not the current file's directory) and runs there
+        FilePicker.command = "test \"\$SGE_DIR\" = \"\$(pwd)\" && test \"\$SGE_DIR\" = \"$dir\" && echo b.dot:target"
 
         pick(gv) { gv.currentFile?.fileName?.toString() == "b.dot" }
 
