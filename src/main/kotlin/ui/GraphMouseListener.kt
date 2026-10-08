@@ -12,9 +12,8 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import utils.Utils.orElse
-import utils.AwtUtils.toScreenVector
+import client.ViewTransform
 import utils.AwtUtils.toScreenspaceVector
-import utils.AwtUtils.toWorkspaceVector
 import java.awt.Robot
 import java.awt.event.*
 import java.awt.event.MouseEvent.*
@@ -26,6 +25,11 @@ class GraphMouseListener(
     val graphView: GraphView,
     var controller: GraphMouseController = GraphMouseController(graphView),
 ) : MouseListener, MouseMotionListener, MouseWheelListener {
+    private val view: ViewTransform get() = graphView.viewTransform
+
+    private fun MouseEvent.toWorkspaceVector(): Vector2 = view.toWorkspace(toScreenspaceVector())
+
+    private fun Vector2.toWorkspaceVector(): Vector2 = view.toWorkspace(this)
 
     override fun mouseClicked(e: MouseEvent) {
     }
@@ -34,7 +38,7 @@ class GraphMouseListener(
         val pos = e.toWorkspaceVector()
 
         if (e.button == BUTTON1 && controller.state == null) {
-            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos)
+            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
             when {
                 //move single node
                 !e.isControlDown && mouseoverNodes.isNotEmpty() && graphView.g.selectedNodes.size <= 1 -> {
@@ -72,7 +76,7 @@ class GraphMouseListener(
         graphView.endStylePicker()
 
         if (e.button == BUTTON3) {
-            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos)
+            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
             controller.startStylePicker(mouseoverNodes, e.toScreenspaceVector())
         }
 
@@ -194,13 +198,12 @@ class GraphMouseListener(
         val coef = Math.pow(Constants.zoomOutStep, e.unitsToScroll.toDouble()).toDouble()
         val maxZoom = Constants.maxZoom
 
-        if ((Plotter.t.scaleX > 1/maxZoom || coef > 1.0) && (Plotter.t.scaleX < maxZoom || coef < 1.0)) {
+        if ((view.scale > 1/maxZoom || coef > 1.0) && (view.scale < maxZoom || coef < 1.0)) {
             val oldPos = e.toWorkspaceVector()
-            Plotter.t.scale(coef.toDouble(), coef.toDouble())
+            view.zoom(coef)
             val newPos = e.toWorkspaceVector()
-            val diff = newPos - oldPos
-
-            Plotter.t.translate(diff.x.toDouble(), diff.y.toDouble())
+            // keep the point under the cursor where it is
+            view.translate(newPos - oldPos)
 
             graphView.repaint()
         }
@@ -564,7 +567,7 @@ class GraphMouseListener(
                 (box.ul.y + box.br.y) / 2,
             )
             scaleAnchor = anchor
-            scaleAnchorScreen = anchor.toScreenVector()
+            scaleAnchorScreen = graphView.viewTransform.toScreen(anchor)
             scaleStartPositions = sel.associateWith { it.position }
             scaleStartCursorScreen = graphView.lastScreenCursorPosition
             return true
@@ -683,9 +686,7 @@ class GraphMouseListener(
         }
 
         fun dragPanView(pos: Vector2) {
-            val diff = pos - lastPosition
-
-            Plotter.t.translate(diff.x.toDouble(), diff.y.toDouble())
+            graphView.viewTransform.translate(pos - lastPosition)
             graphView.repaint()
         }
 
@@ -749,7 +750,7 @@ class GraphMouseListener(
                 }.orElse(false)
 
             if (thisClickMatch && secondClickMatch && secondTimeSatisfied && !e.isControlDown) {
-                val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos)
+                val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
                 val clickScreenCoordinates = Vector2(e.x, e.y)
 
                 when (mouseoverNodes.size) {
@@ -766,7 +767,7 @@ class GraphMouseListener(
                 singleClickedAt = null
                 singleClickedTime = null
             } else if (thisClickMatch && firstTimeSatisfied && !e.isControlDown) {
-                val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos)
+                val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
 
                 // reset select in case one node was clicked while multiple were selected - the user could have wanted to move the selected group
                 graphView.g.cleanSelect(mouseoverNodes)

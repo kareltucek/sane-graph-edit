@@ -3,6 +3,7 @@ package graph_tools
 import Graph
 import graph_tools.Plotter.TextPlotter.drawEdge
 import graph_tools.Plotter.TextPlotter.drawNode
+import client.ViewTransform
 import utils.AwtUtils.toAwt
 import utils.AwtUtils.withIdentityTransform
 import utils.Utils.orElse
@@ -29,12 +30,8 @@ import java.awt.image.BufferedImage
  * arrowheads, then text at zoomed-out scales.
  */
 object Plotter {
-    /**
-     * Workspace → screen affine transform. Mutated directly by the input
-     * layer when the user pans (translate) or zooms (scale). Every
-     * rendering path starts by copying this into the current `Graphics2D`.
-     */
-    var t: AffineTransform = AffineTransform()
+    /** The transform of the view being painted; [setTransforms] sets it at the start of each paint. */
+    private var view: ViewTransform = ViewTransform()
     val defaultFontSize: Double get() = Constants.defaultFontSize
     var renderArrowheads: Boolean = true
     var renderOvals: Boolean = true
@@ -50,9 +47,10 @@ object Plotter {
     var screenDimensions: Vector2 = Vector2(800.0, 600.0)
 
     fun workspaceFontSize(n: Node): Double = NodeText.fontSize(n)
-    fun screenspaceFontSize(n: Node): Double = NodeText.fontSize(n) * t.scaleX
+    private fun screenspaceFontSize(n: Node): Double = NodeText.fontSize(n) * view.scale
 
-    fun setTransforms(g2d: Graphics2D, optimizationLevel: Int) {
+    fun setTransforms(g2d: Graphics2D, view: ViewTransform, optimizationLevel: Int) {
+        this.view = view
         // Concatenate, do *not* overwrite. The Graphics2D handed to a
         // child component's paintComponent already has a transform
         // installed by Swing: it pre-translates so that (0, 0) is the
@@ -66,7 +64,7 @@ object Plotter {
         // invisible — now the tab bar adds ~26 pixels of vertical
         // pre-translation that we must keep.
         val composed = AffineTransform(g2d.transform)
-        composed.concatenate(t)
+        composed.concatenate(AffineTransform(view.scale, 0.0, 0.0, view.scale, view.offset.x, view.offset.y))
         g2d.transform = composed
         g2d.setFont(g2d.font.deriveFont(defaultFontSize.toFloat()))
         g2d.setStroke(BasicStroke(2.0f))
@@ -177,7 +175,7 @@ object Plotter {
          */
         private fun edgePaint(src: Vector2, dst: Vector2): Color {
             val worldLen = (dst - src).length().toFloat()
-            val screenLen = worldLen * t.scaleX.toFloat()
+            val screenLen = worldLen * view.scale.toFloat()
             val w = screenDimensions.x.toFloat()
             val h = screenDimensions.y.toFloat()
             val shorterDim = minOf(w, h)
@@ -196,8 +194,8 @@ object Plotter {
             val textPos = n.position - bounds.textBounds / 2;
 
             if (selected) {
-                if (thickStroke.lineWidth * t.scaleX < 1.0) {
-                    g2d.stroke = BasicStroke((thickStroke.lineWidth / t.scaleX * 1.1).toFloat())
+                if (thickStroke.lineWidth * view.scale < 1.0) {
+                    g2d.stroke = BasicStroke((thickStroke.lineWidth / view.scale * 1.1).toFloat())
                 } else {
                     g2d.stroke = thickStroke
                 }
@@ -229,7 +227,7 @@ object Plotter {
                         g2d.drawString(
                             s.value,
                             (textPos.x).toFloat(),
-                            (textPos.y + screenspaceFD.ascent / Plotter.t.scaleX + screenspaceFD.height / Plotter.t.scaleX * s.index.toDouble()).toFloat()
+                            (textPos.y + screenspaceFD.ascent / view.scale + screenspaceFD.height / view.scale * s.index.toDouble()).toFloat()
                         )
                     }
                 }

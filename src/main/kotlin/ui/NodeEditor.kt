@@ -8,7 +8,6 @@ import utils.Utils.orElse
 import utils.Vector2
 import graph_tools.FontData
 import utils.AwtUtils.toAwt
-import utils.AwtUtils.toScreenVector
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Insets
@@ -81,7 +80,7 @@ class NodeEditor(
 
     fun updatePosition(setCaretBy: Vector2? = null) {
         editedNode?.let { n ->
-            val correctedFontSize = Plotter.screenspaceFontSize(n)
+            val correctedFontSize = Plotter.workspaceFontSize(n) * parent.viewTransform.scale
 
             FontData.cache[Plotter.workspaceFontSize(n) to FontData.isMonospace(n)]?.let { fd ->
                 this.font = fd.font
@@ -90,10 +89,11 @@ class NodeEditor(
             }
             this.font = this.font.deriveFont(correctedFontSize.toFloat())
 
-            val margin = ((n.cache.shapeBounds - n.cache.textBounds)/4)*Plotter.t.scaleX
+            val view = parent.viewTransform
+            val margin = ((n.cache.shapeBounds - n.cache.textBounds)/4)*view.scale
             this.margin = Insets(margin.y.toInt(), margin.x.toInt(),margin.y.toInt(),margin.x.toInt())
-            val center = (n.position).toScreenVector()
-            val textBounds = n.cache.textBounds/2*Plotter.t.scaleX
+            val center = view.toScreen(n.position)
+            val textBounds = n.cache.textBounds/2*view.scale
 
             val textUl = center - textBounds
 

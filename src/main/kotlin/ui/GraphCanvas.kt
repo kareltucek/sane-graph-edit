@@ -42,8 +42,8 @@ class GraphCanvas(
             // at identity — i.e. a fresh tab. If Session restored a
             // saved pan/zoom for this tab, `Plotter.t` is already
             // non-identity and we must not clobber it.
-            if (Plotter.t.isIdentity) {
-                Plotter.t.translate(this.width.toDouble() / 2, this.height.toDouble() / 2)
+            if (parent.viewTransform.isIdentity) {
+                parent.viewTransform.translate(Vector2(this.width, this.height) / 2)
             }
             // a link into this new tab asked to focus a node; only now is the size known
             this.parent.pendingFocus?.let { this.parent.pendingFocus = null; this.parent.focusNode(it) }
@@ -69,7 +69,7 @@ class GraphCanvas(
             // logic in Plotter.drawEdge can compare edge length
             // against the window size for each paint frame.
             Plotter.screenDimensions = Vector2(this.width.toDouble(), this.height.toDouble())
-            Plotter.setTransforms(g2d, optimizeLevel)
+            Plotter.setTransforms(g2d, parent.viewTransform, optimizeLevel)
 
             val measurer = AwtTextMeasurer(g2d)
             withPerformanceCheck("Recomputation", 5.0, onIssue = { parent.g.printStats()}) {

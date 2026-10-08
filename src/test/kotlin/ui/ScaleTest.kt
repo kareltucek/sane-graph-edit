@@ -38,11 +38,7 @@ class ScaleTest {
 
     private fun viewWith(g: Graph): GraphView {
         System.setProperty("java.awt.headless", "true")
-        // Plotter.t is a shared singleton — reset to identity so
-        // bbox-centre projection (toScreenVector) is 1:1 and the
-        // per-test cursor math is predictable regardless of what
-        // earlier tests did to the transform.
-        graph_tools.Plotter.t.setToIdentity()
+        // a fresh view's transform is the identity, so workspace and screen coordinates coincide
         return GraphView(initialGraph = g)
     }
 

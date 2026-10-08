@@ -16,7 +16,8 @@ object Clicker {
         return xMatches && yMatches
     }
 
-    fun selectClickedNode(g: Graph, clickCoordinates: Vector2): MutableSet<Node> {
+    /** The visible node at [clickCoordinates] (workspace), if any; [scale] is the view's zoom, for a tolerance of ten screen pixels. */
+    fun selectClickedNode(g: Graph, clickCoordinates: Vector2, scale: Double): MutableSet<Node> {
         return g.nodes
             .filter { g.isVisible(it) }
             .filter {
@@ -24,7 +25,7 @@ object Clicker {
                     clickCoordinates.isInSquare(
                         it.position - bounds / 2,
                         it.position + bounds / 2,
-                        10.0 / Plotter.t.scaleX.toDouble()
+                        10.0 / scale
                     )
                 }.orElse(false)
             }

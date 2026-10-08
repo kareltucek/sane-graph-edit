@@ -10,7 +10,6 @@ import graph_tools.Node
 import graph_tools.NodeStyle
 import graph_tools.Plotter
 import utils.Utils.orElse
-import utils.AwtUtils.toWorkspaceVector
 import utils.Constants
 import utils.Constants.stylePickerDimensions
 import utils.Vector2
@@ -144,7 +143,7 @@ class GraphView(
      * Starts at identity; the first paint in [GraphCanvas.doDrawing]
      * translates to the canvas centre.
      */
-    val viewTransform: AffineTransform = AffineTransform()
+    val viewTransform: ViewTransform = ViewTransform()
 
     /**
      * Notified whenever anything that affects the tab title or the
@@ -372,7 +371,7 @@ class GraphView(
     }
 
     fun startStylePicker(screenCoordinatesPosition: Vector2? = null) {
-        val center = screenCoordinatesPosition.orElse(lastCursorPosition.toWorkspaceVector())
+        val center = screenCoordinatesPosition.orElse(viewTransform.toWorkspace(lastCursorPosition))
         val ul = center - stylePickerDimensions / 2
         val br = center + stylePickerDimensions / 2
         placeMeAt(stylePicker, ul, br)
@@ -630,7 +629,7 @@ class GraphView(
             sourceView = FileLink.Target(path, null, lines)
             untitledName = SourceView.title(path, lines)
             onStateChange()
-            if (graphCanvas.width > 0) setViewTo(Vector2.Zero, Plotter.t.scaleX)
+            if (graphCanvas.width > 0) setViewTo(Vector2.Zero, viewTransform.scale)
             tabManager?.saveSession()
         }
         return graph != null
@@ -638,7 +637,7 @@ class GraphView(
 
     /** Where this tab is now, as a [JumpList] entry. */
     fun currentLocation(): JumpList.Location {
-        val m = DoubleArray(6).also { viewTransform.getMatrix(it) }
+        val m = viewTransform.matrix
         return JumpList.Location(
             file = currentFile?.toAbsolutePath()?.normalize(),
             browseDir = browseDir,
@@ -686,10 +685,7 @@ class GraphView(
             else -> file?.let { loadInPlace(it) } == true
         }
         if (opened) {
-            viewTransform.setTransform(
-                loc.transform[0], loc.transform[1], loc.transform[2],
-                loc.transform[3], loc.transform[4], loc.transform[5],
-            )
+            viewTransform.matrix = loc.transform
             g.cleanSelect(g.nodes.filter { nodeKey(it) in loc.selection })
             repaint()
         }
@@ -727,7 +723,7 @@ class GraphView(
             node == null -> messageArea?.show("no node `$nodeId` in ${currentFile?.fileName ?: "this graph"}")
             else -> {
                 g.cleanSelect(setOf(node))
-                setViewTo(node.position, Plotter.t.scaleX)
+                setViewTo(node.position, viewTransform.scale)
             }
         }
     }
@@ -833,10 +829,9 @@ class GraphView(
     }
 
     fun setViewTo(pos: Vector2, scale: Double = 1.0) {
-        Plotter.t.setToScale(scale, scale)
-        val viewCenter = Vector2(this.width, this.height).let { it / 2 }.toWorkspaceVector()
-        val diff = viewCenter - pos
-        Plotter.t.translate(diff.x.toDouble(), diff.y.toDouble())
+        viewTransform.setToScale(scale)
+        val viewCenter = viewTransform.toWorkspace(Vector2(this.width, this.height) / 2)
+        viewTransform.translate(viewCenter - pos)
         repaint()
     }
 
@@ -954,11 +949,6 @@ class Window(
                 System.err.println("sane-graph-edit: could not open '$path': ${t.message}")
             }
         }
-        // Point the renderer's transform at the active tab so
-        // the canvas's initial paint lands on the right view
-        // transform. Tab switches rewire this in
-        // TabManager.onChanged.
-        Plotter.t = tabManager.current.viewTransform
         createUI(title)
         autosave.start()
     }

@@ -109,11 +109,7 @@ class TabManager(
                 // centering translate is gated on `isIdentity`, so
                 // the restore survives that pass.
                 snap.viewTransforms[path.toAbsolutePath()]?.let { m ->
-                    if (m.size == 6) {
-                        gv.viewTransform.setTransform(
-                            m[0], m[1], m[2], m[3], m[4], m[5],
-                        )
-                    }
+                    if (m.size == 6) gv.viewTransform.matrix = m
                 }
             } catch (t: Throwable) {
                 System.err.println("sane-graph-edit: failed to restore $path: ${t.message}")
@@ -347,7 +343,6 @@ class TabManager(
      */
     private fun onChanged() {
         val gv = currentOrNull ?: return
-        Plotter.t = gv.viewTransform
         window.refreshTitle()
         gv.refreshStatus()  // global modes may have changed while another tab was active
         gv.graphCanvas.requestFocusInWindow()
@@ -374,9 +369,7 @@ class TabManager(
         val transforms = mutableMapOf<java.nio.file.Path, List<Double>>()
         for (gv in views) {
             val path = gv.currentFile ?: continue
-            val m = DoubleArray(6)
-            gv.viewTransform.getMatrix(m)
-            transforms[path.toAbsolutePath()] = m.toList()
+            transforms[path.toAbsolutePath()] = gv.viewTransform.matrix
         }
         session.save(Session.Snapshot(files = files, activeFile = active, viewTransforms = transforms))
     }

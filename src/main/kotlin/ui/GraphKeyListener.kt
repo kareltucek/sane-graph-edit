@@ -683,7 +683,7 @@ class GraphKeyListener(
         fun drawEdge(graphView: GraphView, forward: Boolean) {
             val g = graphView.g
             val pos = graphView.lastCursorPosition
-            val pointed = Clicker.selectClickedNode(g, pos)
+            val pointed = Clicker.selectClickedNode(g, pos, graphView.viewTransform.scale)
             val selected = g.selectedNodes - pointed
 
             val (src, dst) = if (forward) selected to pointed else pointed to selected
