@@ -1,13 +1,13 @@
 package ui
 
-import java.awt.Color
+import utils.Rgb
 
 data class HSV(
     val h: Double,
     val s: Double,
     val v: Double
 ) {
-    fun toColor(): Color {
+    fun toColor(): Rgb {
         fun hueRamp(a: Double, b: Double, c: Double, d: Double): Double {
             val h = this.h
             val res = when {
@@ -33,7 +33,7 @@ data class HSV(
             .map { minV + rng * it }
             .map { (it * 255).toInt().coerceIn(0, 255) }
             .let {
-                Color(it[0], it[1], it[2])
+                Rgb(it[0], it[1], it[2])
             }
 
         return res

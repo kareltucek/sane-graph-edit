@@ -1,7 +1,6 @@
 package graph_tools
 
 import Graph
-import ui.NodeStyle
 import utils.Rectangle
 import utils.Vector2
 

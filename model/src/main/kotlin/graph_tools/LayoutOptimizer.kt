@@ -188,7 +188,7 @@ object LayoutOptimizer {
             }
 
             /** We need to recompute connection points immediately because this function can be called multiple times per drawn frame. */
-            Plotter.recomputeEdges(g.edges)
+            EdgeGeometry.recompute(g.edges)
         }
     }
 

@@ -6,7 +6,9 @@ import graph_tools.Node
 import graph_tools.Plotter
 import utils.Utils.orElse
 import utils.Vector2
-import utils.Utils.toScreenVector
+import graph_tools.FontData
+import utils.AwtUtils.toAwt
+import utils.AwtUtils.toScreenVector
 import java.awt.Graphics
 import java.awt.Graphics2D
 import java.awt.Insets
@@ -81,7 +83,7 @@ class NodeEditor(
         editedNode?.let { n ->
             val correctedFontSize = Plotter.screenspaceFontSize(n)
 
-            n.cache.font?.let { fd ->
+            FontData.cache[Plotter.workspaceFontSize(n) to FontData.isMonospace(n)]?.let { fd ->
                 this.font = fd.font
                 // we have edited the text, so we should recompute the data at 1.0 zoom...
                 Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
@@ -134,8 +136,8 @@ class NodeEditor(
         editedNode = n
         editStartText = n.attributes.text
         this.text = editedNode!!.attributes.text
-        this.background = n.attributes.bg.orElse(Constants.defaultBgColor)
-        this.foreground = n.attributes.fg.orElse(Constants.defaultFgColor)
+        this.background = n.attributes.bg.orElse(Constants.defaultBgColor).toAwt()
+        this.foreground = n.attributes.fg.orElse(Constants.defaultFgColor).toAwt()
         updatePosition(clickScreenCoordinates)
     }
 

@@ -3,8 +3,6 @@ import parser_dot.IdGen
 import parser_dot.ParseLog
 import utils.Constants
 import utils.Vector2
-import java.awt.Graphics2D
-import java.awt.image.BufferedImage
 
 
 /**
@@ -133,7 +131,7 @@ class Graph(
             edgesRestricted.add(it)
             edgeMapRestricted[it.src]!!.add(it)
             edgeMapRestricted[it.dst]!!.add(it)
-            Plotter.recomputeEdges(i)
+            EdgeGeometry.recompute(i)
         }
     }
 
@@ -197,20 +195,20 @@ class Graph(
         needsRecomputing.addAll(e)
     }
 
-    fun recompute(g2d: Graphics2D) {
+    fun recompute(measurer: TextMeasurer = TextMeasurer.default) {
         val nodes = needsRecomputing
-        Plotter.recomputeNodes(g2d, nodes)
+        nodes.forEach { NodeText.recompute(it, measurer) }
         // after the sizes: attached nodes follow their owners' new positions / sizes
         val glued = Attachments.reglue(this)
         val edges = (nodes + glued).flatMap { edgeMapRestricted[it].orEmpty() }
-        Plotter.recomputeEdges(edges)
+        EdgeGeometry.recompute(edges)
         needsRecomputing.clear()
     }
 
     /**
-     * Flush pending cache recomputations using an offscreen
-     * Graphics2D. Interactive rendering does this every paint frame
-     * via [recompute]; code paths that run without a window
+     * Flush pending cache recomputations with the default
+     * [TextMeasurer]. Interactive rendering does this every paint
+     * frame via [recompute]; code paths that run without a window
      * (headless CLI, SVG export, tests) must call this themselves —
      * otherwise [Node.cache.shapeBounds] and edge endpoint caches
      * stay at their defaults and the layout optimiser ends up
@@ -223,13 +221,7 @@ class Graph(
     fun ensureCachesFresh(force: Boolean = false) {
         if (force) needsRecomputing(nodesRestricted)
         if (needsRecomputing.isEmpty()) return
-        val img = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
-        val g2d = img.createGraphics()
-        try {
-            recompute(g2d)
-        } finally {
-            g2d.dispose()
-        }
+        recompute()
     }
 
     fun findEddges(from: Set<Node>, to: Set<Node>): List<Edge> {

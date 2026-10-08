@@ -1,9 +1,8 @@
 package utils
 
-import java.awt.Color
-
 object Constants {
-    val buttonGray = Color(220, 220, 220)
+    val buttonGray = Rgb(220, 220, 220)
+    val defaultFontSize = 12.0
     val fontSizeZoomCoef = 1.3
     val zoomOutStep = 0.95
     val stylePickerDimensions = Vector2(500, 300)
@@ -41,9 +40,9 @@ object Constants {
 
 
     //some colors
-    val selectedColor = Color(100, 150, 50)
-    val defaultFgColor = Color(0, 0, 0)
-    val defaultBgColor = Color(255, 255, 255)
+    val selectedColor = Rgb(100, 150, 50)
+    val defaultFgColor = Rgb(0, 0, 0)
+    val defaultBgColor = Rgb(255, 255, 255)
     /**
      * Brightness level (0..255) that a fully-faded edge renders
      * at. Fade begins when the edge's on-screen length is a

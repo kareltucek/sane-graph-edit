@@ -3,8 +3,8 @@ package ui
 import Graph
 import graph_tools.Attachments
 import graph_tools.Node
+import utils.Rgb
 import utils.Vector2
-import java.awt.Color
 import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -28,8 +28,8 @@ object SourceView {
     const val AFTER_ID = "source-after"
 
     private const val TAB = "    "
-    private val contextFill = Color(0xEEEEEE)
-    private val contextText = Color(0x666666)
+    private val contextFill = Rgb(0xEEEEEE)
+    private val contextText = Rgb(0x666666)
 
     fun title(path: Path, lines: FileLink.Lines): String = "view: ${path.fileName}:$lines"
 

@@ -1,9 +1,8 @@
 package graph_tools
 
 import Graph
-import ui.NodeStyle
 import utils.Vector2
-import java.awt.Color
+import utils.Rgb
 import java.time.Instant
 
 /**
@@ -204,8 +203,8 @@ class EditTextCommand(
  * entangling with the rest of `NodeAttributes`.
  */
 data class StyleSnapshot(
-    val bg: Color?,
-    val fg: Color?,
+    val bg: Rgb?,
+    val fg: Rgb?,
     val nodeScale: Double?,
 ) {
     fun applyTo(n: Node) {

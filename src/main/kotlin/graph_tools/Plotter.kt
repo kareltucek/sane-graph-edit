@@ -3,16 +3,15 @@ package graph_tools
 import Graph
 import graph_tools.Plotter.TextPlotter.drawEdge
 import graph_tools.Plotter.TextPlotter.drawNode
-import graph_tools.Plotter.TextPlotter.recomputeBounds
-import graph_tools.Plotter.TextPlotter.recomputeEdge
+import utils.AwtUtils.toAwt
+import utils.AwtUtils.withIdentityTransform
 import utils.Utils.orElse
-import utils.Utils.withIdentityTransform
 import utils.Constants.defaultBgColor
 import utils.Constants
 import utils.Vector2
 import java.awt.*
 import java.awt.geom.AffineTransform
-import java.lang.Math.pow
+import java.awt.image.BufferedImage
 
 /**
  * Read-only renderer that walks a [Graph] and paints it onto a
@@ -36,7 +35,7 @@ object Plotter {
      * rendering path starts by copying this into the current `Graphics2D`.
      */
     var t: AffineTransform = AffineTransform()
-    var defaultFontSize: Double = 12.0
+    val defaultFontSize: Double get() = Constants.defaultFontSize
     var renderArrowheads: Boolean = true
     var renderOvals: Boolean = true
     var thinStroke: BasicStroke = BasicStroke(1.0f)
@@ -50,9 +49,8 @@ object Plotter {
      */
     var screenDimensions: Vector2 = Vector2(800.0, 600.0)
 
-    fun fontScale(n: Node): Double = pow(Constants.fontSizeZoomCoef, n.attributes.nodeScale.orElse(0.0))
-    fun workspaceFontSize(n: Node): Double = (fontScale(n) * defaultFontSize)
-    fun screenspaceFontSize(n: Node): Double = ((fontScale(n) * defaultFontSize) * t.scaleX)
+    fun workspaceFontSize(n: Node): Double = NodeText.fontSize(n)
+    fun screenspaceFontSize(n: Node): Double = NodeText.fontSize(n) * t.scaleX
 
     fun setTransforms(g2d: Graphics2D, optimizationLevel: Int) {
         // Concatenate, do *not* overwrite. The Graphics2D handed to a
@@ -76,7 +74,7 @@ object Plotter {
     }
 
     fun drawGraph(g2d: Graphics2D, g: Graph) {
-        g2d.paint = defaultBgColor
+        g2d.paint = defaultBgColor.toAwt()
         g2d.stroke = thinStroke
         val visible = g.visibleNodes()
         g.edges
@@ -89,57 +87,47 @@ object Plotter {
     }
 
     fun drawSelectionBox(g2d: Graphics2D, ul: Vector2, br: Vector2) {
-        g2d.paint = Constants.defaultFgColor
+        g2d.paint = Constants.defaultFgColor.toAwt()
         g2d.drawRect(ul.x.toInt(), ul.y.toInt(), (br.x - ul.x).toInt(), (br.y - ul.y).toInt())
     }
 
-
-    fun recomputeNodes(g2d: Graphics2D, nodes: Iterable<Node>) = g2d.withIdentityTransform {
-        nodes.forEach { n ->
-            val fs = workspaceFontSize(n)
-            val fd = FontData.get(g2d, fs, FontData.isMonospace(n))
-            n.cache.font = fd
-            val fm = g2d.getFontMetrics(fd.font)
-            recomputeBounds(n, fm)
+    private fun paintShape(g2d: Graphics2D, n: Node) {
+        val size = n.cache.shapeBounds
+        val pos = n.position - size / 2
+        val (x, y, w, h) = listOf(pos.x.toInt(), pos.y.toInt(), size.x.toInt(), size.y.toInt())
+        val bg = n.attributes.bg.orElse(Constants.defaultBgColor).toAwt()
+        val fg = n.attributes.fg.orElse(Constants.defaultFgColor).toAwt()
+        when (val shape = n.cache.shape) {
+            is OvalShape -> {
+                g2d.paint = bg
+                g2d.fillOval(x, y, w, h)
+                g2d.paint = fg
+                g2d.drawOval(x, y, w, h)
+            }
+            else -> {
+                val r = (shape as? RectangleShape)?.cornerRadius ?: 5
+                g2d.paint = bg
+                g2d.fillRoundRect(x, y, w, h, r, r)
+                g2d.paint = fg
+                g2d.drawRoundRect(x, y, w, h, r, r)
+            }
         }
-    }
-
-    fun recomputeEdges(edges: Iterable<Edge>) {
-        edges.forEach { recomputeEdge(it) }
     }
 
     object TextPlotter {
 
-        fun recomputeBounds(n: Node, fm: FontMetrics) {
-            val lines = n.attributes.text.split("\n")
-
+        fun metrics(lines: List<String>, fm: FontMetrics): TextMetrics {
             val maxWidth = lines.map { fm.stringWidth(it) }.maxOrNull() ?: 0
-            val perLineHeight = fm.height
-            val textBounds = Vector2(maxWidth, lines.size * perLineHeight)
-            val shapeBounds = n.cache.shape.computeShapeBounds(textBounds)
-
-            n.cache.textBounds = textBounds
-            n.cache.shapeBounds = shapeBounds
-            n.cache.lines = lines
+            return TextMetrics(
+                bounds = Vector2(maxWidth, lines.size * fm.height),
+                ascent = fm.ascent.toDouble(),
+                lineHeight = fm.height.toDouble(),
+            )
         }
 
-        fun recomputeEdge(e: Edge) {
-            val dir = (e.dst.position - e.src.position).toUnit()
-            val cp1 = e.src.cache.shape.connectionPoint(dir, e.src, 0.0)
-            val cp2 = e.dst.cache.shape.connectionPoint(dir, e.dst, Constants.arrowheadRadius)
-            val src1 = e.src.position + cp1
-            val src2 = e.src.position - cp1
-            val dst1 = e.dst.position - cp2
-            val dst2 = e.dst.position + cp2
-
-            val (src, dst) = listOf(
-                src1 to dst1,
-                src2 to dst1,
-                src1 to dst2,
-            ).minBy { (it.first - it.second).lengthSquared() }
-
-            e.cache.srcPt = src
-            e.cache.dstPt = dst
+        fun recomputeBounds(n: Node, fm: FontMetrics) {
+            val lines = n.attributes.text.split("\n")
+            NodeText.apply(n, lines, metrics(lines, fm))
         }
 
         fun drawEdge(g2d: Graphics2D, e: Edge) {
@@ -194,10 +182,10 @@ object Plotter {
             val h = screenDimensions.y.toFloat()
             val shorterDim = minOf(w, h)
             val longerDim = maxOf(w, h)
-            if (longerDim <= 0f) return Constants.defaultFgColor
+            if (longerDim <= 0f) return Constants.defaultFgColor.toAwt()
             val fadeStart = shorterDim * 0.125f
             val fadeEnd = longerDim * 0.5f
-            if (screenLen <= fadeStart) return Constants.defaultFgColor
+            if (screenLen <= fadeStart) return Constants.defaultFgColor.toAwt()
             val fade = ((screenLen - fadeStart) / (fadeEnd - fadeStart)).coerceIn(0f, 1f)
             val brightness = (fade * Constants.edgeFadedMaxBrightness).toInt()
             return Color(brightness, brightness, brightness)
@@ -207,8 +195,6 @@ object Plotter {
             val bounds = n.cache
             val textPos = n.position - bounds.textBounds / 2;
 
-            g2d.paint = n.attributes.bg.orElse(Constants.defaultBgColor)
-
             if (selected) {
                 if (thickStroke.lineWidth * t.scaleX < 1.0) {
                     g2d.stroke = BasicStroke((thickStroke.lineWidth / t.scaleX * 1.1).toFloat())
@@ -217,11 +203,11 @@ object Plotter {
                 }
             }
 
-            n.cache.shape.paint(g2d, n)
+            paintShape(g2d, n)
 
             g2d.stroke = thinStroke
 
-            g2d.paint = n.attributes.fg.orElse(Constants.defaultFgColor)
+            g2d.paint = n.attributes.fg.orElse(Constants.defaultFgColor).toAwt()
 
             val screenspaceFD = FontData.get(g2d, screenspaceFontSize(n), FontData.isMonospace(n))
 
@@ -233,7 +219,8 @@ object Plotter {
              * We would have to render all nodes as UI components, which would (I fear) strongly affect performance.
              */
 
-            n.cache.font
+            // the font the node was measured with; absent until the first measurement
+            FontData.cache[workspaceFontSize(n) to FontData.isMonospace(n)]
                 ?.takeIf { screenspaceFD.scale >= 5.0 } //reduce rendering time on zoomed-out graphs...
                 ?.let { workspaceFD ->
                     g2d.font = workspaceFD.font
@@ -247,7 +234,28 @@ object Plotter {
                     }
                 }
 
-            g2d.paint = Constants.defaultFgColor
+            g2d.paint = Constants.defaultFgColor.toAwt()
+        }
+    }
+}
+
+/** Measures node text with the fonts of [g2d]; what [Graph.recompute] needs on a paint. */
+class AwtTextMeasurer(private val g2d: Graphics2D) : TextMeasurer {
+    override fun measure(lines: List<String>, fontSize: Double, monospace: Boolean): TextMetrics = g2d.withIdentityTransform {
+        val fd = FontData.get(g2d, fontSize, monospace)
+        Plotter.TextPlotter.metrics(lines, g2d.getFontMetrics(fd.font))
+    }
+
+    companion object {
+        private val offscreen: Graphics2D by lazy { BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).createGraphics() }
+
+        /**
+         * Make AWT fonts the [TextMeasurer.default], so that code
+         * without a window (headless runs, export, tests) gets the
+         * same node sizes as the canvas. Idempotent.
+         */
+        fun install() {
+            if (TextMeasurer.default !is AwtTextMeasurer) TextMeasurer.default = AwtTextMeasurer(offscreen)
         }
     }
 }
@@ -264,10 +272,7 @@ data class FontData(
 
         private val monospaceBase = Font(Font.MONOSPACED, Font.PLAIN, 12)
 
-        /** `fontname` values (Graphviz attribute) that select a monospaced font. */
-        private val monospaceNames = setOf("monospace", "mono", "courier", "courier new", "monospaced")
-
-        fun isMonospace(n: Node): Boolean = n.attributes.other["fontname"]?.lowercase() in monospaceNames
+        fun isMonospace(n: Node): Boolean = NodeText.isMonospace(n)
 
         fun get(g2d: Graphics2D, fs: Double, monospace: Boolean = false): FontData {
             val fd = FontData.cache[fs to monospace].orElse {

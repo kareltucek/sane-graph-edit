@@ -3,10 +3,12 @@ package ui
 import Graph
 import export.SvgWriter
 import graph_tools.GraphTools
+import graph_tools.AwtTextMeasurer
 import graph_tools.Node
+import graph_tools.NodeStyle
 import graph_tools.Plotter
 import utils.Utils.orElse
-import utils.Utils.toWorkspaceVector
+import utils.AwtUtils.toWorkspaceVector
 import utils.Constants
 import utils.Constants.stylePickerDimensions
 import utils.Vector2
@@ -167,6 +169,7 @@ class GraphView(
     val autosaveId: String = UUID.randomUUID().toString()
 
     init {
+        AwtTextMeasurer.install()
         attachHistoryListener()
     }
 

@@ -2,7 +2,6 @@ package utils
 
 import utils.Utils.fold
 import utils.Utils.letIf
-import java.awt.geom.Rectangle2D
 import kotlin.math.sign
 
 data class Vector2(val x: Double, val y: Double) {
@@ -56,8 +55,6 @@ data class Vector2(val x: Double, val y: Double) {
     fun max(b: Vector2) = Vector2(Math.max(this.x, b.x), Math.max(this.y, b.y))
 
     companion object {
-        fun Rectangle2D.toVector2() = Vector2(this.width.toDouble(), this.height.toDouble())
-
         val Unit = Vector2(1.0, 1.0)
         val Zero = Vector2(0.0, 0.0)
 

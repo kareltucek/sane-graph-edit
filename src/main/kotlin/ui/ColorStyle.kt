@@ -1,29 +1,11 @@
 package ui
 
-import graph_tools.Node
-import graph_tools.NodeShape
 import utils.Constants
-import java.awt.Color
-
-data class NodeStyle(
-    val background: Color? = null,
-    val foreground: Color? = null,
-    val nodeScale: Double? = null,
-) {
-    companion object {
-        fun fromNode(n: Node): NodeStyle {
-            return NodeStyle(
-                background = n.attributes.bg,
-                foreground = n.attributes.fg,
-                nodeScale = n.attributes.nodeScale,
-            )
-        }
-    }
-}
+import utils.Rgb
 
 data class ColorStyle(
-    val background: Color? = null,
-    val foreground: Color? = null,
+    val background: Rgb? = null,
+    val foreground: Rgb? = null,
     val label: String = "😊",
 ) {
 

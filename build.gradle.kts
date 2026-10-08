@@ -8,8 +8,10 @@ plugins {
 group = "sane"
 version = "0.1.0-SNAPSHOT"
 
-repositories {
-    mavenCentral()
+allprojects {
+    repositories {
+        mavenCentral()
+    }
 }
 
 kotlin {
@@ -28,6 +30,7 @@ application {
 }
 
 dependencies {
+    implementation(project(":model"))
     testImplementation(kotlin("test"))
 }
 

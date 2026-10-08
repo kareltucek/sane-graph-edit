@@ -12,9 +12,9 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import utils.Utils.orElse
-import utils.Utils.toScreenVector
-import utils.Utils.toScreenspaceVector
-import utils.Utils.toWorkspaceVector
+import utils.AwtUtils.toScreenVector
+import utils.AwtUtils.toScreenspaceVector
+import utils.AwtUtils.toWorkspaceVector
 import java.awt.Robot
 import java.awt.event.*
 import java.awt.event.MouseEvent.*

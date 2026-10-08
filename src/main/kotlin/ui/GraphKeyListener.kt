@@ -10,6 +10,7 @@ import graph_tools.Edge
 import graph_tools.GraphTools
 import graph_tools.GraphTools.computeClosure
 import graph_tools.HideCommand
+import graph_tools.NodeStyle
 import graph_tools.LayoutOptimizer
 import graph_tools.MoveNodesCommand
 import graph_tools.Node

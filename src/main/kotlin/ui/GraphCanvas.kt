@@ -1,6 +1,7 @@
 package ui
 
 import utils.Constants
+import graph_tools.AwtTextMeasurer
 import graph_tools.Plotter
 import utils.Utils.PerformanceData.withPerformanceCheck
 import utils.Vector2
@@ -70,12 +71,13 @@ class GraphCanvas(
             Plotter.screenDimensions = Vector2(this.width.toDouble(), this.height.toDouble())
             Plotter.setTransforms(g2d, optimizeLevel)
 
+            val measurer = AwtTextMeasurer(g2d)
             withPerformanceCheck("Recomputation", 5.0, onIssue = { parent.g.printStats()}) {
-                 parent.g.recompute(g2d)
+                 parent.g.recompute(measurer)
             }
             // after recompute: placement needs the node sizes
             graph_tools.DynamicPlacement.place(parent.g)
-            parent.g.recompute(g2d)
+            parent.g.recompute(measurer)
 
             Plotter.drawGraph(g2d,  parent.g)
             // the link letters shown there follow the selection, which changes in many places

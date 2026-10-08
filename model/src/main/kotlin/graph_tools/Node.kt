@@ -1,7 +1,5 @@
 package graph_tools
 
-import ui.ColorStyle
-import ui.NodeStyle
 import utils.Utils
 import utils.Utils.filterNotNull
 import utils.Utils.letIf
@@ -10,7 +8,7 @@ import utils.Utils.toHexString
 import utils.Constants
 import utils.Utils.toNiceString
 import utils.Vector2
-import java.awt.Color
+import utils.Rgb
 import java.lang.Math.pow
 import kotlin.math.log
 
@@ -27,8 +25,10 @@ class Node(
         var textBounds: Vector2 = Vector2.Zero,
         var shapeBounds: Vector2 = Vector2.Zero,
         var shape: NodeShapeImpl = NodeShape.Rectangle.impl,
-        var font: FontData? = null,
         var lines: List<String> = emptyList(),
+        /** Font ascent and line height the text was measured with, in workspace units. */
+        var ascent: Double = 0.0,
+        var lineHeight: Double = 0.0,
         /**
          * Filtering / hide level. 0 = visible. Each `h` command
          * increments this on every non-selected node (even already
@@ -73,8 +73,8 @@ class Node(
     class NodeAttributes(
         var name: String = "",
         var text: String = "",
-        var bg: Color? = null,
-        var fg: Color? = null,
+        var bg: Rgb? = null,
+        var fg: Rgb? = null,
         var nodeScale: Double? = null,
         /**
          * Persistent marks (uppercase A-Z). Concatenated letters,
@@ -90,11 +90,6 @@ class Node(
             fg = style.foreground,
             nodeScale = style.nodeScale
         )
-    }
-
-    fun setStyle(style: ColorStyle) {
-        this.attributes.bg = style.background
-        this.attributes.fg = style.foreground
     }
 
     fun setShape(shape: NodeShape?) {
@@ -119,7 +114,7 @@ class Node(
             "color" -> attributes.fg = Utils.fromHexString(r)
             "label" -> attributes.text = r
             "marks" -> attributes.marks = r
-            "fontsize" -> attributes.nodeScale = log(r.toDouble()/Plotter.defaultFontSize, Constants.fontSizeZoomCoef)
+            "fontsize" -> attributes.nodeScale = log(r.toDouble()/Constants.defaultFontSize, Constants.fontSizeZoomCoef)
             "pos" -> r
                 .replace("!", "")
                 .split(",")
@@ -137,7 +132,7 @@ class Node(
         return mapOf(
             "fillcolor" to attributes.bg?.toHexString(),
             "color" to attributes.fg?.toHexString(),
-            "fontsize" to attributes.nodeScale?.let { pow(Constants.fontSizeZoomCoef, it)*Plotter.defaultFontSize }?.toNiceString(),
+            "fontsize" to attributes.nodeScale?.let { pow(Constants.fontSizeZoomCoef, it)*Constants.defaultFontSize }?.toNiceString(),
             "label" to attributes.text,
             "marks" to attributes.marks.takeIf { it.isNotEmpty() },
             "pos" to "${position.x.toNiceString()},${position.y.toNiceString()}!",

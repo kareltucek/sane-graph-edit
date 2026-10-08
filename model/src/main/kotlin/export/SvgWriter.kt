@@ -3,14 +3,14 @@ package export
 import Graph
 import graph_tools.GraphTools
 import graph_tools.Node
+import graph_tools.NodeText
 import graph_tools.OvalShape
-import graph_tools.Plotter
 import graph_tools.RectangleShape
 import utils.Constants
 import utils.Utils.orElse
 import utils.Utils.toHexString
 import utils.Vector2
-import java.awt.Color
+import utils.Rgb
 
 /**
  * Exports a [Graph] to a self-contained SVG string.
@@ -112,9 +112,8 @@ object SvgWriter {
             }
 
             // Text.
-            val fontSize = Plotter.workspaceFontSize(n)
-            val fd = n.cache.font
-            if (fd != null && cache.lines.isNotEmpty()) {
+            val fontSize = NodeText.fontSize(n)
+            if (cache.lines.isNotEmpty()) {
                 val textPos = n.position - cache.textBounds / 2
                 for ((i, line) in cache.lines.withIndex()) {
                     if (line.isBlank()) continue
@@ -122,9 +121,9 @@ object SvgWriter {
                     // adding ascent for the first line, then line
                     // height for each subsequent line — matching the
                     // Plotter's drawString placement.
-                    val y = textPos.y + fd.ascent + fd.height * i
+                    val y = textPos.y + cache.ascent + cache.lineHeight * i
                     // monospaced nodes (source code) keep their indentation
-                    val mono = if (graph_tools.FontData.isMonospace(n)) """ font-family="monospace" xml:space="preserve"""" else ""
+                    val mono = if (NodeText.isMonospace(n)) """ font-family="monospace" xml:space="preserve"""" else ""
                     sb.appendLine("""      <text x="${fmt(textPos.x)}" y="${fmt(y)}" font-size="${fmt(fontSize)}"$mono fill="$fg">${esc(line)}</text>""")
                 }
             }

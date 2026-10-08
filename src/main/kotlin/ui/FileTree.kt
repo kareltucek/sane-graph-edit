@@ -3,8 +3,8 @@ package ui
 import Graph
 import graph_tools.Edge
 import graph_tools.Node
+import utils.Rgb
 import utils.Vector2
-import java.awt.Color
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -27,8 +27,8 @@ import java.nio.file.Path
 object FileTree {
     const val MAX_ENTRIES = 2000
 
-    private val dirColor = Color(0xDBE9F6)
-    private val currentDirColor = Color(0x8FB8E0)
+    private val dirColor = Rgb(0xDBE9F6)
+    private val currentDirColor = Rgb(0x8FB8E0)
     private const val COLUMN_GAP = 40.0
     private const val ROW_GAP = 8.0
 
@@ -105,7 +105,7 @@ object FileTree {
     /** Symlinked directories are not followed (they can loop). */
     private fun isDir(p: Path): Boolean = Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)
 
-    private fun dirNode(p: Path, color: Color, unexplored: Boolean = false): Node {
+    private fun dirNode(p: Path, color: Rgb, unexplored: Boolean = false): Node {
         val name = p.fileName?.toString()?.plus("/") ?: p.toString()
         return Node(if (unexplored) "$name …" else name, Vector2(0, 0)).also {
             it.attributes.bg = color
@@ -124,6 +124,7 @@ object FileTree {
      * children; the ancestor chain on the browsed directory's row.
      */
     private fun layout(g: Graph, chain: List<Node>, childNodes: Map<Node, List<Node>>) {
+        graph_tools.AwtTextMeasurer.install()
         g.ensureCachesFresh(force = true)
         val size = { n: Node -> n.cache.shapeBounds }
         val depth = mutableMapOf<Node, Int>()

@@ -7,6 +7,7 @@ import graph_tools.StyleNodesCommand
 import graph_tools.StyleSnapshot
 import ui.ColorStyle.PickerSet.colorStyles
 import ui.ColorStyle.PickerSet.hues
+import utils.AwtUtils.toAwt
 import utils.Utils.orElse
 import utils.Constants
 import java.awt.*
@@ -54,8 +55,8 @@ class StylePicker(
         jLabel1!!.text = "Size:"
         minusButton!!.text = "-"
         plusButton!!.text = "+"
-        plusButton!!.background = Constants.buttonGray
-        minusButton!!.background = Constants.buttonGray
+        plusButton!!.background = Constants.buttonGray.toAwt()
+        minusButton!!.background = Constants.buttonGray.toAwt()
 
         jLabel2 = JLabel()
         ovalButton = JButton()
@@ -63,8 +64,8 @@ class StylePicker(
         jLabel2!!.text = "Shape:"
         ovalButton!!.text = "⚪"
         rectButton!!.text = "⬜"
-        ovalButton!!.background = Constants.buttonGray
-        rectButton!!.background = Constants.buttonGray
+        ovalButton!!.background = Constants.buttonGray.toAwt()
+        rectButton!!.background = Constants.buttonGray.toAwt()
 
         jSeparator = JSeparator()
         jSeparator!!.orientation = SwingConstants.VERTICAL
@@ -99,8 +100,8 @@ class StylePicker(
 
         colorStyles.forEach { style ->
             val b = JButton()
-            b.background = style.background.orElse { Color.WHITE }
-            b.foreground = style.foreground.orElse { Color.BLACK }
+            b.background = style.background?.toAwt().orElse { Color.WHITE }
+            b.foreground = style.foreground?.toAwt().orElse { Color.BLACK }
             b.text = style.label
             b.addActionListener {
                 colorFieldClicked(style)

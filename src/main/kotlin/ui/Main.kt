@@ -120,6 +120,7 @@ File:
  */
 fun runHeadless(file: String?, execs: List<String>): Int {
     System.setProperty("java.awt.headless", "true")
+    graph_tools.AwtTextMeasurer.install()
 
     val resolvedFile = file?.let(::expandHome)
     val graph = if (resolvedFile != null) {
