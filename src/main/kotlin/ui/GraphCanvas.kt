@@ -1,6 +1,7 @@
 package ui
 
 import utils.Constants
+import client.scene
 import graph_tools.AwtTextMeasurer
 import graph_tools.Plotter
 import utils.Utils.PerformanceData.withPerformanceCheck
@@ -72,22 +73,10 @@ class GraphCanvas(
             Plotter.screenDimensions = Vector2(this.width.toDouble(), this.height.toDouble())
             Plotter.setTransforms(g2d, parent.viewTransform, optimizeLevel)
 
-            val measurer = AwtTextMeasurer(g2d)
-            withPerformanceCheck("Recomputation", 5.0, onIssue = { parent.g.printStats()}) {
-                 parent.g.recompute(measurer)
-            }
-            // after recompute: placement needs the node sizes
-            graph_tools.DynamicPlacement.place(parent.g)
-            parent.g.recompute(measurer)
-
-            Plotter.drawGraph(g2d,  parent.g)
+            // the client says what to show; measuring its text is this renderer's part
+            Plotter.drawScene(g2d, parent.model.scene(AwtTextMeasurer(g2d)))
             // the link letters shown there follow the selection, which changes in many places
             parent.refreshStatus()
-
-            parent.mouseListener.controller.selectionBoxFrom?.let { box ->
-                val (ul, br) = Vector2.computeCorners(parent.mouseListener.controller.lastPosition, box)
-                Plotter.drawSelectionBox(g2d, ul, br)
-            }
         }
     }
 

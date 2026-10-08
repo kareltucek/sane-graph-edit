@@ -3,6 +3,9 @@ package graph_tools
 import Graph
 import graph_tools.Plotter.TextPlotter.drawEdge
 import graph_tools.Plotter.TextPlotter.drawNode
+import client.Scene
+import client.SceneEdge
+import client.SceneNode
 import client.ViewTransform
 import utils.AwtUtils.toAwt
 import utils.AwtUtils.withIdentityTransform
@@ -47,7 +50,6 @@ object Plotter {
     var screenDimensions: Vector2 = Vector2(800.0, 600.0)
 
     fun workspaceFontSize(n: Node): Double = NodeText.fontSize(n)
-    private fun screenspaceFontSize(n: Node): Double = NodeText.fontSize(n) * view.scale
 
     fun setTransforms(g2d: Graphics2D, view: ViewTransform, optimizationLevel: Int) {
         this.view = view
@@ -71,39 +73,36 @@ object Plotter {
         renderOvals = optimizationLevel < 3
     }
 
-    fun drawGraph(g2d: Graphics2D, g: Graph) {
+    /** Paint [scene]; all the painter knows about the graph is in it. */
+    fun drawScene(g2d: Graphics2D, scene: Scene) {
         g2d.paint = defaultBgColor.toAwt()
         g2d.stroke = thinStroke
-        val visible = g.visibleNodes()
-        g.edges
-            .filter { it.src in visible && it.dst in visible }
-            .forEach { drawEdge(g2d, it) }
+        scene.edges.forEach { drawEdge(g2d, it) }
         g2d.stroke = thinStroke
-        g.nodes
-            .filter { it in visible }
-            .forEach { drawNode(g2d, it, g.selectedNodes.contains(it)) }
+        scene.nodes.forEach { drawNode(g2d, it) }
+        scene.selectionBox?.let { (ul, br) -> drawSelectionBox(g2d, ul, br) }
     }
 
-    fun drawSelectionBox(g2d: Graphics2D, ul: Vector2, br: Vector2) {
+    private fun drawSelectionBox(g2d: Graphics2D, ul: Vector2, br: Vector2) {
         g2d.paint = Constants.defaultFgColor.toAwt()
         g2d.drawRect(ul.x.toInt(), ul.y.toInt(), (br.x - ul.x).toInt(), (br.y - ul.y).toInt())
     }
 
-    private fun paintShape(g2d: Graphics2D, n: Node) {
-        val size = n.cache.shapeBounds
+    private fun paintShape(g2d: Graphics2D, n: SceneNode) {
+        val size = n.shapeBounds
         val pos = n.position - size / 2
         val (x, y, w, h) = listOf(pos.x.toInt(), pos.y.toInt(), size.x.toInt(), size.y.toInt())
-        val bg = n.attributes.bg.orElse(Constants.defaultBgColor).toAwt()
-        val fg = n.attributes.fg.orElse(Constants.defaultFgColor).toAwt()
-        when (val shape = n.cache.shape) {
-            is OvalShape -> {
+        val bg = n.bg.orElse(Constants.defaultBgColor).toAwt()
+        val fg = n.fg.orElse(Constants.defaultFgColor).toAwt()
+        when (n.shape) {
+            NodeShape.Oval.id -> {
                 g2d.paint = bg
                 g2d.fillOval(x, y, w, h)
                 g2d.paint = fg
                 g2d.drawOval(x, y, w, h)
             }
             else -> {
-                val r = (shape as? RectangleShape)?.cornerRadius ?: 5
+                val r = RectangleShape.singleton.cornerRadius
                 g2d.paint = bg
                 g2d.fillRoundRect(x, y, w, h, r, r)
                 g2d.paint = fg
@@ -128,9 +127,9 @@ object Plotter {
             NodeText.apply(n, lines, metrics(lines, fm))
         }
 
-        fun drawEdge(g2d: Graphics2D, e: Edge) {
-            val src = e.cache.srcPt
-            val dst = e.cache.dstPt
+        fun drawEdge(g2d: Graphics2D, e: SceneEdge) {
+            val src = e.src
+            val dst = e.dst
 
             g2d.paint = edgePaint(src, dst)
 
@@ -189,11 +188,10 @@ object Plotter {
             return Color(brightness, brightness, brightness)
         }
 
-        fun drawNode(g2d: Graphics2D, n: Node, selected: Boolean) {
-            val bounds = n.cache
-            val textPos = n.position - bounds.textBounds / 2;
+        fun drawNode(g2d: Graphics2D, n: SceneNode) {
+            val textPos = n.position - n.textBounds / 2;
 
-            if (selected) {
+            if (n.selected) {
                 if (thickStroke.lineWidth * view.scale < 1.0) {
                     g2d.stroke = BasicStroke((thickStroke.lineWidth / view.scale * 1.1).toFloat())
                 } else {
@@ -205,9 +203,9 @@ object Plotter {
 
             g2d.stroke = thinStroke
 
-            g2d.paint = n.attributes.fg.orElse(Constants.defaultFgColor).toAwt()
+            g2d.paint = n.fg.orElse(Constants.defaultFgColor).toAwt()
 
-            val screenspaceFD = FontData.get(g2d, screenspaceFontSize(n), FontData.isMonospace(n))
+            val screenspaceFD = FontData.get(g2d, n.fontSize * view.scale, n.monospace)
 
             /**
              * For small fonts (w.r.t. how it is shown on screen), output height is messed up because of integral height.
@@ -218,12 +216,12 @@ object Plotter {
              */
 
             // the font the node was measured with; absent until the first measurement
-            FontData.cache[workspaceFontSize(n) to FontData.isMonospace(n)]
+            FontData.cache[n.fontSize to n.monospace]
                 ?.takeIf { screenspaceFD.scale >= 5.0 } //reduce rendering time on zoomed-out graphs...
                 ?.let { workspaceFD ->
                     g2d.font = workspaceFD.font
 
-                    bounds.lines.withIndex().forEach { s ->
+                    n.lines.withIndex().forEach { s ->
                         g2d.drawString(
                             s.value,
                             (textPos.x).toFloat(),
