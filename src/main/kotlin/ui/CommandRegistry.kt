@@ -130,6 +130,7 @@ fun registerAllCommands() {
     r.register("saveas") { it.saveFileAs() }
     r.register("open") { it.openFile() }
     r.register("reload") { it.reloadFile() }
+    r.register("file") { it.showFilePath() }
     r.register("follow-file-link") { it.followFileLink() }
     r.register("follow-file-link-in-tab") { it.followFileLinkInTab() }
     r.register("pick-file") { FilePicker.run(it) }

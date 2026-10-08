@@ -61,6 +61,14 @@ class FileTreeTest {
         gv.followFileLink()
         assertTrue("tmp/" in labels() || labels().size > 1, "root browsed: ${labels()}")
         assertEquals("browse: /", gv.untitledName)
+        assertEquals("/", gv.filePath)
+    }
+
+    @Test
+    fun `file path of a file tab is absolute`() {
+        val file = tree().resolve("graphs/y.dot")
+        val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(file.toString()), initialFile = file)
+        assertEquals(file.toString(), gv.filePath)
     }
 
     @Test

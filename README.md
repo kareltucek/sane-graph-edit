@@ -269,6 +269,7 @@ navigation, not data.
 | `gF`            | Same as `gf`, but into a new tab                       |
 | `:browse [dir]` | New tab with a file tree of `dir` (default: working directory); `gf` on a node opens it. Files are one column right of their directory, subdirectories two; the tree is cut to the depth that fits the window, the last level being `name/ …` |
 | `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line) |
+| `:file`         | Show the full path of the tab's file (or the browsed directory) |
 | `:cd <dir>`     | Switch the workspace to `dir` (see [Workspaces](#workspaces)); bare `:cd` shows it |
 | `Ctrl+E`        | Export graph as SVG                                    |
 | `Ctrl+Shift+E`  | Export only the selected nodes as SVG                  |

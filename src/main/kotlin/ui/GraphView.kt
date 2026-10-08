@@ -501,6 +501,22 @@ class GraphView(
         return target != null
     }
 
+    /** What this tab shows: the file's full path, the browsed directory, the source lines, or its name. */
+    val filePath: String
+        get() {
+            val shown = sourceView?.let { "${it.path}:${it.lines}" }
+                ?: currentFile?.toAbsolutePath()?.normalize()?.toString()
+                ?: browseDir?.toString()
+                ?: untitledName
+                ?: "(untitled)"
+            return if (isDirty) "$shown [modified]" else shown
+        }
+
+    /** `:file` — vim's: show [filePath]. */
+    fun showFilePath() {
+        messageArea?.show(filePath)
+    }
+
     /** `gF`: like [followFileLink], but into a new tab, which inherits this tab's jump list. */
     fun followFileLinkInTab(letter: Char = 'f') {
         selectedLink("follow-file-link-in-tab", letter, quiet = false)?.let { openTargetInTab(it) }
