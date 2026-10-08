@@ -325,7 +325,7 @@ class KeyMapperTest {
     /** `g` = grab, `gt` = tabnext; the link follower knows only `link-d`. */
     private fun linkMapper(executed: MutableList<String>, followed: MutableList<Char>): KeyMapper {
         val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "x" to "delete"), SwingScheduler)
-        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.activeView = GraphView(initialGraph = Graph()).model
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
         mapper.linkFollower = { _, letter -> (letter == 'd').also { if (it) followed.add(letter) } }
         return mapper
@@ -368,7 +368,7 @@ class KeyMapperTest {
     fun `gt and gT switch tabs with the default bindings and a typical init`() {
         val executed = mutableListOf<String>()
         val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
-        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.activeView = GraphView(initialGraph = Graph()).model
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
         listOf("map gg tw0", "map gf tih0<Esc>", "map gp :follow-file-link<Enter>", "set timeoutlen=300")
             .forEach { mapper.executeCommandLine(it) }
@@ -385,7 +385,7 @@ class KeyMapperTest {
         val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler, timeoutMs = 300)
         val edt = { f: () -> Unit -> javax.swing.SwingUtilities.invokeAndWait { f() } }
         edt {
-            mapper.activeView = GraphView(initialGraph = Graph())
+            mapper.activeView = GraphView(initialGraph = Graph()).model
             mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
             mapper.feedKey("g")
         }

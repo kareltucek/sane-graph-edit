@@ -147,7 +147,7 @@ class TabManager(
         saveSession()
         Workspace.dir = dir.toAbsolutePath().normalize()
         session = Workspace.session()
-        views.forEach { it.closeDocument() }
+        views.forEach { it.content.close() }
         views.clear()
         tabbedPane.removeAll()
         AppState.lastOpenDir = Workspace.dir
@@ -236,8 +236,8 @@ class TabManager(
      */
     fun browse(dir: Path, persistSession: Boolean = true): GraphView {
         val gv = newTab(graph = FileTree.build(dir), persistSession = persistSession)
-        gv.browseDir = dir.toAbsolutePath().normalize()
-        gv.untitledName = "browse: ${gv.browseDir}"
+        gv.content.browseDir = dir.toAbsolutePath().normalize()
+        gv.content.untitledName = "browse: ${gv.content.browseDir}"
         gv.onStateChange()
         return gv
     }
@@ -258,14 +258,14 @@ class TabManager(
             // Deliberately *not* deleting backup files here —
             // autosave snapshots accumulate as a manual safety
             // net; pruning is the user's job.
-            gv.clearToEmpty()
+            gv.content.clearToEmpty()
             saveSession()
             return true
         }
 
         views.removeAt(idx)
         tabbedPane.remove(idx)
-        gv.closeDocument()
+        gv.content.close()
         saveSession()
         return true
     }
@@ -391,7 +391,7 @@ class TabManager(
             JOptionPane.WARNING_MESSAGE,
         )
         return when (result) {
-            JOptionPane.YES_OPTION -> gv.saveFile()  // false if Save-As was cancelled
+            JOptionPane.YES_OPTION -> gv.content.save()  // false if Save-As was cancelled
             JOptionPane.NO_OPTION -> true
             else -> false
         }

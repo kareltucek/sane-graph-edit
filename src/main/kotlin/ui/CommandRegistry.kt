@@ -128,18 +128,18 @@ fun registerAllCommands() {
     r.register("paste") { impl.pasteClipboard(it.model) }
 
     // Files
-    r.register("save") { it.saveFile() }
-    r.register("saveas") { it.saveFileAs() }
-    r.register("open") { it.openFile() }
-    r.register("reload") { it.reloadFile() }
-    r.register("follow-file-link") { it.followFileLink() }
-    r.register("follow-file-link-in-tab") { it.followFileLinkInTab() }
+    r.register("save") { it.content.save() }
+    r.register("saveas") { it.content.saveAs() }
+    r.register("open") { it.content.open() }
+    r.register("reload") { it.content.reload() }
+    r.register("follow-file-link") { it.content.followFileLink() }
+    r.register("follow-file-link-in-tab") { it.content.followFileLinkInTab() }
     r.register("pick-file") { FilePicker.run(it) }
-    r.register("jump-back") { it.jumpBack() }
-    r.register("jump-forward") { it.jumpForward() }
+    r.register("jump-back") { it.content.jumpBack() }
+    r.register("jump-forward") { it.content.jumpForward() }
     r.register("browse") { it.tabManager?.browse(Workspace.dir) }
-    r.register("export-svg") { it.exportSvg() }
-    r.register("export-selection") { it.exportSelection() }
+    r.register("export-svg") { it.content.exportSvg() }
+    r.register("export-selection") { it.content.exportSelection() }
 
     // Tabs
     r.register("tabnew") { it.tabManager?.newTab() }
@@ -155,7 +155,7 @@ fun registerAllCommands() {
         val node = if (dir > 0) ss.next() else ss.prev()
         if (node != null) {
             gv.g.cleanSelect(setOf(node))
-            gv.centerScreen()
+            gv.model.centerScreen()
         }
     }
     r.register("search-prev") { gv ->
@@ -164,7 +164,7 @@ fun registerAllCommands() {
         val node = if (dir > 0) ss.prev() else ss.next()
         if (node != null) {
             gv.g.cleanSelect(setOf(node))
-            gv.centerScreen()
+            gv.model.centerScreen()
         }
     }
 }

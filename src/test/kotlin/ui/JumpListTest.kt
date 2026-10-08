@@ -52,7 +52,7 @@ class JumpListTest {
         gv.g.cleanSelect(gv.g.nodes)
         graph_tools.ViewModes.discard = true
         try {
-            gv.followFileLink()  // a dialog would throw in a headless test
+            gv.content.followFileLink()  // a dialog would throw in a headless test
         } finally {
             graph_tools.ViewModes.discard = false
         }
@@ -69,15 +69,15 @@ class JumpListTest {
         val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(a.toString()), initialFile = a)
         gv.g.cleanSelect(gv.g.nodes.filter { it.attributes.name == "start" })
 
-        gv.followFileLink()
+        gv.content.followFileLink()
         assertEquals("b.dot", gv.currentFile?.fileName.toString())
         assertEquals(setOf("target"), gv.g.selectedNodes.map { it.attributes.name }.toSet())
 
-        gv.jumpBack()
+        gv.content.jumpBack()
         assertEquals("a.dot", gv.currentFile?.fileName.toString())
         assertEquals(setOf("start"), gv.g.selectedNodes.map { it.attributes.name }.toSet())
 
-        gv.jumpForward()
+        gv.content.jumpForward()
         assertEquals("b.dot", gv.currentFile?.fileName.toString())
         assertEquals(setOf("target"), gv.g.selectedNodes.map { it.attributes.name }.toSet())
     }

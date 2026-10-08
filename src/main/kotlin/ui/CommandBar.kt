@@ -266,7 +266,7 @@ class CommandBar(
                 val cmd = line.removePrefix(":").trim()
                 if (cmd.isNotEmpty()) {
                     val mapper = graphView.keyMapper ?: return
-                    mapper.activeView = graphView
+                    mapper.activeView = graphView.model
                     mapper.executeCommandLine(cmd)
                 }
             }

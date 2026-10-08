@@ -142,7 +142,7 @@ fun runHeadless(file: String?, execs: List<String>): Int {
     // those don't try to open a display.
     val view = GraphView(initialGraph = graph, initialFile = resolvedFile?.let { java.nio.file.Paths.get(it) })
     view.keyMapper = mapper
-    mapper.activeView = view
+    mapper.activeView = view.model
 
     // Interactive mode flushes node/edge cache recomputation every
     // paint frame (GraphCanvas.doDrawing → Graph.recompute). In

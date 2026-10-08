@@ -7,6 +7,7 @@ import graph_tools.Node
 import graph_tools.NodeStyle
 import utils.Utils.orElse
 import utils.Vector2
+import java.nio.file.Path
 
 /**
  * What a client asks of its renderer (conn1, client → renderer).
@@ -37,9 +38,21 @@ interface Renderer {
  * the cursor, the gesture in progress — and the editing that is
  * done with them ([Actions], [GestureController]).
  */
-class EditorView(initialGraph: Graph, private val renderer: Renderer) : Renderer by renderer {
+class EditorView(
+    initialGraph: Graph,
+    private val renderer: Renderer,
+    val shell: Shell = NoShell,
+    client: EditorClient? = null,
+    initialFile: Path? = null,
+) : Renderer by renderer {
+    /** Which file or directory the view shows, and the opening and saving of it. */
+    val content: ViewContent = ViewContent(this, shell, client)
+
     /** The replica being edited; the selection lives on it. */
-    var g: Graph = initialGraph
+    var g: Graph = content.start(initialGraph, initialFile)
+
+    /** The last search: query, results, position in them. */
+    val searchState: SearchState = SearchState()
 
     val viewTransform: ViewTransform = ViewTransform()
 

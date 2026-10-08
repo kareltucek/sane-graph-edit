@@ -266,7 +266,7 @@ stateDiagram-v2
 
 `client.KeyMapper` resolves key sequences to command names,
 `ui.CommandRegistry` maps the names to `client.Actions` functions
-(or to the view's own file / tab functions). The canonical list:
+(or to `client.ViewContent` and the tab functions). The canonical list:
 
 | Key    | Action                                                 |
 |--------|--------------------------------------------------------|
@@ -527,6 +527,7 @@ flowchart LR
         Keys[KeyMapper]
         Act[Actions]
         Sc[Scene]
+        Cont[ViewContent<br/>file, links, jump list]
     end
     Listeners -- "pointer positions, key notation" --> Gest
     Listeners --> Keys --> Act
@@ -534,6 +535,7 @@ flowchart LR
     View --> Sc -- "what to draw" --> Canvas
     View -- "Renderer: repaint, open editor…" --> Widgets
     Canvas -- "TextMeasurer" --> Sc
+    Cont -- "Shell: questions, file choosers, tabs" --> Widgets
 ```
 
 - **`EditorView`** is one view of a document as the client sees
@@ -554,24 +556,33 @@ flowchart LR
   events). The node editor and the style picker report what was
   typed or picked (`EditorView.textTyped`, `Actions.colorSelection`
   …); the client changes the graph.
-- **`KeyTarget`** is what `:` commands need from the application
-  around the view (save, open, quit, messages); **`Scheduler`**
-  is the timer for key-sequence timeouts. `GraphView` and
-  `ui.SwingScheduler` provide them.
+- **`ViewContent`** (`EditorView.content`) is what a view shows
+  and where it came from: a graph file, a directory tree, lines of
+  a source file. Opening, saving, reloading, following links and
+  the jump list are here.
+- **`Shell`** is what the client asks of the application around
+  the view: messages, yes/no questions, file choosers, other tabs,
+  quitting. `GraphView` implements it with Swing dialogs and the
+  `TabManager`; the client's tests script the user's answers.
+  **`Scheduler`** is the timer for key-sequence timeouts
+  (`ui.SwingScheduler`).
 
-Not behind the boundary yet: the node editor positions itself from
-the `Node` it edits, and file handling (`GraphView.adopt`, open,
-save, the jump list) is still in `GraphView`. The interfaces are
-called in-process; they pass plain data so that a renderer in
-another process stays possible, but measuring text is a direct
-call for now.
+Three calls across this boundary wait for a result: measuring
+text, `Shell.confirm` and the `Shell.choose…` file choosers. They
+pass plain data, so a renderer in another process stays possible,
+but each would have to become a request and a reply there.
+
+Per user, yet not per view: the view modes (`graph_tools.ViewModes`,
+`:set unhide` …) are one set for the whole client process, and the
+selection is stored on the client's replica `Graph`. Neither is
+shared with other clients.
 
 ## Tabs and file handling
 
 `ui/TabManager.kt` owns a `JTabbedPane` and the list of open
-`GraphView`s. Each tab is one document: its own `Graph` (so its
-own undo stack), its own `currentFile: Path?`, its own
-`isDirty: Boolean`, and its own `viewTransform`.
+`GraphView`s. Each tab is one view: its own `Graph` replica, its
+own file and unsaved-changes flag (`client.ViewContent`), and its
+own `viewTransform`.
 
 Closing the last tab resets it to an empty untitled document
 rather than removing it, so the window is never empty. Closing

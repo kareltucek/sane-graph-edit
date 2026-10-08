@@ -1,9 +1,8 @@
 package ui
 
 import utils.Constants
-import graph_tools.EditTextCommand
-import graph_tools.Node
-import graph_tools.Plotter
+import client.sceneNode
+import graph_tools.TextMeasurer
 import utils.Utils.orElse
 import utils.Vector2
 import graph_tools.FontData
@@ -53,7 +52,8 @@ class NodeEditor(
         override fun keyReleased(e: KeyEvent) {}
     }
 
-    var editedNode: Node? = null
+    /** Id of the node being edited. */
+    var editedNode: String? = null
 
     init {
         this.document.addDocumentListener(dl)
@@ -70,22 +70,17 @@ class NodeEditor(
 
 
 
+    /** Put the editor over the node, in its font and size; all it knows of the node is its [client.SceneNode]. */
     fun updatePosition(setCaretBy: Vector2? = null) {
-        editedNode?.let { n ->
-            val correctedFontSize = Plotter.workspaceFontSize(n) * parent.viewTransform.scale
-
-            FontData.cache[Plotter.workspaceFontSize(n) to FontData.isMonospace(n)]?.let { fd ->
-                this.font = fd.font
-                // we have edited the text, so we should recompute the data at 1.0 zoom...
-                Plotter.TextPlotter.recomputeBounds(n, this.getFontMetrics(this.font))
-            }
-            this.font = this.font.deriveFont(correctedFontSize.toFloat())
-
+        editedNode?.let { parent.model.sceneNode(it, TextMeasurer.default) }?.let { n ->
             val view = parent.viewTransform
-            val margin = ((n.cache.shapeBounds - n.cache.textBounds)/4)*view.scale
-            this.margin = Insets(margin.y.toInt(), margin.x.toInt(),margin.y.toInt(),margin.x.toInt())
+            FontData.cache[n.fontSize to n.monospace]?.let { this.font = it.font }
+            this.font = this.font.deriveFont((n.fontSize * view.scale).toFloat())
+
+            val margin = ((n.shapeBounds - n.textBounds) / 4) * view.scale
+            this.margin = Insets(margin.y.toInt(), margin.x.toInt(), margin.y.toInt(), margin.x.toInt())
             val center = view.toScreen(n.position)
-            val textBounds = n.cache.textBounds/2*view.scale
+            val textBounds = n.textBounds / 2 * view.scale
 
             val textUl = center - textBounds
 
@@ -93,14 +88,14 @@ class NodeEditor(
             val br = center + textBounds + margin + Vector2.Unit
             parent.placeMeAt(this, ul, br)
 
-            if (n.attributes.text == Constants.defaultNodeText) {
-                //set
-                this.select(0, n.attributes.text.length)
+            val text = n.lines.joinToString("\n")
+            if (text == Constants.defaultNodeText) {
+                this.select(0, text.length)
             } else {
                 setCaretBy?.let { caret ->
                     val fm = this.getFontMetrics(this.font)
-                    val lineIdx = ((caret.y - textUl.y) / fm.height).toInt().coerceIn(0, n.cache.lines.size - 1)
-                    val line = n.cache.lines[lineIdx]
+                    val lineIdx = ((caret.y - textUl.y) / fm.height).toInt().coerceIn(0, n.lines.size - 1)
+                    val line = n.lines[lineIdx]
                     //compute specific caret position
                     (0..line.length - 1).find {
                         val s = line.substring(0, it + 1)
@@ -108,7 +103,7 @@ class NodeEditor(
                         textUl.x + substringLen > caret.x
                     }
                         ?.let { caretIdx ->
-                            val globalIndex = n.cache.lines
+                            val globalIndex = n.lines
                                 .take(lineIdx)
                                 .sumOf { it.length + 1 }
                                 .let { it + caretIdx }
@@ -124,13 +119,16 @@ class NodeEditor(
     }
 
 
-    fun startNodeEdit(n: Node, clickScreenCoordinates: Vector2?) {
-        editedNode = n
-        parent.model.textEditStarted(n.id)
-        this.text = editedNode!!.attributes.text
-        this.background = n.attributes.bg.orElse(Constants.defaultBgColor).toAwt()
-        this.foreground = n.attributes.fg.orElse(Constants.defaultFgColor).toAwt()
-        updatePosition(clickScreenCoordinates)
+    fun startNodeEdit(nodeId: String, clickScreenCoordinates: Vector2?) {
+        parent.model.sceneNode(nodeId, TextMeasurer.default)?.let { n ->
+            parent.model.textEditStarted(nodeId)
+            // before editedNode: setting the text must not be reported as typing
+            this.text = n.lines.joinToString("\n")
+            editedNode = nodeId
+            this.background = n.bg.orElse(Constants.defaultBgColor).toAwt()
+            this.foreground = n.fg.orElse(Constants.defaultFgColor).toAwt()
+            updatePosition(clickScreenCoordinates)
+        }
     }
 
     // The widget only reports the text; the client puts it into the node and records the edit.

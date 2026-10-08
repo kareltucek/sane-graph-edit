@@ -71,7 +71,7 @@ class GraphKeyListener(
         }
 
         val mapper = graphView.keyMapper ?: return
-        mapper.activeView = graphView
+        mapper.activeView = graphView.model
         mapper.feedKey(notation)
         e.consume()
     }
@@ -81,7 +81,7 @@ class GraphKeyListener(
         val notation = AwtKeys.fromKeyPressed(e) ?: return
 
         val mapper = graphView.keyMapper ?: return
-        mapper.activeView = graphView
+        mapper.activeView = graphView.model
         mapper.feedKey(notation)
         e.consume()
     }

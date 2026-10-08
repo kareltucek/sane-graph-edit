@@ -1,6 +1,7 @@
 package client
 
 import graph_tools.DynamicPlacement
+import graph_tools.Node
 import graph_tools.NodeShape
 import graph_tools.NodeText
 import graph_tools.TextMeasurer
@@ -51,22 +52,29 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
     val visible = g.visibleNodes()
     val selected = g.selectedNodes
     return Scene(
-        nodes = g.nodes.filter { it in visible }.map { n ->
-            SceneNode(
-                id = n.id,
-                position = n.position,
-                shapeBounds = n.cache.shapeBounds,
-                textBounds = n.cache.textBounds,
-                lines = n.cache.lines,
-                shape = (NodeShape.values().firstOrNull { it.impl === n.cache.shape } ?: NodeShape.defaultShape).id,
-                bg = n.attributes.bg,
-                fg = n.attributes.fg,
-                fontSize = NodeText.fontSize(n),
-                monospace = NodeText.isMonospace(n),
-                selected = n in selected,
-            )
-        },
+        nodes = g.nodes.filter { it in visible }.map { sceneNode(it, it in selected) },
         edges = g.edges.filter { it.src in visible && it.dst in visible }.map { SceneEdge(it.cache.srcPt, it.cache.dstPt) },
         selectionBox = gestures.selectionBoxFrom?.let { Vector2.computeCorners(gestures.lastPosition, it) },
     )
 }
+
+/** The node [id] alone, as [scene] describes it, its size brought up to date with [measurer]. Null when there is none. */
+fun EditorView.sceneNode(id: String, measurer: TextMeasurer): SceneNode? {
+    g.recompute(measurer)
+    return g.node(id)?.let { sceneNode(it, it in g.selectedNodes) }
+}
+
+private fun sceneNode(n: Node, selected: Boolean): SceneNode =
+    SceneNode(
+        id = n.id,
+        position = n.position,
+        shapeBounds = n.cache.shapeBounds,
+        textBounds = n.cache.textBounds,
+        lines = n.cache.lines,
+        shape = (NodeShape.values().firstOrNull { it.impl === n.cache.shape } ?: NodeShape.defaultShape).id,
+        bg = n.attributes.bg,
+        fg = n.attributes.fg,
+        fontSize = NodeText.fontSize(n),
+        monospace = NodeText.isMonospace(n),
+        selected = selected,
+    )

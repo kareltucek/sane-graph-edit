@@ -245,7 +245,7 @@ class ScaleTest {
         val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
         mapper.commandExecutor = { cmd, _ -> executed += cmd }
         mapper.installDefaultTransformBindings()
-        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.activeView = GraphView(initialGraph = Graph()).model
         mapper.mode = KeyMapper.Mode.Transform
 
         mapper.feedKey("u")          // undo — would fire in Normal
@@ -260,7 +260,7 @@ class ScaleTest {
         val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
         mapper.commandExecutor = { cmd, _ -> executed += cmd }
         mapper.installDefaultTransformBindings()
-        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.activeView = GraphView(initialGraph = Graph()).model
         mapper.mode = KeyMapper.Mode.Transform
 
         mapper.feedKey("x")

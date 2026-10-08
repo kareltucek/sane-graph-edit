@@ -37,7 +37,7 @@ object FilePicker {
     private var running = false
 
     fun run(gv: GraphView) {
-        val dir = gv.browseDir
+        val dir = gv.content.browseDir
             ?: gv.currentFile?.toAbsolutePath()?.parent
             ?: Workspace.dir
         val file = gv.currentFile?.toAbsolutePath()?.toString().orEmpty()
@@ -75,8 +75,8 @@ object FilePicker {
 
     private fun open(gv: GraphView, dir: Path, result: Result) {
         val targets = result.lines.map { FileLink.resolveIn(it, dir) }
-        result.error?.let { gv.messageArea?.show(it) }
-        targets.firstOrNull()?.let { gv.openTarget(it) }
-        targets.drop(1).forEach { gv.openTargetInTab(it) }
+        result.error?.let { gv.message(it) }
+        targets.firstOrNull()?.let { gv.content.openTarget(it) }
+        targets.drop(1).forEach { gv.content.openTargetInTab(it) }
     }
 }

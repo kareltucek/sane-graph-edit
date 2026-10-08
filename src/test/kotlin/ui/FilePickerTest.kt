@@ -40,7 +40,7 @@ class FilePickerTest {
 
         assertEquals("b.dot", gv.currentFile?.fileName?.toString())
         assertEquals(setOf("target"), gv.g.selectedNodes.map { it.attributes.name }.toSet())
-        gv.jumpBack()
+        gv.content.jumpBack()
         assertEquals("a.dot", gv.currentFile?.fileName?.toString())
     }
 

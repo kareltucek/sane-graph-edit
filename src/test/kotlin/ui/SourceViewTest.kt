@@ -76,13 +76,13 @@ class SourceViewTest {
         val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(g.toString()), initialFile = g)
         gv.g.cleanSelect(gv.g.nodes)
 
-        gv.followFileLink()
+        gv.content.followFileLink()
         assertEquals(null, gv.currentFile)
-        assertEquals(SourceView.title(src, FileLink.Lines(40, null)), gv.untitledName)
+        assertEquals(SourceView.title(src, FileLink.Lines(40, null)), gv.content.untitledName)
 
-        gv.jumpBack()
+        gv.content.jumpBack()
         assertEquals("g.dot", gv.currentFile?.fileName.toString())
-        gv.jumpForward()
-        assertEquals(SourceView.title(src, FileLink.Lines(40, null)), gv.untitledName)
+        gv.content.jumpForward()
+        assertEquals(SourceView.title(src, FileLink.Lines(40, null)), gv.content.untitledName)
     }
 }

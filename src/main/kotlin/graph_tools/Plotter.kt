@@ -49,8 +49,6 @@ object Plotter {
      */
     var screenDimensions: Vector2 = Vector2(800.0, 600.0)
 
-    fun workspaceFontSize(n: Node): Double = NodeText.fontSize(n)
-
     fun setTransforms(g2d: Graphics2D, view: ViewTransform, optimizationLevel: Int) {
         this.view = view
         // Concatenate, do *not* overwrite. The Graphics2D handed to a
@@ -120,11 +118,6 @@ object Plotter {
                 ascent = fm.ascent.toDouble(),
                 lineHeight = fm.height.toDouble(),
             )
-        }
-
-        fun recomputeBounds(n: Node, fm: FontMetrics) {
-            val lines = n.attributes.text.split("\n")
-            NodeText.apply(n, lines, metrics(lines, fm))
         }
 
         fun drawEdge(g2d: Graphics2D, e: SceneEdge) {
@@ -267,8 +260,6 @@ data class FontData(
         val cache: MutableMap<Pair<Double, Boolean>, FontData> = mutableMapOf()
 
         private val monospaceBase = Font(Font.MONOSPACED, Font.PLAIN, 12)
-
-        fun isMonospace(n: Node): Boolean = NodeText.isMonospace(n)
 
         fun get(g2d: Graphics2D, fs: Double, monospace: Boolean = false): FontData {
             val fd = FontData.cache[fs to monospace].orElse {

@@ -49,15 +49,15 @@ class FileTreeTest {
         fun labels() = gv.g.nodes.map { it.attributes.text }.toSet()
 
         gv.g.cleanSelect(setOf(node("graphs/")))
-        gv.followFileLink()
+        gv.content.followFileLink()
         assertTrue("/" in labels(), "parents shown after gf: ${labels()}")
         assertTrue("${root.fileName}/" in labels())
         assertTrue("deep/" in labels())
 
         gv.g.cleanSelect(setOf(node("/")))
-        gv.followFileLink()
+        gv.content.followFileLink()
         assertTrue("tmp/" in labels() || labels().size > 1, "root browsed: ${labels()}")
-        assertEquals("browse: /", gv.untitledName)
+        assertEquals("browse: /", gv.content.untitledName)
     }
 
     @Test

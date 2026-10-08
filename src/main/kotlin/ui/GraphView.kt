@@ -2,13 +2,7 @@ package ui
 
 import client.*
 import Graph
-import client.DocumentSession
-import export.SvgWriter
-import graph_tools.GraphTools
 import graph_tools.AwtTextMeasurer
-import graph_tools.Node
-import graph_tools.NodeStyle
-import graph_tools.Plotter
 import utils.Utils.orElse
 import utils.Constants
 import utils.Constants.stylePickerDimensions
@@ -16,7 +10,6 @@ import utils.Vector2
 import java.awt.Graphics
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
-import java.awt.geom.AffineTransform
 import java.nio.file.Path
 import java.util.UUID
 import javax.swing.JComponent
@@ -37,20 +30,13 @@ import javax.swing.SpringLayout
  * listeners mutate [g] and then call `repaint()`; the actual drawing
  * happens in [graphCanvas]'s paint path via [graph_tools.Plotter].
  *
- * One `GraphView` is "one open document" in the tab model: it owns a
- * [Graph] (and therefore a per-document undo history), a [currentFile]
- * pointer, an [isDirty] flag, and a [viewTransform] that pans/zooms
- * independently of other tabs.
- *
- * On tab switch, [ui.TabManager] rewires [Plotter.t] to point at the
- * active view's [viewTransform]. That's the single piece of global
- * state that still makes rendering work with multiple tabs without
- * having to thread a transform through every draw call.
+ * One `GraphView` is one tab. What it shows and how it is edited
+ * is in its [model]; this class shows it and asks the user.
  */
 class GraphView(
     initialGraph: Graph = Graph.defaultGraph(),
     initialFile: Path? = null,
-) : JLayeredPane(), Renderer, KeyTarget {
+) : JLayeredPane(), Renderer, Shell {
     val graphCanvas = GraphCanvas(this)
     val nodeEditor = NodeEditor(this)
     val stylePicker = StylePicker(this)
@@ -69,67 +55,22 @@ class GraphView(
         set(value) {
             model.lastScreenCursorPosition = value
         }
-    var optimizeOnDrag: Boolean
-        get() = model.optimizeOnDrag
-        set(value) {
-            model.optimizeOnDrag = value
-        }
-    var defaultNodeStyle: NodeStyle
-        get() = model.defaultNodeStyle
-        set(value) {
-            model.defaultNodeStyle = value
-        }
-
-    /**
-     * The shared document [g] is this view's replica of, when there
-     * is an [Editor] session. Null without one (unit tests): the
-     * view then edits a graph of its own.
-     */
-    var document: DocumentSession? = null
-        private set
-
-    /**
-     * The graph this view is currently editing. Swap it out via
-     * [replaceGraph] — direct assignment would leave the previous
-     * graph's history listener dangling.
-     */
-    var g: Graph
-        get() = model.g
-        private set(value) {
-            model.g = value
-        }
-
     /**
      * The toolkit-free half of this view: where it looks, the
-     * cursor, the gesture in progress, and the editing done with
-     * them. This class is its [Renderer]: the Swing half.
+     * cursor, the gesture in progress, what file it shows, and the
+     * editing done with them. This class is its [Renderer] and its
+     * [Shell]: the Swing half.
      */
-    override val model: EditorView = EditorView(adopt(initialGraph, initialFile), this)
+    val model: EditorView = EditorView(initialGraph, this, this, Editor.client, initialFile)
 
-    /**
-     * Make the document of [file] — or, without one, a new document
-     * holding [graph] — the one this view shows, and return the graph
-     * to edit.
-     */
-    private fun adopt(graph: Graph, file: Path?): Graph {
-        val doc = Editor.client?.let { c ->
-            if (file != null) c.open(file.toAbsolutePath().normalize().toString()) else c.create(graph)
-        }
-        // only now: opening may have failed, and then the view keeps what it had
-        document?.close()
-        document = doc
-        // our own changes repaint where they are made; these are other clients', undo and reload
-        doc?.onChange = { local -> if (!local) repaint() }
-        doc?.onInfo = {
-            isDirty = doc.info.dirty
-            refreshStatus()
-        }
-        doc?.onRejected = { reason -> messageArea?.show("change refused: $reason") }
-        doc?.onLost = { document = null }
-        return doc?.graph ?: graph
-    }
+    val g: Graph get() = model.g
+    val content: ViewContent get() = model.content
+    val searchState: SearchState get() = model.searchState
+    val currentFile: Path? get() = content.currentFile
+    val isDirty: Boolean get() = content.isDirty
+    val title: String get() = content.title
 
-    // --- what `:` commands ask of the application (KeyTarget) ---
+    // --- what the client asks of the application (Shell) ---
 
     /** In the message area; printed when there is none (headless runs, tests). */
     override fun message(text: String) {
@@ -137,23 +78,37 @@ class GraphView(
         area?.show(text) ?: print(text)
     }
 
-    override fun saveCopy(path: Path) {
-        document?.saveCopy(path.toString()) ?: DotGraphLoader.saveToFile(g, path.toString())
+    override fun alert(title: String, text: String, error: Boolean) {
+        JOptionPane.showMessageDialog(this, text, title, if (error) JOptionPane.ERROR_MESSAGE else JOptionPane.INFORMATION_MESSAGE)
     }
 
-    override fun edit(path: Path) {
+    override fun confirm(title: String, question: String): Boolean =
+        JOptionPane.showConfirmDialog(this, question, title, JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.OK_OPTION
+
+    override fun chooseOpen(): Path? = FileOps.openDialog(this)
+
+    override fun chooseSave(defaultName: String): Path? = FileOps.saveDialog(this, defaultName)
+
+    override fun chooseExport(defaultName: String): Path? = FileOps.exportSvgDialog(this, defaultName)
+
+    override fun stateChanged() = onStateChange()
+
+    override fun sessionChanged() {
+        tabManager?.saveSession()
+    }
+
+    override fun newTab(): EditorView? = tabManager?.newTab()?.model
+
+    override fun edit(path: Path): EditorView? =
         if (java.nio.file.Files.isDirectory(path)) {
-            tabManager?.browse(path)
+            tabManager?.browse(path)?.model
         } else {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
-            tabManager?.newTab(graph = loaded, path = path)
             AppState.lastOpenDir = path.toAbsolutePath().parent
+            tabManager?.newTab(graph = loaded, path = path)?.model
         }
-    }
 
-    override fun browse(dir: Path) {
-        tabManager?.browse(dir)
-    }
+    override fun browse(dir: Path): EditorView? = tabManager?.browse(dir)?.model
 
     override fun switchWorkspace(dir: Path) {
         // headless: no tabs, just the directory
@@ -168,33 +123,6 @@ class GraphView(
         refreshStatus()
         tabManager?.forEachView { it.repaint() } ?: repaint()
     }
-
-    /** Leave the document; for when the view goes away. */
-    fun closeDocument() {
-        document?.close()
-        document = null
-    }
-
-    /**
-     * On-disk location the current graph was loaded from or last
-     * saved to. `null` means "untitled" — saving hits the Save-As
-     * dialog flow.
-     */
-    var currentFile: Path? = initialFile
-        private set
-
-    /**
-     * True if the graph has been mutated since the last save or
-     * load. Flipping this runs [onStateChange] so the tab title and
-     * window title can refresh.
-     */
-    var isDirty: Boolean = false
-        private set(value) {
-            if (field != value) {
-                field = value
-                onStateChange()
-            }
-        }
 
     /**
      * This view's pan and zoom. Starts at identity; the first paint
@@ -249,9 +177,6 @@ class GraphView(
      */
     var statusBar: StatusBar? = null
 
-    /** Search state: last confirmed query, results, n/N cursor. */
-    val searchState: SearchState = SearchState()
-
     /**
      * Opaque per-tab identifier used as the autosave-backup
      * filename for untitled tabs (tabs with a file hash their
@@ -267,40 +192,7 @@ class GraphView(
         AwtTextMeasurer.install()
         // during a transform gesture the keys are its controls (axis locks, confirm, cancel)
         model.onTransformMode = { on -> keyMapper?.mode = if (on) KeyMapper.Mode.Transform else KeyMapper.Mode.Normal }
-        attachHistoryListener()
-        isDirty = document?.info?.dirty ?: false
     }
-
-    /**
-     * Hook the current graph's [graph_tools.History] to flip
-     * [isDirty] on any mutation. Called at construction and again
-     * whenever the graph is replaced (open/new), so listeners never
-     * accumulate against a graph that's no longer displayed.
-     */
-    private fun attachHistoryListener() {
-        g.history.addListener {
-            // Any mutation makes the document "not the same as the
-            // saved file any more". We don't try to detect the case
-            // where the user undoes back to the saved state — that's
-            // the "clean index" problem from text editors and isn't
-            // worth the complexity for this tool.
-            isDirty = true
-        }
-    }
-
-    /**
-     * Label the tab bar and window title should use for this view:
-     * the file's basename if there is one, `(untitled)` otherwise,
-     * prefixed with `*` while the graph is dirty.
-     */
-    /** Tab title while there is no [currentFile] (e.g. `browse: /home`). */
-    var untitledName: String? = null
-
-    val title: String
-        get() {
-            val base = currentFile?.fileName?.toString() ?: untitledName ?: "(untitled)"
-            return if (isDirty) "*$base" else base
-        }
 
     /**
      * Recompute and push the status-bar text from current state:
@@ -337,7 +229,7 @@ class GraphView(
             "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
             "[discard]".takeIf { graph_tools.ViewModes.discard },
             // somebody else is attached to this document too
-            "[shared]".takeIf { (document?.info?.clients ?: 0) > 1 },
+            "[shared]".takeIf { (content.document?.info?.clients ?: 0) > 1 },
         ).joinToString(" ")
         val parts = listOf(modes, gesture, stylePickerText, recText, linkStatus()).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))
@@ -410,20 +302,15 @@ class GraphView(
         );
     }
 
-    fun setTextFieldVisible(visible: Boolean) {
-        nodeEditor.isVisible = visible
-    }
-
     override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
-        g.node(nodeId)?.let { startNodeEdit(it, screenClick) }
-    }
-
-    fun startNodeEdit(n: Node, screenClickCoordinates: Vector2?) {
         endNodeEdit()
-        nodeEditor.startNodeEdit(n, screenClickCoordinates)
-        nodeEditor.isVisible = true
-        nodeEditor.requestFocus()
-        parent.repaint()
+        nodeEditor.startNodeEdit(nodeId, screenClick)
+        // nothing to show when the node is gone
+        if (nodeEditor.editedNode != null) {
+            nodeEditor.isVisible = true
+            nodeEditor.requestFocus()
+            parent.repaint()
+        }
     }
 
     override fun endNodeEdit() {
@@ -450,413 +337,6 @@ class GraphView(
         graphCanvas.requestFocus()
         refreshStatus()
         parent.repaint()
-    }
-
-    /**
-     * Swap [g] for [newGraph], re-wire the history listener, and
-     * reset the dirty flag. Used by open, new, and clear.
-     */
-    private fun replaceGraph(newGraph: Graph, file: Path? = null) {
-        g = adopt(newGraph, file)
-        attachHistoryListener()
-        // a file somebody else has open may come with their unsaved changes
-        isDirty = document?.info?.dirty ?: false
-        onStateChange()
-    }
-
-    /**
-     * Save to [currentFile], or fall through to [saveFileAs] if the
-     * graph has never been saved. Returns true on success, false if
-     * the user cancelled a Save-As dialog.
-     */
-    override fun saveFile(): Boolean {
-        val path = currentFile ?: return saveFileAs()
-        return writeTo(path)
-    }
-
-    /**
-     * Unconditionally show a Save-As dialog and write to the chosen
-     * path. Returns false on cancellation or write failure.
-     */
-    fun saveFileAs(): Boolean {
-        val defaultName = currentFile?.fileName?.toString() ?: "untitled.dot"
-        val path = FileOps.saveDialog(this, defaultName) ?: return false
-        return writeTo(path)
-    }
-
-    private fun writeTo(path: Path): Boolean {
-        return try {
-            document?.save(path.toAbsolutePath().normalize().toString()) ?: DotGraphLoader.saveToFile(g, path.toString())
-            currentFile = path
-            isDirty = false
-            onStateChange()
-            // Persist the new file path in case this was the
-            // first save of an untitled tab (or a save-as
-            // redirecting an existing tab at a new file).
-            tabManager?.saveSession()
-            true
-        } catch (t: Throwable) {
-            JOptionPane.showMessageDialog(
-                this,
-                "Could not save to $path:\n${t.message}",
-                "Save error",
-                JOptionPane.ERROR_MESSAGE,
-            )
-            false
-        }
-    }
-
-    /**
-     * Prompt for a file, load it into this view, and fit the view
-     * to the new graph. Asks before discarding unsaved changes.
-     * Reports parse errors via a dialog; leaves the current graph
-     * untouched on failure.
-     */
-    fun openFile() {
-        FileOps.openDialog(this)
-            ?.takeIf { confirmDiscard("open ${it.fileName}") }
-            ?.let { path ->
-                val from = currentLocation()
-                if (java.nio.file.Files.isDirectory(path)) {
-                    jumps.record(from)
-                    browseInPlace(path)
-                } else if (loadInPlace(path)) {
-                    jumps.record(from)
-                }
-            }
-    }
-
-    /** Replace this tab's graph with [path] (`:open`, `gf`). True if the file was loaded. */
-    private fun loadInPlace(path: Path): Boolean {
-        return try {
-            val loaded = DotGraphLoader.loadFromFile(path.toString())
-            replaceGraph(loaded, path)
-            currentFile = path
-            untitledName = null
-            browseDir = null
-            sourceView = null
-            onStateChange()
-            boundScreen()
-            repaint()
-            tabManager?.saveSession()
-            AppState.lastOpenDir = path.toAbsolutePath().parent
-            true
-        } catch (t: Throwable) {
-            JOptionPane.showMessageDialog(
-                this,
-                "Could not open $path:\n${t.message}",
-                "Open error",
-                JOptionPane.ERROR_MESSAGE,
-            )
-            false
-        }
-    }
-
-    /**
-     * Re-read [currentFile] from disk, e.g. after an external tool
-     * regenerated it. Unsaved changes are lost (and so is the undo
-     * history, which belongs to the old graph), so a dirty tab asks
-     * first unless [force] is set (`:e!`). The view transform is
-     * kept, so the user keeps looking at the same spot.
-     */
-    override fun reloadFile(force: Boolean) {
-        val path = currentFile
-        if (path == null) {
-            JOptionPane.showMessageDialog(
-                this,
-                "This tab has no file to reload.",
-                "Reload",
-                JOptionPane.INFORMATION_MESSAGE,
-            )
-            return
-        }
-        if (!force && !confirmDiscard("reload ${path.fileName}")) return
-        try {
-            // with a document everyone attached gets the file's content; a failure comes back as a message
-            document?.reload() ?: replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
-            repaint()
-        } catch (t: Throwable) {
-            JOptionPane.showMessageDialog(
-                this,
-                "Could not reload $path:\n${t.message}",
-                "Reload error",
-                JOptionPane.ERROR_MESSAGE,
-            )
-        }
-    }
-
-    /**
-     * True when there are no unsaved changes, the user agrees to lose
-     * them to [action], or `:set discard` says not to ask.
-     */
-    private fun confirmDiscard(action: String): Boolean =
-        !isDirty || graph_tools.ViewModes.discard || JOptionPane.showConfirmDialog(
-            this,
-            "Discard unsaved changes and $action?",
-            "Unsaved changes",
-            JOptionPane.OK_CANCEL_OPTION,
-            JOptionPane.WARNING_MESSAGE,
-        ) == JOptionPane.OK_OPTION
-
-    /**
-     * `gf`: follow the selected node's `link` attribute
-     * ([FileLink]) in this tab, like vim — a file is opened, a
-     * directory is shown as a [FileTree], so repeated `gf` walks the
-     * filesystem. Needs exactly one selected node; asks first if the
-     * tab has unsaved changes.
-     */
-    fun followFileLink(letter: Char = 'f', quiet: Boolean = false): Boolean {
-        val target = selectedLink("follow-file-link", letter, quiet)
-        target?.let { openTarget(it) }
-        return target != null
-    }
-
-    /** `gF`: like [followFileLink], but into a new tab, which inherits this tab's jump list. */
-    fun followFileLinkInTab(letter: Char = 'f') {
-        selectedLink("follow-file-link-in-tab", letter, quiet = false)?.let { openTargetInTab(it) }
-    }
-
-    /**
-     * Show [target] in this tab (link following, the picker): a file
-     * is loaded, a directory browsed, the node focused. Recorded in the
-     * [jumps]; asks first about unsaved changes.
-     */
-    fun openTarget(target: FileLink.Target) {
-        val path = target.path
-        val lines = target.lines
-        val inThisGraph = lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
-        val from = currentLocation()
-        when {
-            path != null && lines != null -> if (confirmDiscard("open ${path.fileName}:$lines")) {
-                if (showSourceInPlace(path, lines)) jumps.record(from)
-            }
-            inThisGraph -> if (target.nodeId != null) {
-                jumps.record(from)
-                focusNode(target.nodeId)
-            }
-            path == null || !confirmDiscard("open ${path.fileName ?: path}") -> Unit
-            java.nio.file.Files.isDirectory(path) -> {
-                jumps.record(from)
-                browseInPlace(path)
-            }
-            loadInPlace(path) -> {
-                jumps.record(from)
-                focusNode(target.nodeId)
-            }
-        }
-    }
-
-    /** Like [openTarget], into a new tab that inherits this tab's jump list. */
-    fun openTargetInTab(target: FileLink.Target) {
-        val path = target.path
-        val lines = target.lines
-        val opened = when {
-            path == null -> {
-                jumps.record(currentLocation())
-                focusNode(target.nodeId)
-                null
-            }
-            lines != null -> tabManager?.newTab()?.takeIf { it.showSourceInPlace(path, lines) }
-            java.nio.file.Files.isDirectory(path) -> tabManager?.browse(path)
-            // the new tab has no size yet; its first paint does the focusing
-            else -> tabManager?.openPath(path)?.also { it.pendingFocus = target.nodeId }
-        }
-        opened?.jumps = jumps.copy().also { it.record(currentLocation()) }
-    }
-
-    // --- jump list (Ctrl+O / Ctrl+I) ---
-
-    /** This tab's jump history; see [JumpList]. */
-    var jumps: JumpList = JumpList()
-
-    /** Directory shown when this tab is a [FileTree] (`:browse`, `gf` on a directory). */
-    var browseDir: Path? = null
-
-    /** Lines shown when this tab is a [SourceView] (a `<file>:<line>` link). */
-    var sourceView: FileLink.Target? = null
-
-    /**
-     * Replace this tab's graph with a [SourceView] of [lines] of
-     * [path]. False (and a message) if the file can't be read.
-     */
-    fun showSourceInPlace(path: Path, lines: FileLink.Lines): Boolean {
-        val graph = try {
-            SourceView.build(path, lines)
-        } catch (e: Exception) {
-            messageArea?.show("cannot read $path: ${e.message}")
-            null
-        }
-        if (graph != null) {
-            replaceGraph(graph)
-            currentFile = null
-            browseDir = null
-            sourceView = FileLink.Target(path, null, lines)
-            untitledName = SourceView.title(path, lines)
-            onStateChange()
-            if (graphCanvas.width > 0) setViewTo(Vector2.Zero, viewTransform.scale)
-            tabManager?.saveSession()
-        }
-        return graph != null
-    }
-
-    /** Where this tab is now, as a [JumpList] entry. */
-    fun currentLocation(): JumpList.Location {
-        val m = viewTransform.matrix
-        return JumpList.Location(
-            file = currentFile?.toAbsolutePath()?.normalize(),
-            browseDir = browseDir,
-            selection = g.selectedNodes.map { nodeKey(it) }.toSet(),
-            transform = m.toList(),
-            sourceView = sourceView,
-        )
-    }
-
-    /** How a node is recognised in a reloaded graph: its DOT id, or its label if it has none. */
-    private fun nodeKey(n: graph_tools.Node): String = n.attributes.name.ifBlank { n.attributes.text }
-
-    /** `Ctrl+O`: back to where the last jump started. */
-    fun jumpBack() {
-        val before = jumps.position()
-        val target = jumps.back(currentLocation())
-        if (target != null && !goTo(target)) jumps.restorePosition(before)
-    }
-
-    /** `Ctrl+I`: forward again after [jumpBack]. */
-    fun jumpForward() {
-        val before = jumps.position()
-        val target = jumps.forward()
-        if (target != null && !goTo(target)) jumps.restorePosition(before)
-    }
-
-    /**
-     * Show [loc]: reload its file or directory unless the tab shows
-     * it already (asking first about unsaved changes), then restore its
-     * selection and view. False if it couldn't be opened.
-     */
-    private fun goTo(loc: JumpList.Location): Boolean {
-        val here = currentLocation()
-        val file = loc.file
-        val dir = loc.browseDir
-        val source = loc.sourceView
-        val sourcePath = source?.path
-        val sourceLines = source?.lines
-        val opened = when {
-            loc.sameGraph(here) -> true
-            file == null && dir == null && source == null -> false  // an untitled graph that is gone
-            !confirmDiscard("go back to ${(file ?: dir ?: sourcePath)?.fileName}") -> false
-            sourcePath != null && sourceLines != null -> showSourceInPlace(sourcePath, sourceLines)
-            dir != null -> java.nio.file.Files.isDirectory(dir).also { if (it) browseInPlace(dir) }
-            else -> file?.let { loadInPlace(it) } == true
-        }
-        if (opened) {
-            viewTransform.matrix = loc.transform
-            g.cleanSelect(g.nodes.filter { nodeKey(it) in loc.selection })
-            repaint()
-        }
-        return opened
-    }
-
-    /**
-     * The resolved `link-<letter>` of the single selected node, or
-     * null after telling the user why there is none ([command] names
-     * the caller; [quiet] skips the telling).
-     */
-    private fun selectedLink(command: String, letter: Char, quiet: Boolean): FileLink.Target? {
-        val node = g.selectedNodes.singleOrNull()
-        val link = node?.let { FileLink.of(it, letter) }
-        val problem = when {
-            node == null -> "select exactly one node"
-            link == null -> "the node has no `${FileLink.attributeName(letter)}` attribute"
-            else -> null
-        }
-        if (problem != null && !quiet) messageArea?.show("$command: $problem")
-        return link?.let { FileLink.resolve(it, currentFile) }
-    }
-
-    /** Node id to focus on the first paint (a link opened this tab). */
-    var pendingFocus: String? = null
-
-    /**
-     * Select the node whose DOT id is [nodeId] and centre the view on
-     * it, keeping the zoom. No-op for null; a message if it's missing.
-     */
-    fun focusNode(nodeId: String?) {
-        val node = nodeId?.let { id -> g.nodes.find { it.attributes.name == id } }
-        when {
-            nodeId == null -> Unit
-            node == null -> messageArea?.show("no node `$nodeId` in ${currentFile?.fileName ?: "this graph"}")
-            else -> {
-                g.cleanSelect(setOf(node))
-                setViewTo(node.position, viewTransform.scale)
-            }
-        }
-    }
-
-    /**
-     * Replace this tab's graph with the [FileTree] of [dir]. The
-     * browsed directory sits at the origin; centre the view on it.
-     */
-    fun browseInPlace(dir: Path) {
-        replaceGraph(FileTree.build(dir))
-        currentFile = null
-        browseDir = dir.toAbsolutePath().normalize()
-        sourceView = null
-        untitledName = "browse: $browseDir"
-        onStateChange()
-        setViewTo(Vector2.Zero)
-        tabManager?.saveSession()
-    }
-
-    /**
-     * Export the full graph as SVG. Prompts for a file path via
-     * the save dialog; default filename matches the current DOT
-     * file with a `.svg` extension.
-     */
-    fun exportSvg() {
-        val baseName = currentFile?.fileName?.toString()
-            ?.removeSuffix(".dot")?.plus(".svg")
-            ?: "untitled.svg"
-        val path = FileOps.exportSvgDialog(this, baseName) ?: return
-        // Export only visible nodes so hidden nodes stay hidden in the SVG.
-        val visible = g.visibleNodes()
-        writeExport(path, SvgWriter.write(g, visible))
-    }
-
-    /**
-     * Export only the selected nodes (and edges between them) as
-     * SVG. Falls back to full-graph export if nothing is selected.
-     */
-    fun exportSelection() {
-        val sel = g.selectedNodes.takeIf { it.isNotEmpty() }
-        val baseName = currentFile?.fileName?.toString()
-            ?.removeSuffix(".dot")?.plus("-selection.svg")
-            ?: "selection.svg"
-        val path = FileOps.exportSvgDialog(this, baseName) ?: return
-        writeExport(path, SvgWriter.write(g, sel))
-    }
-
-    private fun writeExport(path: java.nio.file.Path, content: String) {
-        try {
-            java.nio.file.Files.writeString(path, content)
-        } catch (t: Throwable) {
-            JOptionPane.showMessageDialog(
-                this,
-                "Could not export to $path:\n${t.message}",
-                "Export error",
-                JOptionPane.ERROR_MESSAGE,
-            )
-        }
-    }
-
-    /**
-     * Replace the current graph with an empty one. Use case: the
-     * user hits Ctrl+N or closes the last remaining tab.
-     */
-    fun clearToEmpty() {
-        replaceGraph(Graph())
-        currentFile = null
-        onStateChange()
-        repaint()
     }
 
     init {
@@ -897,21 +377,13 @@ class GraphView(
         model.size = Vector2(this.width, this.height)
     }
 
-    fun setViewTo(pos: Vector2, scale: Double = 1.0) {
+    // every resize comes through here
+    override fun setBounds(x: Int, y: Int, width: Int, height: Int) {
+        super.setBounds(x, y, width, height)
         syncSize()
-        model.setViewTo(pos, scale)
     }
 
-    fun centerScreen() {
-        syncSize()
-        model.centerScreen()
-    }
-
-    fun boundScreen() {
-        syncSize()
-        model.boundScreen()
-    }
-
+    fun boundScreen() = model.boundScreen()
 
     public override fun paintComponent(g: Graphics) {
         super.paintComponent(g)

@@ -131,13 +131,13 @@ class KeyMapper(
     private var pendingTimer: (() -> Unit)? = null
 
     /** Callback invoked to execute a resolved command name. */
-    var commandExecutor: ((String, KeyTarget) -> Unit)? = null
+    var commandExecutor: ((String, EditorView) -> Unit)? = null
 
     /** Callback invoked when `:` is replayed (opens the command bar). */
-    var commandBarOpener: ((KeyTarget) -> Unit)? = null
+    var commandBarOpener: ((EditorView) -> Unit)? = null
 
-    /** The currently active KeyTarget — set by the key listener before feeding keys. */
-    var activeView: KeyTarget? = null
+    /** The view keys and commands act on — set by the key listener before feeding keys. */
+    var activeView: EditorView? = null
 
     // --- macro registers ---
 
@@ -167,17 +167,17 @@ class KeyMapper(
     private var replaying: Boolean = false
 
     /** Callback for setting a mark on the current selection. Set by Window. */
-    var markSetter: ((KeyTarget, Char) -> Unit)? = null
+    var markSetter: ((EditorView, Char) -> Unit)? = null
 
     /** Callback for recalling a mark. Set by Window. */
-    var markRecaller: ((KeyTarget, Char) -> Unit)? = null
+    var markRecaller: ((EditorView, Char) -> Unit)? = null
 
     /**
      * Callback for an unmapped `g<letter>`: follow the selected
      * node's `link-<letter>`. Returns false when there is no such
      * link, and the keys are then resolved as before. Set by Window.
      */
-    var linkFollower: ((KeyTarget, Char) -> Boolean)? = null
+    var linkFollower: ((EditorView, Char) -> Boolean)? = null
 
     /**
      * When non-null, we're accumulating characters into a
@@ -603,7 +603,7 @@ class KeyMapper(
 
     /**
      * Execute a command-bar line. Config commands (`map`, `set`,
-     * `source`, etc.) work without a [KeyTarget]; graph commands
+     * `source`, etc.) work without a view; graph commands
      * (`:w`, `:q`, `:e`, named commands) require one and are
      * silently skipped if [activeView] is null (which happens
      * during init-file loading before the UI is up).
@@ -613,7 +613,7 @@ class KeyMapper(
         val cmd = parts[0]
         val args = parts.getOrNull(1)
 
-        // --- Config commands (no KeyTarget needed) ---
+        // --- Config commands (no view needed) ---
         when (cmd) {
             "map", "noremap" -> {
                 if (args != null) {
@@ -667,7 +667,7 @@ class KeyMapper(
             "w" -> {
                 if (args != null) {
                     try {
-                        gv.saveCopy(resolvePath(args).toAbsolutePath().normalize())
+                        gv.content.saveCopy(resolvePath(args).toAbsolutePath().normalize())
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :w failed: ${t.message}")
                     }
@@ -675,13 +675,13 @@ class KeyMapper(
                     commandExecutor?.invoke("save", gv)
                 }
             }
-            "q" -> gv.quit(force = false, all = false)
-            "q!" -> gv.quit(force = true, all = false)
-            "qa" -> gv.quit(force = false, all = true)
-            "qa!" -> gv.quit(force = true, all = true)
+            "q" -> gv.shell.quit(force = false, all = false)
+            "q!" -> gv.shell.quit(force = true, all = false)
+            "qa" -> gv.shell.quit(force = false, all = true)
+            "qa!" -> gv.shell.quit(force = true, all = true)
             "wq" -> {
-                if (gv.saveFile()) {
-                    gv.quit(force = false, all = false)
+                if (gv.content.save()) {
+                    gv.shell.quit(force = false, all = false)
                 }
             }
             "help" -> {
@@ -704,10 +704,10 @@ class KeyMapper(
                     if (parsed != null) {
                         val (fmt, path) = parsed
                         try {
-                            val visible = gv.model.g.visibleNodes()
+                            val visible = gv.g.visibleNodes()
                             java.nio.file.Files.writeString(
                                 resolvePath(path),
-                                renderExport(gv.model.g, visible, fmt),
+                                renderExport(gv.g, visible, fmt),
                             )
                         } catch (t: Throwable) {
                             System.err.println("sane-graph-edit: :export failed: ${t.message}")
@@ -724,11 +724,11 @@ class KeyMapper(
                     if (parsed != null) {
                         val (fmt, path) = parsed
                         try {
-                            val sel = gv.model.g.selectedNodes.takeIf { it.isNotEmpty() }
-                                ?: gv.model.g.nodes.toSet()
+                            val sel = gv.g.selectedNodes.takeIf { it.isNotEmpty() }
+                                ?: gv.g.nodes.toSet()
                             java.nio.file.Files.writeString(
                                 resolvePath(path),
-                                renderExport(gv.model.g, sel, fmt),
+                                renderExport(gv.g, sel, fmt),
                             )
                         } catch (t: Throwable) {
                             System.err.println("sane-graph-edit: :export-selection failed: ${t.message}")
@@ -741,7 +741,7 @@ class KeyMapper(
             "e" -> {
                 if (args != null) {
                     try {
-                        gv.edit(resolvePath(args))
+                        gv.shell.edit(resolvePath(args))
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :e failed: ${t.message}")
                     }
@@ -750,19 +750,19 @@ class KeyMapper(
                     commandExecutor?.invoke("reload", gv)
                 }
             }
-            "e!" -> gv.reloadFile(force = true)
+            "e!" -> gv.content.reload(force = true)
             "browse" -> {
                 // :browse [dir] — file-tree tab; no arg = working directory
                 val dir = args?.let { resolvePath(it) } ?: Workspace.dir
-                gv.browse(dir)
+                gv.shell.browse(dir)
             }
             "cd" -> {
                 // :cd <dir> — switch the workspace; no arg = show it
                 val dir = args?.let { resolvePath(it) }
                 when {
-                    dir == null -> gv.message(Workspace.dir.toString())
-                    !java.nio.file.Files.isDirectory(dir) -> gv.message("cd: not a directory: $dir")
-                    else -> gv.switchWorkspace(dir)
+                    dir == null -> gv.shell.message(Workspace.dir.toString())
+                    !java.nio.file.Files.isDirectory(dir) -> gv.shell.message("cd: not a directory: $dir")
+                    else -> gv.shell.switchWorkspace(dir)
                 }
             }
             else -> {
@@ -803,7 +803,7 @@ class KeyMapper(
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
             else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
         }
-        activeView?.modesChanged()
+        activeView?.shell?.modesChanged()
     }
 
     /** [FLAG_SETTINGS] plus aliases (not offered by completion). */
@@ -1142,7 +1142,7 @@ class KeyMapper(
      * if the message area isn't available (e.g., unit tests).
      */
     private fun showHelpText(text: String) {
-        activeView?.message(text) ?: print(text)
+        activeView?.shell?.message(text) ?: print(text)
     }
 
     companion object {

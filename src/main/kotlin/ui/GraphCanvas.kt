@@ -48,7 +48,7 @@ class GraphCanvas(
                 parent.viewTransform.translate(Vector2(this.width, this.height) / 2)
             }
             // a link into this new tab asked to focus a node; only now is the size known
-            this.parent.pendingFocus?.let { this.parent.pendingFocus = null; this.parent.focusNode(it) }
+            parent.content.pendingFocus?.let { parent.content.pendingFocus = null; parent.content.focusNode(it) }
             this.requestFocus()
         }
 
