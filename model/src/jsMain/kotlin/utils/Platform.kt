@@ -16,6 +16,10 @@ actual object Platform {
 
     actual fun nextCount(): Long = counter++
 
+    actual fun warn(text: String) {
+        console.error(text)
+    }
+
     actual fun readText(path: String): String = fs.readFileSync(path, "utf8") as String
 
     actual fun writeText(path: String, text: String) {

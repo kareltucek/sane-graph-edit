@@ -11,6 +11,9 @@ expect object Platform {
     /** 0, 1, 2 …: a new number for every call in this process, from any thread. */
     fun nextCount(): Long
 
+    /** A line for whoever watches the process, not for the user: standard error. */
+    fun warn(text: String)
+
     fun readText(path: String): String
 
     /** Write [text] to the file at [path], creating or replacing it. */

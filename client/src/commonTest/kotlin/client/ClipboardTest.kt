@@ -1,3 +1,5 @@
+@file:Suppress("NAME_CONTAINS_ILLEGAL_CHARS")
+
 package client
 
 import Graph

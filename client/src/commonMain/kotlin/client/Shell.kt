@@ -1,6 +1,5 @@
 package client
 
-import java.nio.file.Path
 
 /** Delayed actions on the client's thread; the platform provides it. */
 fun interface Scheduler {
@@ -61,7 +60,7 @@ interface Shell {
 /** No application: messages are printed, questions are answered with no. */
 object NoShell : Shell {
     override fun message(text: String) = print(text)
-    override fun alert(title: String, text: String, error: Boolean) = System.err.println("$title: $text")
+    override fun alert(title: String, text: String, error: Boolean) = utils.Platform.warn("$title: $text")
     override fun confirm(title: String, question: String): Boolean = false
     override fun chooseOpen(): Path? = null
     override fun chooseSave(defaultName: String): Path? = null

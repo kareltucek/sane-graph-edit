@@ -7,7 +7,6 @@ import graph_tools.Node
 import graph_tools.NodeStyle
 import utils.Utils.orElse
 import utils.Vector2
-import java.nio.file.Path
 
 /**
  * What a client asks of its renderer (conn1, client → renderer).
@@ -122,7 +121,7 @@ class EditorView(
     fun boundScreen() {
         GraphTools.computeBoundingBox(focus())?.let { box ->
             val scale = size / (box.br - box.ul)
-            val targetScale = (Math.min(scale.x, scale.y) / 1.1).coerceIn(0.0001, 1.0)
+            val targetScale = (minOf(scale.x, scale.y) / 1.1).coerceIn(0.0001, 1.0)
             setViewTo((box.ul + box.br) / 2, targetScale)
         }
     }

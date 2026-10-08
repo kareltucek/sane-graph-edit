@@ -1,7 +1,5 @@
 package client
 
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * Completion for the `:` command line (Tab / Ctrl+D in [CommandBar]):
@@ -53,17 +51,17 @@ object CommandCompletion {
         val slash = word.lastIndexOf('/')
         val typedDir = word.substring(0, slash + 1)
         val namePrefix = word.substring(slash + 1)
-        val expanded = if (typedDir.startsWith("~/")) System.getProperty("user.home") + typedDir.drop(1) else typedDir
+        val expanded = if (typedDir.startsWith("~/")) Fs.home + typedDir.drop(1) else typedDir
         val dir = cwd.resolve(expanded.ifEmpty { "." })
         val entries = try {
-            Files.list(dir).use { s -> s.toList() }
+            Fs.list(dir)
         } catch (_: Exception) {
             emptyList()
         }
         return entries
-            .filter { namePrefix.startsWith(".") || !it.fileName.toString().startsWith(".") }
-            .filter { !dirsOnly || Files.isDirectory(it) }
-            .map { typedDir + it.fileName.toString() + if (Files.isDirectory(it)) "/" else "" }
+            .filter { namePrefix.startsWith(".") || !it.name.startsWith(".") }
+            .filter { !dirsOnly || Fs.isDirectory(it) }
+            .map { typedDir + it.name + if (Fs.isDirectory(it)) "/" else "" }
     }
 
     /** Longest common prefix of [items] (empty for none). */

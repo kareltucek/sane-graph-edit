@@ -12,6 +12,8 @@ actual object Platform {
 
     actual fun nextCount(): Long = counter.getAndIncrement()
 
+    actual fun warn(text: String) = System.err.println(text)
+
     actual fun readText(path: String): String = File(path).readText()
 
     actual fun writeText(path: String, text: String) = File(path).writeText(text)

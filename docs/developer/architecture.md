@@ -27,6 +27,29 @@ Under the hood there are five Gradle subprojects:
 | `:editor-host` | Runs an editor on the JVM: files, in-process and socket connections (`host`). |
 | root           | The Swing renderer and application: widgets, AWT event translation, tabs, dialogs (`ui`), painting (`graph_tools.Plotter`). |
 
+`:model`, `:editor-core` and `:client` are Kotlin Multiplatform
+subprojects with two targets, the JVM and JavaScript for Node.js;
+`:editor-host` and the root project are JVM only. Their code is in
+`src/commonMain`; what differs per platform is behind three
+`expect` objects with a JVM and a JavaScript implementation each:
+
+- `utils.Platform` (model): time, fixed-point number formatting,
+  a process-wide counter, reading and writing a text file.
+- `client.Path` and `client.Fs`: paths and the file system. On the
+  JVM `client.Path` *is* `java.nio.file.Path` (a typealias), so
+  JVM code passes its paths to the client unchanged.
+- `client.AppState`: what is remembered between runs.
+
+JVM only, in `client/src/jvmMain`: the Unix-socket connection, the
+session and preferences files, XDG paths. A JavaScript client needs
+its own transport (planned: WebSocket) and its own storage.
+
+Tests in `commonTest` run on both targets (`./gradlew allTests`;
+the first run downloads Node.js and a test runner). Their names
+contain spaces, which this Kotlin version refuses for JavaScript,
+hence `@file:Suppress("NAME_CONTAINS_ILLEGAL_CHARS")` at the top of
+each; the names work at run time.
+
 See [Sessions: editor and clients](#sessions-editor-and-clients)
 for how they work together.
 

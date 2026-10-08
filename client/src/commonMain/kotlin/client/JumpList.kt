@@ -1,6 +1,5 @@
 package client
 
-import java.nio.file.Path
 
 /**
  * Vim-style jump list of one tab: `Ctrl+O` goes back to where a jump

@@ -19,7 +19,6 @@ import utils.AwtUtils.toScreenspaceVector
 import java.awt.Robot
 import java.awt.event.*
 import java.awt.event.MouseEvent.*
-import java.time.Instant
 
 
 //Todo: refactor this!
@@ -72,7 +71,7 @@ class GraphMouseListener(
 
             // update data
             controller.pressedAt = pos
-            controller.pressedTime = Instant.now()
+            controller.pressedTime = System.currentTimeMillis()
             controller.lastPosition = pos
         }
 

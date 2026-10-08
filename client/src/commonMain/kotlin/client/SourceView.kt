@@ -5,10 +5,6 @@ import graph_tools.Attachments
 import graph_tools.Node
 import utils.Rgb
 import utils.Vector2
-import java.nio.charset.CodingErrorAction
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * Graph for a `<file>:<line>` / `<file>:<from>-<to>` link
@@ -31,12 +27,12 @@ object SourceView {
     private val contextFill = Rgb(0xEEEEEE)
     private val contextText = Rgb(0x666666)
 
-    fun title(path: Path, lines: FileLink.Lines): String = "view: ${path.fileName}:$lines"
+    fun title(path: Path, lines: FileLink.Lines): String = "view: ${path.name}:$lines"
 
     fun build(path: Path, lines: FileLink.Lines): Graph {
         val (from, to) = range(lines)
         val first = (from - CONTEXT).coerceAtLeast(1)
-        val file = read(path, to + CONTEXT)
+        val file = Fs.readLines(path, to + CONTEXT)
         val numberWidth = file.size.coerceAtLeast(to).toString().length
         val numbered = { range: IntRange ->
             range.filter { it <= file.size }.map { no ->
@@ -76,13 +72,5 @@ object SourceView {
         val to = lines.to ?: lines.from
         val from = minOf(lines.from, to).coerceAtLeast(1)
         return from to maxOf(lines.from, to, from)
-    }
-
-    /** The first [upTo] lines of [path]; undecodable bytes become `�` (it may not be UTF-8 text). */
-    private fun read(path: Path, upTo: Int): List<String> {
-        val decoder = StandardCharsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPLACE)
-            .onUnmappableCharacter(CodingErrorAction.REPLACE)
-        return java.io.InputStreamReader(Files.newInputStream(path), decoder).buffered().useLines { it.take(upTo).toList() }
     }
 }

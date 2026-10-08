@@ -1,7 +1,6 @@
 package client
 
 import java.io.File
-import java.nio.file.Path
 import java.nio.file.Paths
 import java.util.Properties
 
@@ -16,7 +15,7 @@ import java.util.Properties
  * bring in a real config library. Reads/writes best-effort swallow
  * IO errors — losing a last-directory hint is never worth crashing.
  */
-object AppState {
+actual object AppState {
     private val file: File = File(System.getProperty("user.home"), ".sanegrapedit.properties")
     private val props: Properties = Properties()
 
@@ -30,7 +29,7 @@ object AppState {
         }
     }
 
-    var lastOpenDir: Path?
+    actual var lastOpenDir: Path?
         get() = props.getProperty("lastOpenDir")?.let(Paths::get)
         set(value) {
             if (value != null) {
@@ -39,7 +38,7 @@ object AppState {
             }
         }
 
-    var lastSaveDir: Path?
+    actual var lastSaveDir: Path?
         get() = props.getProperty("lastSaveDir")?.let(Paths::get)
         set(value) {
             if (value != null) {

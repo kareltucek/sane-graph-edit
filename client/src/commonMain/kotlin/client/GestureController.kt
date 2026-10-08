@@ -8,7 +8,6 @@ import graph_tools.Node
 import utils.Constants
 import utils.Utils.orElse
 import utils.Vector2
-import java.time.Instant
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -17,10 +16,10 @@ class GestureController(
     val graphView: EditorView,
     initialState: States? = null,
     var pressedAt: Vector2 = Vector2.Zero,
-    var pressedTime: Instant? = Instant.now(),
+    var pressedTime: Long? = utils.Platform.nowMillis(),
     var lastPosition: Vector2 = Vector2.Zero,
     var singleClickedAt: Vector2? = null,
-    var singleClickedTime: Instant? = Instant.now(),
+    var singleClickedTime: Long? = utils.Platform.nowMillis(),
     var selectionBoxFrom: Vector2? = null,
     var selectionBoxInitial: Set<Node>? = null,
     /**
@@ -191,7 +190,6 @@ class GestureController(
     fun startBoxSelect(pos: Vector2) {
         selectionBoxFrom = pos
         selectionBoxInitial = graphView.g.selectedNodes.toMutableSet()
-        assert(graphView.g.selectedNodes !== selectionBoxInitial)
         state = States.SelectionBox
     }
 
@@ -544,14 +542,14 @@ class GestureController(
             (this.pressedAt - pos).lengthSquared() < Constants.cursorDeadZone * Constants.cursorDeadZone
         val firstTimeSatisfied =
             this.pressedTime?.let {
-                (Instant.now().toEpochMilli() - it.toEpochMilli()) < Constants.doubletapTimeout
+                (utils.Platform.nowMillis() - it) < Constants.doubletapTimeout
             }.orElse(false)
         val secondClickMatch =
             this.singleClickedAt?.let { (it - pos).lengthSquared() < Constants.cursorDeadZone * Constants.cursorDeadZone }
                 .orElse(false)
         val secondTimeSatisfied =
             this.singleClickedTime?.let {
-                (Instant.now().toEpochMilli() - it.toEpochMilli()) < Constants.doubletapTimeout
+                (utils.Platform.nowMillis() - it) < Constants.doubletapTimeout
             }.orElse(false)
 
         if (thisClickMatch && secondClickMatch && secondTimeSatisfied && !control) {

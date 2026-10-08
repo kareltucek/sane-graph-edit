@@ -495,7 +495,7 @@ class KeyMapper(
      */
     private fun replayRhs(rhs: String, recursive: Boolean, depth: Int = 0) {
         if (depth > MAX_RECURSION) {
-            System.err.println("sane-graph-edit: max mapping recursion depth ($MAX_RECURSION) exceeded, aborting")
+            utils.Platform.warn("sane-graph-edit: max mapping recursion depth ($MAX_RECURSION) exceeded, aborting")
             return
         }
 
@@ -557,21 +557,21 @@ class KeyMapper(
     /**
      * Resolve a path argument from a command-bar line. Expands a
      * leading `~/` to the user's home directory and converts the
-     * result to an absolute [java.nio.file.Path] (a relative path is
+     * result to an absolute [Path] (a relative path is
      * relative to the [Workspace]). Shells normally
      * expand `~` before invoking us, but `~` typed inside the
      * in-app `:` bar (or inside a `-e` argument that's quoted at
      * the shell level) arrives literally — so we expand it
      * ourselves.
      */
-    private fun resolvePath(raw: String): java.nio.file.Path {
+    private fun resolvePath(raw: String): Path {
         val trimmed = raw.trim()
         val expanded = when {
-            trimmed == "~" -> System.getProperty("user.home")
-            trimmed.startsWith("~/") -> System.getProperty("user.home") + trimmed.substring(1)
+            trimmed == "~" -> Fs.home
+            trimmed.startsWith("~/") -> Fs.home + trimmed.substring(1)
             else -> trimmed
         }
-        return Workspace.resolve(java.nio.file.Paths.get(expanded))
+        return Workspace.resolve(Fs.path(expanded))
     }
 
     /**
@@ -584,12 +584,12 @@ class KeyMapper(
     private fun parseExportArgs(args: String, verb: String): Pair<String, String>? {
         val split = args.trim().split("\\s+".toRegex(), limit = 2)
         if (split.size < 2 || split[0].isBlank() || split[1].isBlank()) {
-            System.err.println("sane-graph-edit: :$verb requires <fmt> <path> (fmt: svg|dot)")
+            utils.Platform.warn("sane-graph-edit: :$verb requires <fmt> <path> (fmt: svg|dot)")
             return null
         }
         val fmt = split[0].lowercase()
         if (fmt != "svg" && fmt != "dot") {
-            System.err.println("sane-graph-edit: :$verb unknown format '$fmt' (expected svg|dot)")
+            utils.Platform.warn("sane-graph-edit: :$verb unknown format '$fmt' (expected svg|dot)")
             return null
         }
         return fmt to split[1]
@@ -669,7 +669,7 @@ class KeyMapper(
                     try {
                         gv.content.saveCopy(resolvePath(args).toAbsolutePath().normalize())
                     } catch (t: Throwable) {
-                        System.err.println("sane-graph-edit: :w failed: ${t.message}")
+                        utils.Platform.warn("sane-graph-edit: :w failed: ${t.message}")
                     }
                 } else {
                     commandExecutor?.invoke("save", gv)
@@ -705,12 +705,12 @@ class KeyMapper(
                         val (fmt, path) = parsed
                         try {
                             val visible = gv.g.visibleNodes()
-                            java.nio.file.Files.writeString(
+                            Fs.writeText(
                                 resolvePath(path),
                                 renderExport(gv.g, visible, fmt),
                             )
                         } catch (t: Throwable) {
-                            System.err.println("sane-graph-edit: :export failed: ${t.message}")
+                            utils.Platform.warn("sane-graph-edit: :export failed: ${t.message}")
                         }
                     }
                 } else {
@@ -726,12 +726,12 @@ class KeyMapper(
                         try {
                             val sel = gv.g.selectedNodes.takeIf { it.isNotEmpty() }
                                 ?: gv.g.nodes.toSet()
-                            java.nio.file.Files.writeString(
+                            Fs.writeText(
                                 resolvePath(path),
                                 renderExport(gv.g, sel, fmt),
                             )
                         } catch (t: Throwable) {
-                            System.err.println("sane-graph-edit: :export-selection failed: ${t.message}")
+                            utils.Platform.warn("sane-graph-edit: :export-selection failed: ${t.message}")
                         }
                     }
                 } else {
@@ -743,7 +743,7 @@ class KeyMapper(
                     try {
                         gv.shell.edit(resolvePath(args))
                     } catch (t: Throwable) {
-                        System.err.println("sane-graph-edit: :e failed: ${t.message}")
+                        utils.Platform.warn("sane-graph-edit: :e failed: ${t.message}")
                     }
                 } else {
                     // vim: bare :e re-reads the current file
@@ -761,7 +761,7 @@ class KeyMapper(
                 val dir = args?.let { resolvePath(it) }
                 when {
                     dir == null -> gv.shell.message(Workspace.dir.toString())
-                    !java.nio.file.Files.isDirectory(dir) -> gv.shell.message("cd: not a directory: $dir")
+                    !Fs.isDirectory(dir) -> gv.shell.message("cd: not a directory: $dir")
                     else -> gv.shell.switchWorkspace(dir)
                 }
             }
@@ -777,7 +777,7 @@ class KeyMapper(
             "timeoutlen" -> value.toIntOrNull()?.let { timeoutMs = it }
             "spring-scale" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScale = it }
             "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
-            else -> applicationSettings[name]?.invoke(value) ?: System.err.println("sane-graph-edit: unknown setting '$name'")
+            else -> applicationSettings[name]?.invoke(value) ?: utils.Platform.warn("sane-graph-edit: unknown setting '$name'")
         }
     }
 
@@ -801,7 +801,7 @@ class KeyMapper(
             "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
-            else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
+            else -> utils.Platform.warn("sane-graph-edit: unknown setting '$spec'")
         }
         activeView?.shell?.modesChanged()
     }
@@ -814,16 +814,16 @@ class KeyMapper(
      * (`map`, `remap`, `noremap`, `set`, etc.). Comments start
      * with `#`. Blank lines are ignored.
      */
-    fun loadInitFile(path: java.nio.file.Path) {
-        if (!java.nio.file.Files.exists(path)) return
+    fun loadInitFile(path: Path) {
+        if (!Fs.exists(path)) return
         try {
-            java.nio.file.Files.readAllLines(path).forEach { rawLine ->
+            Fs.readText(path).lines().forEach { rawLine ->
                 val line = rawLine.trim()
                 if (line.isEmpty() || line.startsWith("#")) return@forEach
                 executeCommandLine(line)
             }
         } catch (t: Throwable) {
-            System.err.println("sane-graph-edit: failed to load init file $path: ${t.message}")
+            utils.Platform.warn("sane-graph-edit: failed to load init file $path: ${t.message}")
         }
     }
 
@@ -885,7 +885,7 @@ class KeyMapper(
      * discover it without reading source.
      */
     private fun formatInitHelp(): String {
-        val initPath = XdgPaths.appConfigDir.resolve("init")
+        val initPath = Fs.configDir.resolve("init")
         val sb = StringBuilder()
         sb.appendLine("sane-graph-edit init file & settings")
         sb.appendLine()

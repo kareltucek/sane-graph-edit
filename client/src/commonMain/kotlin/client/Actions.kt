@@ -24,6 +24,7 @@ import graph_tools.StyleNodesCommand
 import graph_tools.StyleSnapshot
 import graph_tools.UnhideCommand
 import graph_tools.ViewModes
+import kotlin.math.pow
 import utils.Vector2
 import utils.Utils.orElse
 import utils.Utils.toUnit
@@ -501,7 +502,7 @@ object Actions {
      * second. A single press gives 0.2 s worth.
      */
     fun tweakSpringScale(graphView: EditorView, perSecFactor: Double) {
-        val now = System.currentTimeMillis()
+        val now = utils.Platform.nowMillis()
         // Elapsed since last tap, clamped to at most 200 ms.
         // A single tap after a long pause = 200 ms of effect.
         // A held key firing every 30 ms = 30 ms of effect per
@@ -510,7 +511,7 @@ object Actions {
         // 200 ms due to the clamp.
         val elapsedMs = (now - lastSpringTweakTime).coerceAtMost(200L)
         val elapsedSec = elapsedMs / 1000.0
-        LayoutOptimizer.springScale *= Math.pow(perSecFactor, elapsedSec)
+        LayoutOptimizer.springScale *= perSecFactor.pow(elapsedSec)
         lastSpringTweakTime = now
         optimize(graphView, restrict = false)
     }

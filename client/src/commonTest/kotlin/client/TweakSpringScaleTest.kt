@@ -1,5 +1,8 @@
+@file:Suppress("NAME_CONTAINS_ILLEGAL_CHARS")
+
 package client
 
+import kotlin.math.pow
 import Graph
 import graph_tools.LayoutOptimizer
 import graph_tools.Node
@@ -51,7 +54,7 @@ class TweakSpringScaleTest {
         // by invoking tweakSpringScale cold.
         Actions.tweakSpringScale(v, 0.9)
         // After one tap from cold: scale should be 0.9^0.2 ≈ 0.9791
-        val expected = Math.pow(0.9, 0.2)
+        val expected = 0.9.pow(0.2)
         assertEquals(expected, LayoutOptimizer.springScale, 0.001)
     }
 
@@ -71,7 +74,7 @@ class TweakSpringScaleTest {
         //   • Must be > 0.9^1.0 = 0.9 (wouldn't reach 1 s total
         //     since calls happen sub-ms apart)
         val scale = LayoutOptimizer.springScale
-        assertTrue(scale <= Math.pow(0.9, 0.2) + 1e-6,
+        assertTrue(scale <= 0.9.pow(0.2) + 1e-6,
             "scale $scale should not exceed the first-tap value 0.9^0.2")
         assertTrue(scale > 0.9,
             "scale $scale should be > 0.9 since 10 sub-ms taps don't total 1 second")
@@ -84,7 +87,7 @@ class TweakSpringScaleTest {
         Actions.lastSpringTweakTime = 0L
         Actions.tweakSpringScale(v, 1.0 / 0.9)
         // After one longer tap from cold: scale = 1.0 * (1/0.9)^0.2.
-        val expected = Math.pow(1.0 / 0.9, 0.2)
+        val expected = (1.0 / 0.9).pow(0.2)
         assertEquals(expected, LayoutOptimizer.springScale, 0.001)
         assertTrue(LayoutOptimizer.springScale > 1.0,
             "longer should grow the scale")

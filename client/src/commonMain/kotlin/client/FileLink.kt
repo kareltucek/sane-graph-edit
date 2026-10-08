@@ -1,8 +1,6 @@
 package client
 
 import graph_tools.Node
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * Node links (see docs/file-format.md): `link-<letter>` attributes
@@ -56,14 +54,14 @@ object FileLink {
      * means the graph the link is in.
      */
     fun resolve(link: String, containingFile: Path?): Target =
-        resolveIn(link, containingFile?.toAbsolutePath()?.parent ?: Workspace.dir)
+        resolveIn(link, containingFile?.toAbsolutePath()?.getParent() ?: Workspace.dir)
 
     /** Like [resolve], with relative paths relative to [baseDir] (e.g. a picker's output). */
     fun resolveIn(link: String, baseDir: Path): Target {
         val whole = resolvePath(link, baseDir)
         val colon = link.lastIndexOf(':')
         val nodeId = link.substring(colon + 1).takeIf { colon >= 0 && it.isNotEmpty() && '/' !in it }
-        val split = nodeId != null && !Files.exists(whole)
+        val split = nodeId != null && !Fs.exists(whole)
         val pathPart = link.substring(0, colon.coerceAtLeast(0))
         // in a DOT file a number is a node id; in any other file it's a line (range)
         val lines = nodeId
@@ -81,7 +79,7 @@ object FileLink {
     /** `~/` is the home directory; a relative path is relative to [baseDir]. */
     private fun resolvePath(path: String, baseDir: Path): Path {
         val expanded = if (path == "~" || path.startsWith("~/")) {
-            System.getProperty("user.home") + path.removePrefix("~")
+            Fs.home + path.removePrefix("~")
         } else {
             path
         }

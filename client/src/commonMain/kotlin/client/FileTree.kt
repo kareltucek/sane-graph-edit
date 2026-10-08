@@ -5,9 +5,6 @@ import graph_tools.Edge
 import graph_tools.Node
 import utils.Rgb
 import utils.Vector2
-import java.nio.file.Files
-import java.nio.file.LinkOption
-import java.nio.file.Path
 
 /**
  * The `:browse` graph: a file tree used as a file picker. Laid out
@@ -49,7 +46,7 @@ object FileTree {
         val top = scan(root)
 
         val g = Graph()
-        val ancestors = generateSequence(root) { it.parent }.toList().reversed()
+        val ancestors = generateSequence(root) { it.getParent() }.toList().reversed()
         val chain = ancestors.map { p ->
             dirNode(p, if (p == root) currentDirColor else dirColor).also { g.add(it) }
         }
@@ -85,15 +82,16 @@ object FileTree {
         while (queue.isNotEmpty() && found < MAX_ENTRIES) {
             val dir = queue.removeFirst()
             val listed = try {
-                Files.list(dir.path).use { s -> s.toList() }
+                Fs.list(dir.path)
             } catch (_: Exception) {
                 emptyList()
             }
             val entries = listed
-                .filter { !it.fileName.toString().startsWith(".") }
-                .filter { isDir(it) || it.fileName.toString().endsWith(".dot") }
-                .sortedWith(compareBy({ !isDir(it) }, { it.fileName.toString().lowercase() }))
+                .filter { !it.name.startsWith(".") }
+                // asked once per entry: an answer that changes while sorting breaks the sort
                 .map { Entry(it, isDir(it)) }
+                .filter { it.isDir || it.path.name.endsWith(".dot") }
+                .sortedWith(compareBy({ !it.isDir }, { it.path.name.lowercase() }))
             dir.children.addAll(entries)
             dir.scanned = true
             found += entries.size
@@ -103,10 +101,10 @@ object FileTree {
     }
 
     /** Symlinked directories are not followed (they can loop). */
-    private fun isDir(p: Path): Boolean = Files.isDirectory(p, LinkOption.NOFOLLOW_LINKS)
+    private fun isDir(p: Path): Boolean = Fs.isDirectory(p, followLinks = false)
 
     private fun dirNode(p: Path, color: Rgb, unexplored: Boolean = false): Node {
-        val name = p.fileName?.toString()?.plus("/") ?: p.toString()
+        val name = p.getFileName()?.toString()?.plus("/") ?: p.toString()
         return Node(if (unexplored) "$name …" else name, Vector2(0, 0)).also {
             it.attributes.bg = color
             it.attributes.other[FileLink.ATTRIBUTE] = p.toString()
@@ -114,7 +112,7 @@ object FileTree {
     }
 
     private fun fileNode(p: Path): Node =
-        Node(p.fileName.toString(), Vector2(0, 0)).also {
+        Node(p.name, Vector2(0, 0)).also {
             it.attributes.other[FileLink.ATTRIBUTE] = p.toString()
         }
 

@@ -6,8 +6,6 @@ import export.SvgWriter
 import graph_tools.Node
 import graph_tools.ViewModes
 import utils.Vector2
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * What a view shows and where it came from: a graph file, the
@@ -58,7 +56,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** The file's name, or what else is shown, with `*` in front while there are unsaved changes. */
     val title: String
         get() {
-            val base = currentFile?.fileName?.toString() ?: untitledName ?: "(untitled)"
+            val base = currentFile?.name ?: untitledName ?: "(untitled)"
             return if (isDirty) "*$base" else base
         }
 
@@ -124,7 +122,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     fun save(): Boolean = currentFile?.let { writeTo(it) } ?: saveAs()
 
     /** Ask for a file and save to it. */
-    fun saveAs(): Boolean = shell.chooseSave(currentFile?.fileName?.toString() ?: "untitled.dot")?.let { writeTo(it) } ?: false
+    fun saveAs(): Boolean = shell.chooseSave(currentFile?.name ?: "untitled.dot")?.let { writeTo(it) } ?: false
 
     /** Write the graph to [path] without making it the view's file. */
     fun saveCopy(path: Path) {
@@ -147,7 +145,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
 
     /** SVG of what is visible, to a file the user chooses. */
     fun exportSvg() {
-        val name = currentFile?.fileName?.toString()?.removeSuffix(".dot")?.plus(".svg") ?: "untitled.svg"
+        val name = currentFile?.name?.removeSuffix(".dot")?.plus(".svg") ?: "untitled.svg"
         // hidden nodes stay hidden in the SVG
         shell.chooseExport(name)?.let { writeExport(it, SvgWriter.write(view.g, view.g.visibleNodes())) }
     }
@@ -155,13 +153,13 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** SVG of the selected nodes and the edges between them; of everything when nothing is selected. */
     fun exportSelection() {
         val selection = view.g.selectedNodes.takeIf { it.isNotEmpty() }
-        val name = currentFile?.fileName?.toString()?.removeSuffix(".dot")?.plus("-selection.svg") ?: "selection.svg"
+        val name = currentFile?.name?.removeSuffix(".dot")?.plus("-selection.svg") ?: "selection.svg"
         shell.chooseExport(name)?.let { writeExport(it, SvgWriter.write(view.g, selection)) }
     }
 
     private fun writeExport(path: Path, content: String) {
         try {
-            Files.writeString(path, content)
+            Fs.writeText(path, content)
         } catch (t: Throwable) {
             shell.alert("Export error", "Could not export to $path:\n${t.message}")
         }
@@ -172,10 +170,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** Ask for a file or directory and show it in this view. */
     fun open() {
         shell.chooseOpen()
-            ?.takeIf { confirmDiscard("open ${it.fileName}") }
+            ?.takeIf { confirmDiscard("open ${it.name}") }
             ?.let { path ->
                 val from = currentLocation()
-                if (Files.isDirectory(path)) {
+                if (Fs.isDirectory(path)) {
                     jumps.record(from)
                     browseInPlace(path)
                 } else if (loadInPlace(path)) {
@@ -196,7 +194,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             view.boundScreen()
             view.repaint()
             shell.sessionChanged()
-            AppState.lastOpenDir = path.toAbsolutePath().parent
+            AppState.lastOpenDir = path.toAbsolutePath().getParent()
             true
         } catch (t: Throwable) {
             shell.alert("Open error", "Could not open $path:\n${t.message}")
@@ -213,7 +211,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val path = currentFile
         if (path == null) {
             shell.alert("Reload", "This tab has no file to reload.", error = false)
-        } else if (force || confirmDiscard("reload ${path.fileName}")) {
+        } else if (force || confirmDiscard("reload ${path.name}")) {
             try {
                 // with a document everyone attached gets the file's content; a failure comes back as a message
                 document?.reload() ?: replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
@@ -316,15 +314,15 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val inThisGraph = lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
         val from = currentLocation()
         when {
-            path != null && lines != null -> if (confirmDiscard("open ${path.fileName}:$lines")) {
+            path != null && lines != null -> if (confirmDiscard("open ${path.name}:$lines")) {
                 if (showSourceInPlace(path, lines)) jumps.record(from)
             }
             inThisGraph -> if (target.nodeId != null) {
                 jumps.record(from)
                 focusNode(target.nodeId)
             }
-            path == null || !confirmDiscard("open ${path.fileName ?: path}") -> Unit
-            Files.isDirectory(path) -> {
+            path == null || !confirmDiscard("open ${path.getFileName() ?: path}") -> Unit
+            Fs.isDirectory(path) -> {
                 jumps.record(from)
                 browseInPlace(path)
             }
@@ -346,7 +344,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 null
             }
             lines != null -> shell.newTab()?.takeIf { it.content.showSourceInPlace(path, lines) }
-            Files.isDirectory(path) -> shell.browse(path)
+            Fs.isDirectory(path) -> shell.browse(path)
             // the new tab has no size yet; its first paint does the focusing
             else -> editInTab(path)?.also { it.content.pendingFocus = target.nodeId }
         }
@@ -366,7 +364,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val node = nodeId?.let { id -> view.g.nodes.find { it.attributes.name == id } }
         when {
             nodeId == null -> Unit
-            node == null -> shell.message("no node `$nodeId` in ${currentFile?.fileName ?: "this graph"}")
+            node == null -> shell.message("no node `$nodeId` in ${currentFile?.getFileName() ?: "this graph"}")
             else -> {
                 view.g.cleanSelect(setOf(node))
                 view.setViewTo(node.position, view.viewTransform.scale)
@@ -418,9 +416,9 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val opened = when {
             loc.sameGraph(here) -> true
             file == null && dir == null && source == null -> false  // an untitled graph that is gone
-            !confirmDiscard("go back to ${(file ?: dir ?: sourcePath)?.fileName}") -> false
+            !confirmDiscard("go back to ${(file ?: dir ?: sourcePath)?.name}") -> false
             sourcePath != null && sourceLines != null -> showSourceInPlace(sourcePath, sourceLines)
-            dir != null -> Files.isDirectory(dir).also { if (it) browseInPlace(dir) }
+            dir != null -> Fs.isDirectory(dir).also { if (it) browseInPlace(dir) }
             else -> file?.let { loadInPlace(it) } == true
         }
         if (opened) {
