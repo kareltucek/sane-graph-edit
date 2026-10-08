@@ -87,6 +87,7 @@ class EditorCore(private val files: FileStore) {
                 is Redo -> document(request.document).let { d -> step(client, d, d.redo, d.undo) { it.forward } }
                 is Save -> save(document(request.document), request.path, request.copy)
                 is Reload -> reload(client, document(request.document))
+                is Show -> listOf(Outgoing(owner ?: error("the session has no owner"), ShowRequested(request.path, request.here)))
             }
         }
         return result.getOrElse { listOf(Outgoing(client, Failed(request, it.message ?: it.toString()))) }

@@ -63,6 +63,15 @@ data class Save(val document: String, val path: String? = null, val copy: Boolea
 @SerialName("reload")
 data class Reload(val document: String) : Request
 
+/**
+ * Ask the session's owner to show the file or directory at [path]
+ * to its user: in a new tab, or with [here] in the current one. Not
+ * document state; relayed to the owner as a [ShowRequested].
+ */
+@Serializable
+@SerialName("show")
+data class Show(val path: String, val here: Boolean = false) : Request
+
 /** What the editor tells a client. */
 @Serializable
 sealed interface Event
@@ -93,6 +102,11 @@ data class Rejected(val document: String, val opId: String, val reason: String) 
 @Serializable
 @SerialName("document-changed")
 data class DocumentChanged(val info: DocumentInfo) : Event
+
+/** Somebody asked for [path] to be shown, see [Show]. */
+@Serializable
+@SerialName("show-requested")
+data class ShowRequested(val path: String, val here: Boolean) : Event
 
 @Serializable
 @SerialName("documents")

@@ -36,6 +36,9 @@ class EditorClient(private val connection: EditorConnection) {
     /** Told about failed requests that had nobody waiting for the answer. */
     var onFailure: (String) -> Unit = {}
 
+    /** Told when somebody asks this client to show a file to its user ([Show]). */
+    var onShow: (path: String, here: Boolean) -> Unit = { _, _ -> }
+
     init {
         connection.onEvent = ::dispatch
     }
@@ -93,6 +96,7 @@ class EditorClient(private val connection: EditorConnection) {
             is Attached -> sessions[event.info.document]?.resynced(event)
             is DocumentChanged -> sessions[event.info.document]?.infoChanged(event.info)
             is Failed -> onFailure(event.reason)
+            is ShowRequested -> onShow(event.path, event.here)
             is Documents -> {}
         }
     }

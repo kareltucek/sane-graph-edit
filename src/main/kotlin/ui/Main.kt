@@ -20,6 +20,8 @@ fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false) {
         kotlin.system.exitProcess(2)
     }
     val frame = Window("Sane Graph Edit", initialFile)
+    // later: opening asks the editor, which can't be done from inside one of its events
+    Editor.client?.onShow = { path, here -> EventQueue.invokeLater { frame.tabManager.present(java.nio.file.Paths.get(path), here) } }
     Editor.onOwnerGone = {
         frame.tabManager.currentOrNull?.messageArea?.show(
             "The window that owned this session was closed. This one now works on its own; saving rewrites files without their comments."

@@ -14,6 +14,7 @@ import sync.Rejected
 import sync.Reload
 import sync.Request
 import sync.Save
+import sync.Show
 import sync.Submit
 import sync.Undo
 import sync.Wire
@@ -35,6 +36,9 @@ started in; default: the current directory).
 Commands:
   socket             Print the path of the session's socket.
   documents          List the session's open documents.
+  open <file> [--here]
+                     Show the file (or directory) in the window: in a new tab, or with
+                     --here in the current tab, which asks first about unsaved changes.
   state <file>       The document's content: fields per node / edge id, and its revision.
   dot <file>         The document's content as DOT, unsaved changes included.
   patch <file> [--save]
@@ -63,14 +67,15 @@ Exit status: 0 done, 1 refused or failed, 2 no session or bad usage."""
         val rest = args.filterIndexed { i, _ -> i !in options }
         val socket = args.getOrNull(socketAt + 1)?.takeIf { socketAt >= 0 }?.let { Paths.get(it) }
             ?: SessionSocket.pathFor(args.getOrNull(workspaceAt + 1)?.takeIf { workspaceAt >= 0 }?.let { Paths.get(it) } ?: Paths.get(""))
-        val command = rest.firstOrNull()
-        val file = rest.getOrNull(1)?.let { Paths.get(expandHome(it)).toAbsolutePath().normalize().toString() }
-        val needsFile = command in setOf("state", "dot", "patch", "undo", "redo", "save", "reload")
+        val words = rest.filterNot { it.startsWith("--") }
+        val command = words.firstOrNull()
+        val file = words.getOrNull(1)?.let { Paths.get(expandHome(it)).toAbsolutePath().normalize().toString() }
+        val needsFile = command in setOf("open", "state", "dot", "patch", "undo", "redo", "save", "reload")
         return when {
             command == null || command == "help" || (needsFile && file == null) -> usage()
             command == "socket" -> 0.also { println(socket) }
             command !in setOf("documents") && !needsFile -> usage()
-            else -> talk(socket, command, file, save = "--save" in rest)
+            else -> talk(socket, command, file, save = "--save" in rest, here = "--here" in rest)
         }
     }
 
@@ -79,7 +84,7 @@ Exit status: 0 done, 1 refused or failed, 2 no session or bad usage."""
         return 2
     }
 
-    private fun talk(socket: Path, command: String, file: String?, save: Boolean): Int {
+    private fun talk(socket: Path, command: String, file: String?, save: Boolean, here: Boolean): Int {
         val connection = try {
             SocketConnection(socket) { it() }
         } catch (e: Exception) {
@@ -87,7 +92,11 @@ Exit status: 0 done, 1 refused or failed, 2 no session or bad usage."""
             return 2
         }
         return try {
-            if (command == "documents") report(connection.call(ListDocuments)) else onDocument(connection, command, file!!, save)
+            when (command) {
+                "documents" -> report(connection.call(ListDocuments))
+                "open" -> request(connection, Show(file!!, here))
+                else -> onDocument(connection, command, file!!, save)
+            }
         } catch (e: EditorException) {
             System.err.println("sane-graph-edit: ${e.message}")
             1

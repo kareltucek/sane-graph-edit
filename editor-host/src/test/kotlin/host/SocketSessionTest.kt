@@ -40,7 +40,8 @@ class SocketSessionTest {
 
     private val host: EditorHost = editorThread.run { EditorHost() }
     private val server = SocketServer(host.hub, dir.resolve("s.sock")) { editorThread.execute(it) }.start()
-    private val owner: DocumentSession = editorThread.run { EditorClient(host.connect()).open(file.toString()) }
+    private val ownerClient: EditorClient = editorThread.run { EditorClient(host.connect()) }
+    private val owner: DocumentSession = editorThread.run { ownerClient.open(file.toString()) }
     private val connection = SocketConnection(server.path) { remoteThread.execute(it) }
     private val remoteClient = EditorClient(connection)
     private val remote: DocumentSession = remoteThread.run { remoteClient.open(file.toString()) }
@@ -110,6 +111,16 @@ class SocketSessionTest {
         settle()
         assertTrue("label=\"saved\"" in Files.readString(file))
         assertFalse(editorThread.run { owner.info.dirty })
+    }
+
+    @Test
+    fun `a request to show a file reaches the owner and nobody else`() {
+        val shown = mutableListOf<Pair<String, Boolean>>()
+        editorThread.run { ownerClient.onShow = { path, here -> shown += path to here } }
+        remoteClient.onShow = { _, _ -> error("not the owner") }
+        remoteThread.run { connection.call(sync.Show("/some/other.dot", here = true)) }
+        settle()
+        assertEquals(listOf("/some/other.dot" to true), editorThread.run { shown.toList() })
     }
 
     @Test

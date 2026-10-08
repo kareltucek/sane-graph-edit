@@ -440,7 +440,9 @@ flowchart LR
 
 **What crosses the boundary** (`sync/Protocol.kt`) is only shared
 document state. Selection, pan/zoom, view modes, the gesture in
-progress and the layout optimiser all stay in the client.
+progress and the layout optimiser all stay in the client. The one
+exception is `Show` (`ctl open`): a request to show a file to the
+user, which the editor only relays to the session's owner.
 
 **State and patches** (`sync/GraphState.kt`). `GraphState` is a
 document as plain data: a map of fields (`pos`, `text`, `bg`,

@@ -326,6 +326,7 @@ window (the first one started in the directory):
 
 ```sh
 sane-graph-edit ctl documents            # what is open
+sane-graph-edit ctl open other.dot       # show a file in a new tab (--here: in the current tab)
 sane-graph-edit ctl state graph.dot      # nodes and edges by id, as JSON
 sane-graph-edit ctl dot graph.dot        # the same as DOT, unsaved changes included
 echo '{"setNodes": {"<id>": {"text": "New label"}}}' |

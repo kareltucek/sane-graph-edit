@@ -230,6 +230,13 @@ class TabManager(
         }
     }
 
+    /** Somebody outside (`ctl open`) asks to see [path]: in a new tab, or with [here] in the current one, like a followed link. */
+    fun present(path: Path, here: Boolean) {
+        val view = currentOrNull
+        if (here && view != null) view.content.openTarget(FileLink.Target(path, null, null)) else openPath(path)
+        window.toFront()
+    }
+
     /**
      * `:browse`: a new untitled tab with the [FileTree] of [dir],
      * a file picker driven by `gf`.
