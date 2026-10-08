@@ -118,9 +118,17 @@ class Graph(
         addAllEdges(setOf(e))
     }
 
+    private val nodesById: MutableMap<String, Node> = mutableMapOf()
+    private val edgesById: MutableMap<String, Edge> = mutableMapOf()
+
+    fun node(id: String): Node? = nodesById[id]
+
+    fun edge(id: String): Edge? = edgesById[id]
+
     fun addAllNodes(i: Iterable<Node>) {
         attachmentOwnersCache = null
         nodesRestricted.addAll(i)
+        i.forEach { nodesById[it.id] = it }
         edgeMapRestricted.putAll(i.map { it to mutableSetOf() })
         needsRecomputing(i)
         lastActiveNode = i.lastOrNull()
@@ -129,6 +137,7 @@ class Graph(
     fun addAllEdges(i: Iterable<Edge>) {
         i.forEach {
             edgesRestricted.add(it)
+            edgesById[it.id] = it
             edgeMapRestricted[it.src]!!.add(it)
             edgeMapRestricted[it.dst]!!.add(it)
             EdgeGeometry.recompute(i)
@@ -146,8 +155,10 @@ class Graph(
     fun removeAllNodes(i: Iterable<Node>) {
         attachmentOwnersCache = null
         i.forEach {
+            edgeMapRestricted[it]!!.forEach { e -> edgesById.remove(e.id) }
             edgesRestricted.removeAll(edgeMapRestricted[it]!!)
             edgeMapRestricted.remove(it)
+            nodesById.remove(it.id)
             selectedNodesRestricted.remove(it)
             if (lastActiveNode == it) {
                 lastActiveNode = null
@@ -161,6 +172,7 @@ class Graph(
             edgeMapRestricted[it.src]!!.remove(it)
             edgeMapRestricted[it.dst]!!.remove(it)
             edgesRestricted.remove(it)
+            edgesById.remove(it.id)
         }
     }
 

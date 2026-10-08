@@ -16,6 +16,8 @@ class Node(
     var position: Vector2,
     var cache: NodeCache = NodeCache(),
     var attributes: NodeAttributes = NodeAttributes(),
+    /** Stable for the node's life; the same node has the same id in every client's replica. */
+    val id: String = Ids.new(),
 ) {
     override fun toString(): String {
         return "Node(...${attributes.text.take(8)}...)"

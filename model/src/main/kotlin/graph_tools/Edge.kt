@@ -7,6 +7,7 @@ class Edge(
     val dst: Node,
     val cache: EdgeCache = EdgeCache(),
     val attributes: EdgeAttributes = EdgeAttributes(),
+    val id: String = Ids.new(),
 ) {
     override fun toString(): String {
         return "Edge(...${src.attributes.text.take(4)} -> ${dst.attributes.text.take(4)}...)"
