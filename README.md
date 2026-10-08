@@ -303,13 +303,15 @@ starts with a file tree of its directory (`:browse`).
 
 ### Shared sessions
 
-The first window started in a workspace owns its *session*: it
-holds the open documents and their undo histories. A second window
-started in the same directory joins that session instead of working
-alone. The two have their own tabs, selection and view, but a file
-open in both is one document — an edit, an undo or a save in one
-shows up in the other, and undo steps back through the document's
-changes whoever made them.
+Windows are independent of each other, also when started in the
+same directory. `sane-graph-edit --attach` instead joins the
+*session* of the window already running in that directory (the
+first one started there, if there are several): the two have their
+own tabs, selection and view, but a file open in both is one
+document — an edit, an undo or a save in one shows up in the other,
+and undo steps back through the document's changes whoever made
+them. While somebody else has the current document open too, the
+status bar says `[shared]`.
 
 If two changes collide, the one that names something already
 deleted is refused, and where both touched the same node the owner's
@@ -320,7 +322,7 @@ they had.
 ### Scripting a running window (`ctl`)
 
 A script or an agent can read and change the documents of a running
-window:
+window (the first one started in the directory):
 
 ```sh
 sane-graph-edit ctl documents            # what is open

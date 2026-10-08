@@ -28,7 +28,8 @@ class EditorHub(private val core: EditorCore, private val now: () -> Long) {
 
     fun disconnect(client: String) {
         clients.remove(client)
-        core.disconnect(client)
+        queue.addAll(core.disconnect(client))
+        drain()
     }
 
     /** Process [request]; every resulting event is delivered. */

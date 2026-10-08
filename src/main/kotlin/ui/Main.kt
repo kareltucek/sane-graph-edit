@@ -33,9 +33,14 @@ object Clicker {
     }
 }
 
-fun createAndShowGUI(initialFile: String? = null) {
-    // a second window on the same workspace joins the first one's session
-    Editor.start(client.SessionSocket.pathFor(Workspace.dir))
+fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false) {
+    val socket = client.SessionSocket.pathFor(Workspace.dir)
+    if (!attach) {
+        Editor.start(socket)
+    } else if (!Editor.attach(socket)) {
+        System.err.println("sane-graph-edit: --attach: no window is running in ${Workspace.dir}")
+        kotlin.system.exitProcess(2)
+    }
     val frame = Window("Sane Graph Edit", initialFile)
     Editor.onOwnerGone = {
         frame.tabManager.currentOrNull?.messageArea?.show(
@@ -53,6 +58,7 @@ data class CliArgs(
     val execs: List<String> = emptyList(),
     val stayInteractive: Boolean = false,
     val help: Boolean = false,
+    val attach: Boolean = false,
 )
 
 /** Expand a leading `~/` to the user's home directory. */
@@ -75,6 +81,7 @@ fun parseArgs(args: Array<String>): CliArgs {
     val execs = mutableListOf<String>()
     var stay = false
     var help = false
+    var attach = false
 
     var i = 0
     while (i < args.size) {
@@ -89,6 +96,7 @@ fun parseArgs(args: Array<String>): CliArgs {
                 }
             }
             "-u" -> stay = true
+            "--attach" -> attach = true
             "-h", "--help" -> help = true
             else -> {
                 if (a.startsWith("-")) {
@@ -104,7 +112,7 @@ fun parseArgs(args: Array<String>): CliArgs {
         }
         i++
     }
-    return CliArgs(file, execs, stay, help)
+    return CliArgs(file, execs, stay, help, attach)
 }
 
 private const val USAGE = """Usage: sane-graph-edit [options] [file]
@@ -114,6 +122,8 @@ Options:
   -e <keys>    Execute a key sequence (e.g. ':export svg foo.svg<Enter>'),
                then exit (unless -u). Repeatable.
   -u           Stay open with a window after executing -e commands.
+  --attach     Share the documents of the window already running in this
+               directory instead of working independently of it.
   -h, --help   Print this help and exit.
 
 File:
@@ -203,6 +213,6 @@ fun main(args: Array<String>) {
 
     // Interactive path (possibly with initial -e commands to
     // replay after the window is up).
-    EventQueue.invokeLater { createAndShowGUI(cli.file?.let(::expandHome)) }
+    EventQueue.invokeLater { createAndShowGUI(cli.file?.let(::expandHome), cli.attach) }
     // TODO: honour -e -u combination (replay keys after window opens).
 }

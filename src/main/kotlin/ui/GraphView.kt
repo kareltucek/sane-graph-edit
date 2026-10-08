@@ -98,7 +98,10 @@ class GraphView(
         document = doc
         // our own changes repaint where they are made; these are other clients', undo and reload
         doc?.onChange = { local -> if (!local) repaint() }
-        doc?.onInfo = { isDirty = doc.info.dirty }
+        doc?.onInfo = {
+            isDirty = doc.info.dirty
+            refreshStatus()
+        }
         doc?.onRejected = { reason -> messageArea?.show("change refused: $reason") }
         doc?.onLost = { document = null }
         return doc?.graph ?: graph
@@ -274,6 +277,8 @@ class GraphView(
             "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
             "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
             "[discard]".takeIf { graph_tools.ViewModes.discard },
+            // somebody else is attached to this document too
+            "[shared]".takeIf { (document?.info?.clients ?: 0) > 1 },
         ).joinToString(" ")
         val parts = listOf(modes, gesture, stylePickerText, recText, linkStatus()).filter { it.isNotEmpty() }
         bar.setLabel(parts.joinToString("    "))

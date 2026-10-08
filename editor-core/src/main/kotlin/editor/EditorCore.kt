@@ -68,9 +68,9 @@ class EditorCore(private val files: FileStore) {
     }
 
     /** Detaches [client] from everything; documents left without clients are closed. */
-    fun disconnect(client: String) {
+    fun disconnect(client: String): List<Outgoing> {
         clients.remove(client)
-        documents.values.toList().forEach { detach(it, client) }
+        return documents.values.toList().flatMap { detach(it, client) }
     }
 
     /** Process [request] of [client] at time [now] (ms). */
@@ -80,7 +80,7 @@ class EditorCore(private val files: FileStore) {
                 is OpenFile -> attach(client, documents.values.find { it.file == request.path } ?: load(request.path))
                 is CreateDocument -> attach(client, create(request.state, null, request.title, null, null))
                 is Attach -> attach(client, document(request.document))
-                is Detach -> detach(document(request.document), client).let { emptyList() }
+                is Detach -> detach(document(request.document), client)
                 is ListDocuments -> listOf(Outgoing(client, Documents(documents.values.map { it.info })))
                 is Submit -> submit(client, document(request.document), request, now)
                 is Undo -> document(request.document).let { d -> step(client, d, d.undo, d.redo) { it.backward } }
@@ -110,14 +110,16 @@ class EditorCore(private val files: FileStore) {
         return create(state, path, null, name, log)
     }
 
+    // the others learn that the number of attached clients changed
     private fun attach(client: String, d: Document): List<Outgoing> {
-        d.clients.add(client)
-        return listOf(Outgoing(client, Attached(d.info, d.revision, d.state)))
+        val others = if (d.clients.add(client)) d.clients - client else emptySet()
+        return listOf(Outgoing(client, Attached(d.info, d.revision, d.state))) + others.map { Outgoing(it, DocumentChanged(d.info)) }
     }
 
-    private fun detach(d: Document, client: String) {
-        d.clients.remove(client)
+    private fun detach(d: Document, client: String): List<Outgoing> {
+        val left = d.clients.remove(client)
         if (d.clients.isEmpty()) documents.remove(d.id)
+        return if (left) toAll(d, DocumentChanged(d.info)) else emptyList()
     }
 
     private fun toAll(d: Document, event: Event): List<Outgoing> = d.clients.map { Outgoing(it, event) }
