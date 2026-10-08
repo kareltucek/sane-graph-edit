@@ -1,5 +1,7 @@
 package ui
 
+import client.*
+
 /**
  * Maps canonical command names (like `"undo"`, `"save"`,
  * `"edge-forward"`) to executable actions. The single source of

@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import DotGraphLoader
 import Graph
 import graph_tools.Plotter

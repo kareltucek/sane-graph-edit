@@ -1,4 +1,4 @@
-package ui
+package client
 
 import Graph
 import graph_tools.Edge
@@ -124,7 +124,6 @@ object FileTree {
      * children; the ancestor chain on the browsed directory's row.
      */
     private fun layout(g: Graph, chain: List<Node>, childNodes: Map<Node, List<Node>>) {
-        graph_tools.AwtTextMeasurer.install()
         g.ensureCachesFresh(force = true)
         val size = { n: Node -> n.cache.shapeBounds }
         val depth = mutableMapOf<Node, Int>()

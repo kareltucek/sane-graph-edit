@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import Graph
 import graph_tools.Node
 import graph_tools.Plotter
@@ -34,6 +35,7 @@ object Clicker {
 }
 
 fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false) {
+    graph_tools.AwtTextMeasurer.install()
     val socket = client.SessionSocket.pathFor(Workspace.dir)
     if (!attach) {
         Editor.start(socket)

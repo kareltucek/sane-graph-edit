@@ -1,12 +1,13 @@
 package ui
 
+import client.*
 import graph_tools.NodeShape
 import graph_tools.SetShapeCommand
 import graph_tools.SetSizeCommand
 import graph_tools.StyleNodesCommand
 import graph_tools.StyleSnapshot
-import ui.ColorStyle.PickerSet.colorStyles
-import ui.ColorStyle.PickerSet.hues
+import client.ColorStyle.PickerSet.colorStyles
+import client.ColorStyle.PickerSet.hues
 import utils.AwtUtils.toAwt
 import utils.Utils.orElse
 import utils.Constants

@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import java.awt.Component
 import java.nio.file.Path
 import javax.swing.JFileChooser

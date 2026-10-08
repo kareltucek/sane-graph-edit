@@ -1,4 +1,4 @@
-package ui
+package client
 
 import graph_tools.Node
 import utils.Vector2

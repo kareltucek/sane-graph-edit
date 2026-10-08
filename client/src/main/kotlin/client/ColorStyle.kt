@@ -1,4 +1,4 @@
-package ui
+package client
 
 import utils.Constants
 import utils.Rgb

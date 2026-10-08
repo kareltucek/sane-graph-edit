@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import graph_tools.Node
 import utils.Vector2
 import java.nio.file.Files

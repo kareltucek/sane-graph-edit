@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import Graph
 import client.DocumentSession
 import export.SvgWriter
@@ -559,11 +560,12 @@ class GraphView(
      */
     fun openTarget(target: FileLink.Target) {
         val path = target.path
-        val inThisGraph = target.lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
+        val lines = target.lines
+        val inThisGraph = lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
         val from = currentLocation()
         when {
-            path != null && target.lines != null -> if (confirmDiscard("open ${path.fileName}:${target.lines}")) {
-                if (showSourceInPlace(path, target.lines)) jumps.record(from)
+            path != null && lines != null -> if (confirmDiscard("open ${path.fileName}:$lines")) {
+                if (showSourceInPlace(path, lines)) jumps.record(from)
             }
             inThisGraph -> if (target.nodeId != null) {
                 jumps.record(from)
@@ -584,13 +586,14 @@ class GraphView(
     /** Like [openTarget], into a new tab that inherits this tab's jump list. */
     fun openTargetInTab(target: FileLink.Target) {
         val path = target.path
+        val lines = target.lines
         val opened = when {
             path == null -> {
                 jumps.record(currentLocation())
                 focusNode(target.nodeId)
                 null
             }
-            target.lines != null -> tabManager?.newTab()?.takeIf { it.showSourceInPlace(path, target.lines) }
+            lines != null -> tabManager?.newTab()?.takeIf { it.showSourceInPlace(path, lines) }
             java.nio.file.Files.isDirectory(path) -> tabManager?.browse(path)
             // the new tab has no size yet; its first paint does the focusing
             else -> tabManager?.openPath(path)?.also { it.pendingFocus = target.nodeId }

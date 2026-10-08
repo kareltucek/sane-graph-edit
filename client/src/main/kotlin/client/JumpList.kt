@@ -1,4 +1,4 @@
-package ui
+package client
 
 import java.nio.file.Path
 

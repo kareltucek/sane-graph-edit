@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import java.nio.file.Path
 import javax.swing.SwingUtilities
 

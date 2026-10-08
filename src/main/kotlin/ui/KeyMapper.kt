@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import Graph
 import javax.swing.SwingUtilities
 import javax.swing.Timer

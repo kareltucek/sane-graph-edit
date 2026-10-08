@@ -1,4 +1,4 @@
-package ui
+package client
 
 import Graph
 import graph_tools.Attachments

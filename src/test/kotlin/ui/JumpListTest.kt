@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import DotGraphLoader
 import java.nio.file.Files
 import java.nio.file.Paths

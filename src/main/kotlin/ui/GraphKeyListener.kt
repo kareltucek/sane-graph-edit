@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import graph_tools.GraphTools.computeGeneration
 import graph_tools.AddEdgesCommand
 import graph_tools.AddNodeCommand

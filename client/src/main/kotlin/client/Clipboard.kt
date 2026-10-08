@@ -1,4 +1,4 @@
-package ui
+package client
 
 import graph_tools.Edge
 import graph_tools.Node
