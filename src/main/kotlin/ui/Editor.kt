@@ -3,6 +3,7 @@ package ui
 import client.EditorClient
 import client.SocketConnection
 import host.EditorHost
+import host.SessionLock
 import host.SocketServer
 import java.nio.file.Path
 import javax.swing.SwingUtilities
@@ -32,10 +33,38 @@ object Editor {
      */
     fun start(socket: Path? = null) {
         if (client == null) {
-            val remote = socket?.let { s -> runCatching { SocketConnection(s) { SwingUtilities.invokeLater(it) } }.getOrNull() }
+            val remote = socket?.let { connect(it) }
             client = if (remote != null) join(remote) else own(socket)
         }
     }
+
+    private fun tryConnect(socket: Path): SocketConnection? =
+        runCatching { SocketConnection(socket) { SwingUtilities.invokeLater(it) } }.getOrNull()
+
+    /**
+     * A connection to the session at [socket], or null when this
+     * process is to own it. Two windows started together must not
+     * both become owners: the session lock picks one, and the other
+     * waits for it to start listening.
+     */
+    private fun connect(socket: Path): SocketConnection? {
+        val existing = tryConnect(socket)
+        val ownIt = existing == null && runCatching { SessionLock.acquire(socket) }.getOrDefault(false)
+        mayListen = ownIt
+        val deadline = System.currentTimeMillis() + OWNER_STARTUP_MS
+        var remote = existing
+        while (remote == null && !ownIt && System.currentTimeMillis() < deadline) {
+            Thread.sleep(100)
+            remote = tryConnect(socket)
+        }
+        return remote
+    }
+
+    /** How long to wait for a session's owner, seen starting up, to listen. */
+    private const val OWNER_STARTUP_MS = 10_000L
+
+    /** Whether this process holds the session lock, i.e. may listen on the socket. */
+    private var mayListen = false
 
     private fun join(remote: SocketConnection): EditorClient {
         val c = EditorClient(remote)
@@ -52,7 +81,7 @@ object Editor {
     private fun own(socket: Path?): EditorClient {
         val host = EditorHost()
         // best effort: without the socket the editor still works, alone
-        socket?.let { s ->
+        socket?.takeIf { mayListen }?.let { s ->
             runCatching { SocketServer(host.hub, s) { SwingUtilities.invokeLater(it) }.start() }
                 .onSuccess { server -> Runtime.getRuntime().addShutdownHook(Thread { server.close() }) }
                 .onFailure { System.err.println("sane-graph-edit: no session socket at $s: ${it.message}") }
