@@ -27,6 +27,8 @@ object FileOps {
             ?.let { chooser.currentDirectory = it }
         chooser.dialogTitle = "Open graph"
         chooser.fileFilter = dotFilter()
+        // a directory is opened as a file tree
+        chooser.fileSelectionMode = JFileChooser.FILES_AND_DIRECTORIES
         if (chooser.showOpenDialog(parent) != JFileChooser.APPROVE_OPTION) return null
         val path = chooser.selectedFile.toPath()
         AppState.lastOpenDir = path.parent

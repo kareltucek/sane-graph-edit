@@ -135,7 +135,7 @@ fun registerAllCommands() {
     r.register("pick-file") { FilePicker.run(it) }
     r.register("jump-back") { it.jumpBack() }
     r.register("jump-forward") { it.jumpForward() }
-    r.register("browse") { it.tabManager?.browse(java.nio.file.Paths.get("").toAbsolutePath()) }
+    r.register("browse") { it.tabManager?.browse(Workspace.dir) }
     r.register("export-svg") { it.exportSvg() }
     r.register("export-selection") { it.exportSelection() }
 

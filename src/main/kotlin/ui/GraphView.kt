@@ -408,7 +408,12 @@ class GraphView(
             ?.takeIf { confirmDiscard("open ${it.fileName}") }
             ?.let { path ->
                 val from = currentLocation()
-                if (loadInPlace(path)) jumps.record(from)
+                if (java.nio.file.Files.isDirectory(path)) {
+                    jumps.record(from)
+                    browseInPlace(path)
+                } else if (loadInPlace(path)) {
+                    jumps.record(from)
+                }
             }
     }
 
@@ -838,8 +843,8 @@ class GraphView(
  * crash-safety backups of every dirty tab to
  * `$XDG_CACHE_HOME/sane-graph-edit/backups`.
  *
- * Startup restores the previous session from
- * `$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (if any):
+ * Startup restores the [Workspace]'s previous session from
+ * `$XDG_CONFIG_HOME/sane-graph-edit/workspaces/<dir>/session.properties` (if any):
  * every file that was open last time is reopened in a tab, and
  * the tab that was active last time becomes active again.
  * Session restore only reopens files from disk — it does not
@@ -879,19 +884,23 @@ class Window(
         // Load the user's init file (key mappings, settings).
         keyMapper.loadInitFile(XdgPaths.appConfigDir.resolve("init"))
 
-        // Populate the tab bar from the persisted session — or,
-        // if none exists, create a single empty tab so the
-        // window has something to show.
+        // Populate the tab bar from the workspace's persisted
+        // session — or, if none exists, browse the workspace so
+        // the window has something to show.
         tabManager.bootstrap()
 
         // If the user passed a file argument, open it in a new tab
         // on top of whatever the session restored.
         initialFile?.let { path ->
             try {
-                val loaded = DotGraphLoader.loadFromFile(path)
                 val opened = java.nio.file.Paths.get(path)
-                tabManager.newTab(graph = loaded, path = opened)
-                AppState.lastOpenDir = opened.toAbsolutePath().parent
+                if (java.nio.file.Files.isDirectory(opened)) {
+                    tabManager.browse(opened)
+                } else {
+                    val loaded = DotGraphLoader.loadFromFile(path)
+                    tabManager.newTab(graph = loaded, path = opened)
+                    AppState.lastOpenDir = opened.toAbsolutePath().parent
+                }
             } catch (t: Throwable) {
                 System.err.println("sane-graph-edit: could not open '$path': ${t.message}")
             }

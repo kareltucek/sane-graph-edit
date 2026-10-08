@@ -38,6 +38,7 @@ class CommandCompletionTest {
         assertEquals(listOf("gamma.dot", "graphs/"), candidates("e g"))
         assertEquals(listOf("graphs/a.dot", "graphs/deep/"), candidates("e graphs/"))
         assertEquals(listOf("graphs/"), candidates("browse g"))
+        assertEquals(listOf("graphs/"), candidates("cd g"))
         assertEquals(listOf(".hidden"), candidates("e .h"))
         assertEquals(listOf("svg"), candidates("export s"))
         assertEquals(listOf("gamma.dot"), candidates("export dot ga"))

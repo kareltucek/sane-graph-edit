@@ -550,7 +550,8 @@ class KeyMapper(
     /**
      * Resolve a path argument from a command-bar line. Expands a
      * leading `~/` to the user's home directory and converts the
-     * result to an absolute [java.nio.file.Path]. Shells normally
+     * result to an absolute [java.nio.file.Path] (a relative path is
+     * relative to the [Workspace]). Shells normally
      * expand `~` before invoking us, but `~` typed inside the
      * in-app `:` bar (or inside a `-e` argument that's quoted at
      * the shell level) arrives literally — so we expand it
@@ -563,7 +564,7 @@ class KeyMapper(
             trimmed.startsWith("~/") -> System.getProperty("user.home") + trimmed.substring(1)
             else -> trimmed
         }
-        return java.nio.file.Paths.get(expanded)
+        return Workspace.resolve(java.nio.file.Paths.get(expanded))
     }
 
     /**
@@ -734,9 +735,13 @@ class KeyMapper(
                 if (args != null) {
                     try {
                         val resolved = resolvePath(args)
-                        val loaded = DotGraphLoader.loadFromFile(resolved.toString())
-                        gv.tabManager?.newTab(graph = loaded, path = resolved)
-                        AppState.lastOpenDir = resolved.toAbsolutePath().parent
+                        if (java.nio.file.Files.isDirectory(resolved)) {
+                            gv.tabManager?.browse(resolved)
+                        } else {
+                            val loaded = DotGraphLoader.loadFromFile(resolved.toString())
+                            gv.tabManager?.newTab(graph = loaded, path = resolved)
+                            AppState.lastOpenDir = resolved.toAbsolutePath().parent
+                        }
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :e failed: ${t.message}")
                     }
@@ -748,8 +753,18 @@ class KeyMapper(
             "e!" -> gv.reloadFile(force = true)
             "browse" -> {
                 // :browse [dir] — file-tree tab; no arg = working directory
-                val dir = args?.let { resolvePath(it) } ?: java.nio.file.Paths.get("").toAbsolutePath()
+                val dir = args?.let { resolvePath(it) } ?: Workspace.dir
                 gv.tabManager?.browse(dir)
+            }
+            "cd" -> {
+                // :cd <dir> — switch the workspace; no arg = show it
+                val dir = args?.let { resolvePath(it) }
+                when {
+                    dir == null -> gv.messageArea?.show(Workspace.dir.toString())
+                    !java.nio.file.Files.isDirectory(dir) -> gv.messageArea?.show("cd: not a directory: $dir")
+                    // headless: no tabs, just the directory
+                    else -> gv.tabManager?.switchWorkspace(dir) ?: run { Workspace.dir = dir }
+                }
             }
             else -> {
                 // Try as a registered command name
@@ -978,7 +993,9 @@ class KeyMapper(
         // not registered in CommandRegistry).
         val builtins = listOf(
             "browse [<dir>]          — file-tree tab (gf opens / browses)",
-            "e <path>                — open file (new tab)",
+            "cd <dir>                — switch the workspace (its own session of open tabs)",
+            "cd                      — show the workspace directory",
+            "e <path>                — open file, or a directory's file tree (new tab)",
             "e                       — reload current file (asks if unsaved)",
             "e!                      — reload current file, discarding changes",
             "export <fmt> <path>     — write graph in <fmt> (svg|dot) to <path>",
@@ -1153,7 +1170,7 @@ class KeyMapper(
         /** Commands handled in [executeCommandLine] itself (the rest are [CommandRegistry] names). */
         val BUILTIN_COMMANDS = listOf(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
-            "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse",
+            "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
         )
 
         /** `:set <name>=<value>` settings ([applySetting]). */

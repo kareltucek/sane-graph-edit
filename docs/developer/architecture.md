@@ -427,11 +427,14 @@ so it's undoable.
 ### Session persistence
 
 `ui/Session.kt` persists the ordered list of file-backed tabs
-and the active tab path to
-`$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (via
-`ui/XdgPaths.kt`). `TabManager.bootstrap()` reads it at startup
-and reopens every file that still exists and parses; failures
-are skipped with a stderr warning. `TabManager.saveSession()` is
+and the active tab path, per workspace, to
+`$XDG_CONFIG_HOME/sane-graph-edit/workspaces/<dir>/session.properties`
+(via `ui/Workspace.kt`, which holds the working directory — the
+JVM's own can't be changed, so code must use `Workspace.dir`).
+`TabManager.bootstrap()` reads it at startup and after `:cd`
+(`switchWorkspace`) and reopens every file that still exists and
+parses; failures are skipped with a stderr warning. With nothing
+to reopen it browses the workspace directory. `TabManager.saveSession()` is
 called on tab open/close/save and on window close.
 
 Untitled tabs are intentionally omitted from the session — there

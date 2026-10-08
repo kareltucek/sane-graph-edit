@@ -249,7 +249,7 @@ navigation, not data.
 
 | Key            | Action                                                   |
 |----------------|----------------------------------------------------------|
-| `Tab`          | Complete: commands, `:set` settings (`:se` works too), `:help` topics, `:export` formats, paths for `:e` / `:w` / `:source` / `:browse`. Several matches: first the common prefix, then each Tab cycles |
+| `Tab`          | Complete: commands, `:set` settings (`:se` works too), `:help` topics, `:export` formats, paths for `:e` / `:w` / `:source` / `:browse` / `:cd`. Several matches: first the common prefix, then each Tab cycles |
 | `Shift+Tab`    | Cycle backwards                                          |
 | `Ctrl+D`       | List what Tab could complete to                          |
 | `Up` / `Down`  | Command history                                          |
@@ -268,6 +268,8 @@ navigation, not data.
 | `g<letter>`     | Same for `link-<letter>`, unless `g<letter>` is mapped to something else |
 | `gF`            | Same as `gf`, but into a new tab                       |
 | `:browse [dir]` | New tab with a file tree of `dir` (default: working directory); `gf` on a node opens it |
+| `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line) |
+| `:cd <dir>`     | Switch the workspace to `dir` (see [Workspaces](#workspaces)); bare `:cd` shows it |
 | `Ctrl+E`        | Export graph as SVG                                    |
 | `Ctrl+Shift+E`  | Export only the selected nodes as SVG                  |
 
@@ -289,14 +291,26 @@ set picker=out=$(mktemp); st -c sge-picker -e sh -c 'cd "$SGE_DIR" && tv --sourc
 With i3, `for_window [class="sge-picker"] floating enable` makes it
 a popup.
 
+### Workspaces
+
+The workspace is the working directory: the one the editor was
+started in, until `:cd <dir>` switches it. Relative paths in the
+`:` bar are relative to it, and each workspace has its own session.
+`:cd` stores the open tabs in the session of the workspace being
+left (asking about unsaved changes) and replaces them with those
+of the new one. A workspace without open files in its session
+starts with a file tree of its directory (`:browse`).
+
 ### Session persistence
 
-The set of open file-backed tabs is persisted to
-`$XDG_CONFIG_HOME/sane-graph-edit/session.properties` (falling
-back to `~/.config/sane-graph-edit/session.properties`) whenever
+The set of open file-backed tabs is persisted per workspace to
+`$XDG_CONFIG_HOME/sane-graph-edit/workspaces/<dir>/session.properties`
+(`$XDG_CONFIG_HOME` falls back to `~/.config`; `<dir>` is the
+workspace path with `/` written as `%2F`) whenever
 you open, close, or save a file — and one last time on window
-close. On the next launch, those files are reopened automatically
-and the tab that was active last time becomes active again.
+close. On the next launch in that directory, those files are reopened
+automatically and the tab that was active last time becomes active again.
+The `init` file stays global.
 
 Untitled tabs don't participate (there's no stable identifier to
 restore them from), and the restore only reopens files *from

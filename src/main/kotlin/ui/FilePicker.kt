@@ -1,7 +1,6 @@
 package ui
 
 import java.nio.file.Path
-import java.nio.file.Paths
 import javax.swing.SwingUtilities
 
 /**
@@ -39,7 +38,7 @@ object FilePicker {
     fun run(gv: GraphView) {
         val dir = gv.browseDir
             ?: gv.currentFile?.toAbsolutePath()?.parent
-            ?: Paths.get("").toAbsolutePath()
+            ?: Workspace.dir
         val file = gv.currentFile?.toAbsolutePath()?.toString().orEmpty()
         val cmd = command
         if (!running) {

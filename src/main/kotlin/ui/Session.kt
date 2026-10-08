@@ -6,7 +6,7 @@ import java.nio.file.Paths
 import java.util.Properties
 
 /**
- * Persistent per-user session state: the list of files that were
+ * Persistent per-workspace session state: the list of files that were
  * open in tabs when the editor last exited (or when a session-save
  * was last flushed), plus which one was active.
  *
@@ -18,7 +18,7 @@ import java.util.Properties
  *
  * Instance-based rather than object-based so tests can point it at
  * a temp file without monkey-patching XDG env vars. Production
- * code uses [default].
+ * code uses [Workspace.session] — one session per workspace.
  */
 class Session(private val file: Path) {
 
@@ -115,10 +115,5 @@ class Session(private val file: Path) {
     companion object {
         private const val VIEW_TRANSFORM_PREFIX = "viewTransform."
         val EMPTY: Snapshot = Snapshot(files = emptyList(), activeFile = null)
-
-        /** Production singleton pointed at `$XDG_CONFIG_HOME/sane-graph-edit/session.properties`. */
-        val default: Session by lazy {
-            Session(XdgPaths.appConfigDir.resolve("session.properties"))
-        }
     }
 }

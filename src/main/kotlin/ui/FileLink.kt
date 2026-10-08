@@ -3,7 +3,6 @@ package ui
 import graph_tools.Node
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 
 /**
  * Node links (see docs/file-format.md): `link-<letter>` attributes
@@ -57,7 +56,7 @@ object FileLink {
      * means the graph the link is in.
      */
     fun resolve(link: String, containingFile: Path?): Target =
-        resolveIn(link, containingFile?.toAbsolutePath()?.parent ?: Paths.get("").toAbsolutePath())
+        resolveIn(link, containingFile?.toAbsolutePath()?.parent ?: Workspace.dir)
 
     /** Like [resolve], with relative paths relative to [baseDir] (e.g. a picker's output). */
     fun resolveIn(link: String, baseDir: Path): Target {

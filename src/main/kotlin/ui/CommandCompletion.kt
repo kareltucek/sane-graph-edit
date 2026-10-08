@@ -2,13 +2,12 @@ package ui
 
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 
 /**
  * Completion for the `:` command line (Tab / Ctrl+D in [CommandBar]):
  * command names first, then per command — `:set` settings, `:help`
  * topics, `:export` formats, and paths for `:e`, `:w`, `:source`,
- * `:browse` (directories only) and the path of `:export`.
+ * `:browse` and `:cd` (directories only) and the path of `:export`.
  */
 object CommandCompletion {
     /**
@@ -18,9 +17,10 @@ object CommandCompletion {
      */
     data class Result(val wordStart: Int, val candidates: List<String>)
 
-    private val pathCommands = setOf("e", "w", "source", "browse")
+    private val pathCommands = setOf("e", "w", "source", "browse", "cd")
+    private val dirCommands = setOf("browse", "cd")
 
-    fun complete(line: String, commands: List<String>, cwd: Path = Paths.get("").toAbsolutePath()): Result {
+    fun complete(line: String, commands: List<String>, cwd: Path = Workspace.dir): Result {
         val wordStart = line.lastIndexOf(' ') + 1
         val word = line.substring(wordStart)
         val words = line.substring(0, wordStart).split(' ').filter { it.isNotEmpty() }
@@ -31,7 +31,7 @@ object CommandCompletion {
             cmd == "help" && words.size == 1 -> KeyMapper.HELP_TOPICS
             (cmd == "export" || cmd == "export-selection") && words.size == 1 -> listOf("svg", "dot")
             (cmd == "export" || cmd == "export-selection") && words.size == 2 -> paths(word, cwd, dirsOnly = false)
-            cmd in pathCommands && words.size == 1 -> paths(word, cwd, dirsOnly = cmd == "browse")
+            cmd in pathCommands && words.size == 1 -> paths(word, cwd, dirsOnly = cmd in dirCommands)
             else -> emptyList()
         }
         return Result(wordStart, all.filter { it.startsWith(word) }.distinct().sorted())

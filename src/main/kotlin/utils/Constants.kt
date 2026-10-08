@@ -139,6 +139,7 @@ object Constants {
           gf / gF      - follow the node's file link (here / new tab)
           g<letter>    - follow the node's link-<letter>
           :browse      - file tree of the working dir (gf opens)
+          :cd <dir>    - switch the workspace (working dir + its tabs)
           Ctrl+S       - save
           Ctrl+Shift+S - save as
           Ctrl+E       - export SVG

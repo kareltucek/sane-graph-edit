@@ -33,10 +33,11 @@ class TabManager(
      */
     val window: Window,
     /**
-     * Injectable session store so tests can swap in a temp-file
-     * backed instance. Production uses [Session.default].
+     * The session of the current [Workspace]; replaced by
+     * [switchWorkspace]. Injectable so tests can swap in a
+     * temp-file backed instance.
      */
-    private val session: Session = Session.default,
+    private var session: Session = Workspace.session(),
 ) {
 
     val tabbedPane: JTabbedPane = JTabbedPane()
@@ -73,9 +74,10 @@ class TabManager(
     }
 
     /**
-     * Restore the previous session (if any) or create a single
-     * empty tab so the window always has something to show.
-     * Called once by [Window] after `this` is fully constructed.
+     * Restore the workspace's previous session (if any) or browse
+     * the workspace directory, so the window always has something
+     * to show. Called by [Window] after `this` is fully constructed,
+     * and by [switchWorkspace].
      *
      * Missing or un-parseable session files are treated as "no
      * session" — we never want a corrupted state file to block
@@ -117,7 +119,7 @@ class TabManager(
             }
         }
         if (views.isEmpty()) {
-            newTab(persistSession = false)
+            browse(Workspace.dir, persistSession = false)
         }
         // Point the open/save dialogs at the last restored file's
         // directory — that's where the user was working, which beats
@@ -135,6 +137,25 @@ class TabManager(
             ?.let { wanted -> views.indexOfFirst { it.currentFile == wanted } }
             ?.takeIf { it >= 0 }
             ?.let { tabbedPane.selectedIndex = it }
+    }
+
+    /**
+     * `:cd`: make [dir] the [Workspace]. The open tabs are kept in
+     * the session of the workspace being left and replaced by those
+     * of [dir]'s session. Asks about unsaved changes first; false if
+     * the user cancelled.
+     */
+    fun switchWorkspace(dir: Path): Boolean {
+        if (!confirmCloseAll()) return false
+        saveSession()
+        Workspace.dir = dir.toAbsolutePath().normalize()
+        session = Workspace.session()
+        views.clear()
+        tabbedPane.removeAll()
+        AppState.lastOpenDir = Workspace.dir
+        AppState.lastSaveDir = Workspace.dir
+        bootstrap()
+        return true
     }
 
     /**
@@ -191,9 +212,11 @@ class TabManager(
 
     /**
      * Load [path] as a DOT graph into a new tab (Ctrl+T/N, gF, the open
-     * dialog). Parse errors are reported via a dialog.
+     * dialog); a directory is browsed. Parse errors are reported via a
+     * dialog.
      */
     fun openPath(path: Path): GraphView? {
+        if (Files.isDirectory(path)) return browse(path)
         return try {
             val loaded = DotGraphLoader.loadFromFile(path.toString())
             AppState.lastOpenDir = path.toAbsolutePath().parent
@@ -213,8 +236,8 @@ class TabManager(
      * `:browse`: a new untitled tab with the [FileTree] of [dir],
      * a file picker driven by `gf`.
      */
-    fun browse(dir: Path): GraphView {
-        val gv = newTab(graph = FileTree.build(dir))
+    fun browse(dir: Path, persistSession: Boolean = true): GraphView {
+        val gv = newTab(graph = FileTree.build(dir), persistSession = persistSession)
         gv.browseDir = dir.toAbsolutePath().normalize()
         gv.untitledName = "browse: ${gv.browseDir}"
         gv.onStateChange()
@@ -329,7 +352,7 @@ class TabManager(
     }
 
     /**
-     * Flush the current tab set to `session.properties`. Called
+     * Flush the current tab set to the workspace's `session.properties`. Called
      * on tab open/close/save and on window close — anywhere the
      * persisted "what was open last time" answer could change.
      *
