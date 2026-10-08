@@ -100,6 +100,7 @@ class GraphView(
         doc?.onChange = { local -> if (!local) repaint() }
         doc?.onInfo = { isDirty = doc.info.dirty }
         doc?.onRejected = { reason -> messageArea?.show("change refused: $reason") }
+        doc?.onLost = { document = null }
         return doc?.graph ?: graph
     }
 

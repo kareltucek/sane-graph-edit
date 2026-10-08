@@ -34,8 +34,14 @@ object Clicker {
 }
 
 fun createAndShowGUI(initialFile: String? = null) {
-    Editor.start()
+    // a second window on the same workspace joins the first one's session
+    Editor.start(client.SessionSocket.pathFor(Workspace.dir))
     val frame = Window("Sane Graph Edit", initialFile)
+    Editor.onOwnerGone = {
+        frame.tabManager.currentOrNull?.messageArea?.show(
+            "The window that owned this session was closed. This one now works on its own; saving rewrites files without their comments."
+        )
+    }
     frame.isVisible = true
 }
 
@@ -102,6 +108,7 @@ fun parseArgs(args: Array<String>): CliArgs {
 }
 
 private const val USAGE = """Usage: sane-graph-edit [options] [file]
+       sane-graph-edit ctl <command>   (talk to a running window; see `ctl help`)
 
 Options:
   -e <keys>    Execute a key sequence (e.g. ':export svg foo.svg<Enter>'),
@@ -178,6 +185,9 @@ fun runHeadless(file: String?, execs: List<String>): Int {
 }
 
 fun main(args: Array<String>) {
+    if (args.firstOrNull() == "ctl") {
+        kotlin.system.exitProcess(Ctl.run(args.drop(1)))
+    }
     val cli = parseArgs(args)
 
     if (cli.help) {

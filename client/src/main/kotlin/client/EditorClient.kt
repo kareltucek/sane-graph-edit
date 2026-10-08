@@ -54,6 +54,20 @@ class EditorClient(private val connection: EditorConnection) {
         connection.close()
     }
 
+    /**
+     * The editor is gone. Every open document's graph stays with its
+     * view as an ordinary graph with a history of its own, so the
+     * work in it can still be saved.
+     */
+    fun connectionLost() {
+        val lost = sessions.values.toList()
+        sessions.clear()
+        lost.forEach {
+            it.graph.committer = null
+            it.onLost()
+        }
+    }
+
     private fun attach(request: Request, replica: Graph? = null): DocumentSession {
         val answer = connection.call(request)
         val attached = answer as? Attached ?: throw EditorException((answer as? Failed)?.reason ?: "no answer from the editor")
@@ -116,6 +130,9 @@ class DocumentSession internal constructor(private val client: EditorClient, att
 
     /** The editor refused a change of ours; it has been taken back. */
     var onRejected: (reason: String) -> Unit = {}
+
+    /** The editor is gone; [graph] is no longer anybody's replica. */
+    var onLost: () -> Unit = {}
 
     /** The editor's copy as far as this client has seen it. */
     private var base: GraphState = attached.state

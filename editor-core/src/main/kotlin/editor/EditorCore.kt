@@ -51,7 +51,7 @@ class EditorCore(private val files: FileStore) {
         /** Per node / edge id: who changed it last. */
         val lastChange: MutableMap<String, Change> = mutableMapOf()
 
-        val info: DocumentInfo get() = DocumentInfo(id, file, title, dirty)
+        val info: DocumentInfo get() = DocumentInfo(id, file, title, dirty, clients.size)
     }
 
     private val documents: MutableMap<String, Document> = linkedMapOf()

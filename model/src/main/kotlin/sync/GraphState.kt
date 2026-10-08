@@ -4,6 +4,7 @@ import Graph
 import graph_tools.Edge
 import graph_tools.Node
 import graph_tools.NodeShape
+import kotlinx.serialization.Serializable
 import utils.Utils
 import utils.Utils.toHexString
 import utils.Vector2
@@ -14,6 +15,7 @@ typealias Fields = Map<String, String>
 /** A field change; a null value removes the field. */
 typealias FieldChanges = Map<String, String?>
 
+@Serializable
 data class EdgeState(val src: String, val dst: String, val fields: Fields = emptyMap())
 
 /**
@@ -21,6 +23,7 @@ data class EdgeState(val src: String, val dst: String, val fields: Fields = empt
  * edge id: what clients and the editor exchange and compare. Holds
  * no per-user state (selection, view) and nothing derived (sizes).
  */
+@Serializable
 data class GraphState(
     val nodes: Map<String, Fields> = emptyMap(),
     val edges: Map<String, EdgeState> = emptyMap(),
@@ -105,6 +108,7 @@ data class GraphState(
  * A change to a [GraphState]: the one kind of operation a client
  * sends to the editor and the editor sends to clients.
  */
+@Serializable
 data class Patch(
     val addNodes: Map<String, Fields> = emptyMap(),
     val setNodes: Map<String, FieldChanges> = emptyMap(),

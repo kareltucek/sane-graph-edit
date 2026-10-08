@@ -17,14 +17,18 @@ zoom with the wheel, and you save as [Graphviz
 DOT](https://graphviz.org/doc/info/lang.html). That's the whole
 product.
 
-Under the hood there are four packages:
+Under the hood there are five Gradle subprojects:
 
-| Package        | Role                                               |
+| Subproject     | Role                                               |
 |----------------|----------------------------------------------------|
-| `graph_tools`  | Data model (`Graph`, `Node`, `Edge`) + renderer (`Plotter`) + layout (`LayoutOptimizer`) |
-| `parser_dot`   | DOT tokenizer, parser, serializer                  |
-| `ui`           | Swing widgets + input handlers                     |
-| `utils`        | `Vector2`, constants, small helpers                |
+| `:model`       | Data model (`graph_tools`: `Graph`, `Node`, `Edge`, commands, layout), DOT (`parser_dot`), SVG (`export`), and what clients and the editor exchange (`sync`). No AWT. |
+| `:editor-core` | The authoritative side of a session: documents, order of changes, undo (`editor`). Pure logic, no threads or IO. |
+| `:client`      | A client of a session: replicas of its open documents (`client`). No AWT. |
+| `:editor-host` | Runs an editor on the JVM: files, in-process and socket connections (`host`). |
+| root           | The Swing application (`ui`), the renderer (`graph_tools.Plotter`). |
+
+See [Sessions: editor and clients](#sessions-editor-and-clients)
+for how they work together.
 
 ## Top-level component map
 
@@ -386,10 +390,14 @@ eventually per-tab) undo stack falls out naturally.
 Rule of thumb when adding a new mutation:
 
 1. Write a `Command` that holds the before/after state.
-2. Call `graph.commit(cmd)` (runs redo + pushes to stack) for
-   instantaneous mutations, or `graph.history.commitWithoutRun(cmd)`
+2. Call `graph.commit(cmd)` (runs redo + records it) for
+   instantaneous mutations, or `graph.commitApplied(cmd)`
    for mutations that happen live during a user gesture (like node
    drag — the positions are already updated by the time you commit).
+   Undo and redo are `graph.undo()` / `graph.redo()`. Don't reach
+   into `graph.history`: in the application a graph is a replica
+   of an editor's document and its own history stays empty (next
+   section).
 3. Leave the low-level mutators on `Graph` (`add`, `remove`,
    `addAllEdges`) alone: they stay off-the-record so the DOT parser
    can populate a fresh graph without spamming the history.
@@ -398,6 +406,105 @@ Drag coalescing is a "per-gesture transaction", not time-windowed:
 `GraphMouseController` snapshots positions on `startMove*` and
 commits once on release. Text edits coalesce within a 1-second
 window by `EditTextCommand.coalesceInto`.
+
+## Sessions: editor and clients
+
+A document is not owned by the view that shows it but by an
+*editor*, and every view works on a *replica*. That is what lets a
+second window or a script edit the same document.
+
+```mermaid
+flowchart LR
+    subgraph P1["first window (session owner)"]
+        V1[GraphView<br/>commands, gestures]
+        R1[(replica Graph)]
+        S1[DocumentSession]
+        Hub[EditorHub]
+        Core[EditorCore<br/>documents, undo]
+        Sock[SocketServer]
+        V1 --> R1
+        R1 -- commit --> S1
+        S1 -- "Submit(patch)" --> Hub
+        Hub -- "Patched" --> S1
+        Hub --> Core
+        Sock --> Hub
+    end
+    subgraph P2["second window / ctl / agent"]
+        S2[DocumentSession<br/>or raw JSON]
+        C2[SocketConnection]
+        S2 --> C2
+    end
+    C2 <-- "Unix socket, JSON lines" --> Sock
+    Core -- DOT --> Files[(files)]
+```
+
+**What crosses the boundary** (`sync/Protocol.kt`) is only shared
+document state. Selection, pan/zoom, view modes, the gesture in
+progress and the layout optimiser all stay in the client.
+
+**State and patches** (`sync/GraphState.kt`). `GraphState` is a
+document as plain data: a map of fields (`pos`, `text`, `bg`,
+`attr:<dot attribute>`, …) per node id, endpoints and fields per
+edge id. `Patch` is the one kind of change: add / remove nodes and
+edges, set fields. Ids (`Node.id`, `Edge.id`) are session
+identifiers, unrelated to DOT names — the DOT name is the field
+`name`.
+
+**A change, end to end:**
+
+1. Code calls `graph.commit(cmd)` as always. The graph's
+   `Committer` is its `DocumentSession`.
+2. The session runs the command on the replica, takes the
+   difference of the state before and after as a `Patch`, and sends
+   `Submit(document, opId, baseRevision, patch)`.
+3. `EditorCore` checks it (below), applies it to its `GraphState`,
+   pushes patch + reverse patch on the document's undo stack and
+   answers `Patched(revision, patch, origin, opId)` to every
+   attached client.
+4. Each client applies the patch to its replica
+   (`Graph.applyPatch`, which keeps node objects and so the
+   selection) and re-applies its own not yet answered patches on
+   top.
+
+**Conflicts.** A patch is applied when everything it names still
+exists; otherwise it is `Rejected` and the client replaces its
+replica's content with the editor's. A patch by a client other than
+the owner (the first to connect, i.e. the window running the
+editor) is also rejected when it touches a node or edge the owner
+changed after the patch's `baseRevision`. Different fields of one
+node changed at the same time both survive.
+
+**Undo** is one stack per document, shared by all clients; `Undo` /
+`Redo` are requests, their effect arrives as a `Patched`.
+Successive patches by one client that set exactly the same fields
+within a second merge into one step (typing, nudging).
+
+**Files** belong to the editor. It parses DOT into a `GraphState`,
+keeps the `ParseLog` and the graph name aside, and re-attaches them
+to a `Graph` built from the state when saving — so comments and
+order survive although clients never see them.
+
+**Threads.** `EditorCore` and `EditorHub` have none: the host calls
+them from one thread — the Swing event thread in the application.
+`SocketServer` and `SocketConnection` have reader threads that hand
+everything over to that thread (`onEditorThread`,
+`onClientThread`). A `call` may block the event thread waiting for
+its answer; the answer comes from the reader thread directly.
+
+**The wire** (`Wire` in `sync/Protocol.kt`): one JSON object per
+line. A client sends `{"id": 1, "request": {"type": "open", "path":
+"/abs/x.dot"}, "call": true}`; the editor first greets with
+`{"client": "c1", "owner": false}`, answers calls with
+`{"replyTo": 1, "event": {...}}` and sends other events as
+`{"event": {...}}`. Request types: `open`, `create`, `attach`,
+`detach`, `documents`, `submit`, `undo`, `redo`, `save`, `reload`.
+The socket is at `$XDG_RUNTIME_DIR/sane-graph-edit/<hash of the
+workspace directory>.sock` (`client/SessionSocket.kt`).
+
+**Without a session.** `ui.Editor.client` is null in unit tests; a
+`GraphView` then edits a plain `Graph` with its own `History`. The
+Gradle task `sessionTest` runs the application's tests a second
+time with a session, so both paths stay covered.
 
 ## Tabs and file handling
 

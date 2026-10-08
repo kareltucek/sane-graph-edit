@@ -24,6 +24,8 @@ class EditorHub(private val core: EditorCore, private val now: () -> Long) {
         return id
     }
 
+    fun isOwner(client: String): Boolean = core.owner == client
+
     fun disconnect(client: String) {
         clients.remove(client)
         core.disconnect(client)

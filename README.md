@@ -301,6 +301,44 @@ left (asking about unsaved changes) and replaces them with those
 of the new one. A workspace without open files in its session
 starts with a file tree of its directory (`:browse`).
 
+### Shared sessions
+
+The first window started in a workspace owns its *session*: it
+holds the open documents and their undo histories. A second window
+started in the same directory joins that session instead of working
+alone. The two have their own tabs, selection and view, but a file
+open in both is one document — an edit, an undo or a save in one
+shows up in the other, and undo steps back through the document's
+changes whoever made them.
+
+If two changes collide, the one that names something already
+deleted is refused, and where both touched the same node the owner's
+stands; the refused change disappears with a message. When the
+owner quits, the other windows carry on by themselves with what
+they had.
+
+### Scripting a running window (`ctl`)
+
+A script or an agent can read and change the documents of a running
+window:
+
+```sh
+sane-graph-edit ctl documents            # what is open
+sane-graph-edit ctl state graph.dot      # nodes and edges by id, as JSON
+sane-graph-edit ctl dot graph.dot        # the same as DOT, unsaved changes included
+echo '{"setNodes": {"<id>": {"text": "New label"}}}' |
+    sane-graph-edit ctl patch graph.dot  # change it; the window updates at once
+sane-graph-edit ctl undo graph.dot
+sane-graph-edit ctl save graph.dot
+```
+
+Run it in the window's workspace directory, or name it with
+`--workspace <dir>`. A patch adds, changes and removes nodes and
+edges by id; `sane-graph-edit ctl help` shows its form. The same
+messages can be spoken directly over the session's socket (`ctl
+socket` prints its path): JSON, one message per line — see
+`docs/developer/architecture.md`.
+
 ### Session persistence
 
 The set of open file-backed tabs is persisted per workspace to
