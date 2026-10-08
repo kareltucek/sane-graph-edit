@@ -23,9 +23,9 @@ Under the hood there are five Gradle subprojects:
 |----------------|----------------------------------------------------|
 | `:model`       | Data model (`graph_tools`: `Graph`, `Node`, `Edge`, commands, layout), DOT (`parser_dot`), SVG (`export`), and what clients and the editor exchange (`sync`). No AWT. |
 | `:editor-core` | The authoritative side of a session: documents, order of changes, undo (`editor`). Pure logic, no threads or IO. |
-| `:client`      | A client of a session: replicas of its open documents (`client`). No AWT. |
+| `:client`      | A client of a session, without a GUI: replicas of its open documents, and everything about editing that is per user — commands, gestures, key mapping, the `:` command line, what a view shows (`client`). No AWT. |
 | `:editor-host` | Runs an editor on the JVM: files, in-process and socket connections (`host`). |
-| root           | The Swing application (`ui`), the renderer (`graph_tools.Plotter`). |
+| root           | The Swing renderer and application: widgets, AWT event translation, tabs, dialogs (`ui`), painting (`graph_tools.Plotter`). |
 
 See [Sessions: editor and clients](#sessions-editor-and-clients)
 for how they work together.
@@ -185,16 +185,11 @@ There are two:
   `Node.position`. Invariant across zoom/pan.
 - **Screenspace** — AWT pixel coordinates inside `GraphCanvas`.
 
-The mapping is a single `AffineTransform` stored at **`Plotter.t`**.
-`utils/Utils.kt` has extension helpers:
-
-- `MouseEvent.toWorkspaceVector()` — screen → world
-- `Vector2.toScreenVector()` — world → screen
-
-> ⚠️ **`Plotter.t` is currently a global.** This is fine for the
-> single-graph editor, but once we add tabs it needs to be either
-> saved/restored on tab switch or moved onto `GraphView`. See
-> `tasks/tabs.md` for the plan.
+The mapping is the view's own `client.ViewTransform` (a zoom and
+an offset; `EditorView.viewTransform`), with `toWorkspace(screen)`
+and `toScreen(workspace)`. There is no global transform: whoever
+converts takes the transform of the view it works on, and the
+painter is handed it at the start of each paint.
 
 ### Font caching
 
@@ -231,20 +226,25 @@ There's no "undo" for the level — once bumped, it stays up.
 flowchart LR
     MouseEvt[AWT MouseEvent]
     KeyEvt[AWT KeyEvent]
-    Listener[GraphMouseListener]
-    Controller[GraphMouseController<br/>state machine]
-    KeyList[GraphKeyListener]
-    Cmd[impl commands<br/>in GraphKeyListener]
+    Listener[GraphMouseListener<br/>ui]
+    Controller[GestureController<br/>state machine, client]
+    KeyList[GraphKeyListener<br/>ui]
+    Mapper[KeyMapper<br/>client]
+    Cmd[Actions<br/>client]
     Graph2[(Graph)]
-    Repaint[GraphView.repaint]
+    Repaint[Renderer.repaint]
 
     MouseEvt --> Listener --> Controller
-    KeyEvt --> KeyList --> Cmd
+    KeyEvt --> KeyList --> Mapper --> Cmd
     Controller --> Graph2
     Cmd --> Graph2
     Controller --> Repaint
     Cmd --> Repaint
 ```
+
+The two listeners only translate AWT events (positions, key
+notation); everything they feed is toolkit-free and lives in
+`:client` — see [Client and renderer](#client-and-renderer).
 
 ### `GraphMouseController` states
 
@@ -264,9 +264,9 @@ stateDiagram-v2
 
 ### Keyboard commands
 
-`GraphKeyListener.impl.executeCommand(String, GraphView)` is a
-giant `when` that maps single-character commands to actions. The
-canonical list:
+`client.KeyMapper` resolves key sequences to command names,
+`ui.CommandRegistry` maps the names to `client.Actions` functions
+(or to the view's own file / tab functions). The canonical list:
 
 | Key    | Action                                                 |
 |--------|--------------------------------------------------------|
@@ -506,15 +506,72 @@ workspace directory>.sock` (`client/SessionSocket.kt`).
 Gradle task `sessionTest` runs the application's tests a second
 time with a session, so both paths stay covered.
 
+## Client and renderer
+
+The second boundary runs inside a client, between what is per user
+but needs no GUI toolkit and the toolkit code that shows it and
+takes input. Everything transient — panning, a drag in progress,
+the selection — stays on the client's side of the session boundary
+above and is handled here.
+
+```mermaid
+flowchart LR
+    subgraph R["renderer (root project, Swing)"]
+        Listeners[mouse / key listeners]
+        Canvas[GraphCanvas + Plotter]
+        Widgets[NodeEditor, StylePicker,<br/>CommandBar, StatusBar]
+    end
+    subgraph C[":client"]
+        View[EditorView<br/>graph, ViewTransform, cursor]
+        Gest[GestureController]
+        Keys[KeyMapper]
+        Act[Actions]
+        Sc[Scene]
+    end
+    Listeners -- "pointer positions, key notation" --> Gest
+    Listeners --> Keys --> Act
+    Widgets -- "text typed, style picked" --> View
+    View --> Sc -- "what to draw" --> Canvas
+    View -- "Renderer: repaint, open editor…" --> Widgets
+    Canvas -- "TextMeasurer" --> Sc
+```
+
+- **`EditorView`** is one view of a document as the client sees
+  it: the replica graph, its `ViewTransform`, the cursor, the
+  `GestureController`. `GraphView` holds one as `model`.
+- **`Renderer`** is what the client asks of the GUI: repaint,
+  refresh the status line, open / close the node editor and the
+  style picker. One-way calls, nodes named by id. `GraphView`
+  implements it; `NoRenderer` in the client's tests does nothing,
+  which is how commands and gestures are tested without Swing.
+- **`Scene`** is what a view shows, as plain data: visible nodes
+  and edges in drawing order and the selection rectangle.
+  `EditorView.scene(measurer)` builds it; `Plotter.drawScene`
+  paints it and never sees a `Graph`. Text is measured by the
+  renderer through the `TextMeasurer` it passes in.
+- **Input** arrives as toolkit-free values: positions as
+  `Vector2`, keys in `KeyNotation` (`ui.AwtKeys` converts AWT
+  events). The node editor and the style picker report what was
+  typed or picked (`EditorView.textTyped`, `Actions.colorSelection`
+  …); the client changes the graph.
+- **`KeyTarget`** is what `:` commands need from the application
+  around the view (save, open, quit, messages); **`Scheduler`**
+  is the timer for key-sequence timeouts. `GraphView` and
+  `ui.SwingScheduler` provide them.
+
+Not behind the boundary yet: the node editor positions itself from
+the `Node` it edits, and file handling (`GraphView.adopt`, open,
+save, the jump list) is still in `GraphView`. The interfaces are
+called in-process; they pass plain data so that a renderer in
+another process stays possible, but measuring text is a direct
+call for now.
+
 ## Tabs and file handling
 
 `ui/TabManager.kt` owns a `JTabbedPane` and the list of open
 `GraphView`s. Each tab is one document: its own `Graph` (so its
 own undo stack), its own `currentFile: Path?`, its own
-`isDirty: Boolean`, and its own `viewTransform: AffineTransform`.
-On tab switch, `TabManager.onChanged` reassigns the `Plotter.t`
-global reference to the active view's transform — same pattern as
-"the active terminal has stdin/stdout".
+`isDirty: Boolean`, and its own `viewTransform`.
 
 Closing the last tab resets it to an empty untitled document
 rather than removing it, so the window is never empty. Closing
@@ -613,19 +670,17 @@ Items currently missing and planned under `tasks/`:
 - **`Graph.testGraph()`** still exists as a seed fixture but no
   longer runs on startup — fresh tabs are empty. Useful for
   manual inspection and for tests.
-- **`Plotter.t` is still a singleton variable**, but now points
-  at the active tab's `GraphView.viewTransform`. `TabManager`
-  rewires it on every tab switch. A future cleanup would thread
-  the transform through draw calls explicitly; for now, the
-  invariant is "`Plotter.t === tabManager.current.viewTransform`
-  at all times outside the split-second window during a tab
-  switch".
+- **`ViewModes` is still a global** (`:set unhide` and friends),
+  shared by all views of a process, like vim options. `Graph`
+  also still carries the selection: fine while every client has
+  its own replica, but neither is state the editor should see.
 
 ## Where to start when making changes
 
 1. Running the editor: `./gradlew run`.
-2. Changing input behaviour: `GraphKeyListener.impl` or
-   `GraphMouseController`.
+2. Changing input behaviour: `client.Actions` (commands),
+   `client.GestureController` (mouse gestures) or
+   `client.KeyMapper` (keys, `:` commands).
 3. Changing how things look: `graph_tools/Plotter.kt` (renderer) or
    `graph_tools/NodeShape.kt` (shape primitives).
 4. Changing what gets saved: `parser_dot/Serializer.kt` + the
