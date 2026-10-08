@@ -1,4 +1,4 @@
-package ui
+package client
 
 import Graph
 import graph_tools.LayoutOptimizer
@@ -11,7 +11,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * Rate-limited behaviour of [GraphKeyListener.impl.tweakSpringScale].
+ * Rate-limited behaviour of [Actions.tweakSpringScale].
  *
  * Design: the per-tap multiplier is `perSecFactor^elapsedSec`,
  * where `elapsedSec` is the time since the last tap, clamped to
@@ -25,22 +25,21 @@ class TweakSpringScaleTest {
     @BeforeTest
     fun reset() {
         LayoutOptimizer.springScale = 1.0
-        GraphKeyListener.impl.lastSpringTweakTime = 0L
+        Actions.lastSpringTweakTime = 0L
     }
 
     @AfterTest
     fun restore() {
         LayoutOptimizer.springScale = 1.0
-        GraphKeyListener.impl.lastSpringTweakTime = 0L
+        Actions.lastSpringTweakTime = 0L
     }
 
-    private fun headlessView(): GraphView {
-        System.setProperty("java.awt.headless", "true")
+    private fun headlessView(): EditorView {
         val g = Graph()
         val a = Node("a", Vector2(0, 0))
         a.cache.shapeBounds = Vector2(20, 20)
         g.add(a)
-        return GraphView(initialGraph = g)
+        return EditorView(g, NoRenderer)
     }
 
     @Test
@@ -50,7 +49,7 @@ class TweakSpringScaleTest {
         // field is private, but the first call after startup
         // naturally hits the clamp. We simulate "long pause"
         // by invoking tweakSpringScale cold.
-        GraphKeyListener.impl.tweakSpringScale(v, 0.9)
+        Actions.tweakSpringScale(v, 0.9)
         // After one tap from cold: scale should be 0.9^0.2 ≈ 0.9791
         val expected = Math.pow(0.9, 0.2)
         assertEquals(expected, LayoutOptimizer.springScale, 0.001)
@@ -65,7 +64,7 @@ class TweakSpringScaleTest {
         // probably not much smaller — the real-time gap between
         // rapid Kotlin calls is far below 200 ms, so the later
         // taps contribute almost nothing.
-        repeat(10) { GraphKeyListener.impl.tweakSpringScale(v, 0.9) }
+        repeat(10) { Actions.tweakSpringScale(v, 0.9) }
         // We can't easily predict the exact final value without
         // stubbing the clock, so just bound it:
         //   • Must be ≤ 0.9^0.2 (the first tap alone)
@@ -82,8 +81,8 @@ class TweakSpringScaleTest {
     fun `longer after long pause increases scale`() {
         val v = headlessView()
         // Simulate "long pause" by resetting lastSpringTweakTime.
-        GraphKeyListener.impl.lastSpringTweakTime = 0L
-        GraphKeyListener.impl.tweakSpringScale(v, 1.0 / 0.9)
+        Actions.lastSpringTweakTime = 0L
+        Actions.tweakSpringScale(v, 1.0 / 0.9)
         // After one longer tap from cold: scale = 1.0 * (1/0.9)^0.2.
         val expected = Math.pow(1.0 / 0.9, 0.2)
         assertEquals(expected, LayoutOptimizer.springScale, 0.001)

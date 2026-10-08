@@ -9,31 +9,6 @@ import utils.Vector2
 import java.awt.*
 
 
-object Clicker {
-    fun Vector2.isInSquare(lt: Vector2, br: Vector2, tolerance: Double): Boolean {
-        val xMatches = lt.x - tolerance < this.x && this.x < br.x + tolerance
-        val yMatches = lt.y - tolerance < this.y && this.y < br.y + tolerance
-        return xMatches && yMatches
-    }
-
-    /** The visible node at [clickCoordinates] (workspace), if any; [scale] is the view's zoom, for a tolerance of ten screen pixels. */
-    fun selectClickedNode(g: Graph, clickCoordinates: Vector2, scale: Double): MutableSet<Node> {
-        return g.nodes
-            .filter { g.isVisible(it) }
-            .filter {
-                it.cache?.shapeBounds?.let { bounds ->
-                    clickCoordinates.isInSquare(
-                        it.position - bounds / 2,
-                        it.position + bounds / 2,
-                        10.0 / scale
-                    )
-                }.orElse(false)
-            }
-            .minByOrNull { (it.position - clickCoordinates).lengthSquared() }
-            ?.let { mutableSetOf(it) }
-            ?: mutableSetOf()
-    }
-}
 
 fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false) {
     graph_tools.AwtTextMeasurer.install()
@@ -160,8 +135,8 @@ fun runHeadless(file: String?, execs: List<String>): Int {
     registerAllCommands()
     val mapper = KeyMapper(KeyMapper.defaultBindings())
     mapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
-    mapper.markSetter = { gv, letter -> GraphKeyListener.impl.setMark(gv, letter) }
-    mapper.markRecaller = { gv, letter -> GraphKeyListener.impl.recallMark(gv, letter) }
+    mapper.markSetter = { gv, letter -> Actions.setMark(gv.model, letter) }
+    mapper.markRecaller = { gv, letter -> Actions.recallMark(gv.model, letter) }
     mapper.linkFollower = { gv, letter -> gv.followFileLink(letter, quiet = true) }
     mapper.installDefaultTransformBindings()
     mapper.loadInitFile(XdgPaths.appConfigDir.resolve("init"))

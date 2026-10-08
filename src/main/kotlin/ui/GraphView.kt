@@ -50,23 +50,35 @@ import javax.swing.SpringLayout
 class GraphView(
     initialGraph: Graph = Graph.defaultGraph(),
     initialFile: Path? = null,
-) : JLayeredPane() {
+) : JLayeredPane(), Renderer {
     val graphCanvas = GraphCanvas(this)
     val nodeEditor = NodeEditor(this)
     val stylePicker = StylePicker(this)
     val springLayout = SpringLayout()
     val mouseListener = GraphMouseListener(this)
     val keyListener = GraphKeyListener(this)
-    var lastCursorPosition: Vector2 = Vector2.Zero
-    /**
-     * Last cursor position in *canvas-local screen* coordinates
-     * (pre-pan/zoom). Updated in lockstep with [lastCursorPosition]
-     * by [GraphMouseListener]. The scale gesture reads this so
-     * its factor stays stable against pan/zoom.
-     */
-    var lastScreenCursorPosition: Vector2 = Vector2.Zero
-    var optimizeOnDrag: Boolean = false
-    var defaultNodeStyle: NodeStyle = NodeStyle()
+
+    // What is per user but not Swing lives in [model]; these are shorthands into it.
+    var lastCursorPosition: Vector2
+        get() = model.lastCursorPosition
+        set(value) {
+            model.lastCursorPosition = value
+        }
+    var lastScreenCursorPosition: Vector2
+        get() = model.lastScreenCursorPosition
+        set(value) {
+            model.lastScreenCursorPosition = value
+        }
+    var optimizeOnDrag: Boolean
+        get() = model.optimizeOnDrag
+        set(value) {
+            model.optimizeOnDrag = value
+        }
+    var defaultNodeStyle: NodeStyle
+        get() = model.defaultNodeStyle
+        set(value) {
+            model.defaultNodeStyle = value
+        }
 
     /**
      * The shared document [g] is this view's replica of, when there
@@ -81,8 +93,18 @@ class GraphView(
      * [replaceGraph] — direct assignment would leave the previous
      * graph's history listener dangling.
      */
-    var g: Graph = adopt(initialGraph, initialFile)
-        private set
+    var g: Graph
+        get() = model.g
+        private set(value) {
+            model.g = value
+        }
+
+    /**
+     * The toolkit-free half of this view: where it looks, the
+     * cursor, the gesture in progress, and the editing done with
+     * them. This class is its [Renderer]: the Swing half.
+     */
+    val model: EditorView = EditorView(adopt(initialGraph, initialFile), this)
 
     /**
      * Make the document of [file] — or, without one, a new document
@@ -135,15 +157,10 @@ class GraphView(
         }
 
     /**
-     * Per-view affine transform. [ui.TabManager] points [Plotter.t]
-     * at this object whenever this view becomes the active tab, so
-     * existing input code (pan/zoom/centering) that mutates
-     * `Plotter.t` ends up mutating the right tab's transform.
-     *
-     * Starts at identity; the first paint in [GraphCanvas.doDrawing]
-     * translates to the canvas centre.
+     * This view's pan and zoom. Starts at identity; the first paint
+     * in [GraphCanvas.doDrawing] translates to the canvas centre.
      */
-    val viewTransform: ViewTransform = ViewTransform()
+    val viewTransform: ViewTransform get() = model.viewTransform
 
     /**
      * Notified whenever anything that affects the tab title or the
@@ -208,6 +225,8 @@ class GraphView(
 
     init {
         AwtTextMeasurer.install()
+        // during a transform gesture the keys are its controls (axis locks, confirm, cancel)
+        model.onTransformMode = { on -> keyMapper?.mode = if (on) KeyMapper.Mode.Transform else KeyMapper.Mode.Normal }
         attachHistoryListener()
         isDirty = document?.info?.dirty ?: false
     }
@@ -249,13 +268,13 @@ class GraphView(
      * flags, and macro-recording flag. Safe to call when
      * [statusBar] is null (headless, tests).
      */
-    fun refreshStatus() {
+    override fun refreshStatus() {
         val bar = statusBar ?: return
         val c = mouseListener.controller
         val gestureName = when (c.state) {
-            GraphMouseListener.GraphMouseController.States.Scaling -> "SCALE"
-            GraphMouseListener.GraphMouseController.States.MovingNodes -> "GRAB"
-            GraphMouseListener.GraphMouseController.States.Rotating -> "ROTATE"
+            GestureController.States.Scaling -> "SCALE"
+            GestureController.States.MovingNodes -> "GRAB"
+            GestureController.States.Rotating -> "ROTATE"
             else -> null
         }
         // Axis-lock suffix names the *active* (unlocked) axis —
@@ -355,6 +374,10 @@ class GraphView(
         nodeEditor.isVisible = visible
     }
 
+    override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
+        g.node(nodeId)?.let { startNodeEdit(it, screenClick) }
+    }
+
     fun startNodeEdit(n: Node, screenClickCoordinates: Vector2?) {
         endNodeEdit()
         nodeEditor.startNodeEdit(n, screenClickCoordinates)
@@ -363,14 +386,15 @@ class GraphView(
         parent.repaint()
     }
 
-    fun endNodeEdit() {
+    override fun endNodeEdit() {
         nodeEditor.endNodeEdit()
         nodeEditor.isVisible = false
         graphCanvas.requestFocus()
         parent.repaint()
     }
 
-    fun startStylePicker(screenCoordinatesPosition: Vector2? = null) {
+    override fun startStylePicker(screen: Vector2?) {
+        val screenCoordinatesPosition = screen
         val center = screenCoordinatesPosition.orElse(viewTransform.toWorkspace(lastCursorPosition))
         val ul = center - stylePickerDimensions / 2
         val br = center + stylePickerDimensions / 2
@@ -381,7 +405,7 @@ class GraphView(
         parent.repaint()
     }
 
-    fun endStylePicker() {
+    override fun endStylePicker() {
         stylePicker.isVisible = false
         graphCanvas.requestFocus()
         refreshStatus()
@@ -828,46 +852,26 @@ class GraphView(
         graphCanvas.repaint()
     }
 
+    /** Tell the model how big the view is; it positions the view by it. */
+    fun syncSize() {
+        model.size = Vector2(this.width, this.height)
+    }
+
     fun setViewTo(pos: Vector2, scale: Double = 1.0) {
-        viewTransform.setToScale(scale)
-        val viewCenter = viewTransform.toWorkspace(Vector2(this.width, this.height) / 2)
-        viewTransform.translate(viewCenter - pos)
-        repaint()
+        syncSize()
+        model.setViewTo(pos, scale)
     }
 
     fun centerScreen() {
-        val visible = g.visibleNodes()
-        val center =
-            g.selectedNodes
-                .takeIf { it.isNotEmpty() }
-                .orElse(visible)
-                .let { GraphTools.computeCenterOfMass(it) }
-
-        setViewTo(center, 1.0)
+        syncSize()
+        model.centerScreen()
     }
 
     fun boundScreen() {
-        val visible = g.visibleNodes()
-        val box =
-            g.selectedNodes
-                .takeIf { it.isNotEmpty() }
-                .orElse(visible)
-                .let { GraphTools.computeBoundingBox(it) }
-
-        box?.let { r ->
-            val ul = r.ul
-            val br = r.br
-
-            val screenSize = Vector2(this.width, this.height)
-            val size = br - ul
-            val scale = screenSize / size
-            val targetScale = Math.min(scale.x, scale.y)
-                .let { it / 1.1 }
-                .coerceIn(0.0001, 1.0)
-
-            setViewTo((box.ul + box.br)/2, targetScale)
-        }
+        syncSize()
+        model.boundScreen()
     }
+
 
     public override fun paintComponent(g: Graphics) {
         super.paintComponent(g)
@@ -915,8 +919,8 @@ class Window(
         // and the : bar both need the registry populated.
         registerAllCommands()
         keyMapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
-        keyMapper.markSetter = { gv, letter -> GraphKeyListener.impl.setMark(gv, letter) }
-        keyMapper.markRecaller = { gv, letter -> GraphKeyListener.impl.recallMark(gv, letter) }
+        keyMapper.markSetter = { gv, letter -> Actions.setMark(gv.model, letter) }
+        keyMapper.markRecaller = { gv, letter -> Actions.recallMark(gv.model, letter) }
         keyMapper.linkFollower = { gv, letter -> gv.followFileLink(letter, quiet = true) }
         keyMapper.installDefaultTransformBindings()
         // Mode changes (Normal ↔ Transform) → refresh the active

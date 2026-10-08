@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import Graph
 import graph_tools.Node
 import utils.Vector2
@@ -224,14 +225,14 @@ class ScaleTest {
         v.lastCursorPosition = Vector2(150.0, 50.0)
         v.mouseListener.controller.startOrEndRotate()
         assertEquals(
-            GraphMouseListener.GraphMouseController.States.Rotating,
+            GestureController.States.Rotating,
             v.mouseListener.controller.state,
         )
         // Try to enter scale — should be ignored.
         v.lastScreenCursorPosition = Vector2(50.0, 50.0)
         v.mouseListener.controller.startOrEndScale()
         assertEquals(
-            GraphMouseListener.GraphMouseController.States.Rotating,
+            GestureController.States.Rotating,
             v.mouseListener.controller.state,
         )
     }
@@ -282,17 +283,17 @@ class ScaleTest {
         v.mouseListener.controller.startOrEndScale()
 
         // Constrain to X: X free, Y locked.
-        GraphKeyListener.impl.constrainAxisX(v)
+        Actions.constrainAxisX(v.model)
         assertFalse(v.mouseListener.controller.lockX)
         assertTrue(v.mouseListener.controller.lockY)
 
         // Constrain to Y: Y free, X locked.
-        GraphKeyListener.impl.constrainAxisY(v)
+        Actions.constrainAxisY(v.model)
         assertTrue(v.mouseListener.controller.lockX)
         assertFalse(v.mouseListener.controller.lockY)
 
         // Tap Y again → release to free 2D scale.
-        GraphKeyListener.impl.constrainAxisY(v)
+        Actions.constrainAxisY(v.model)
         assertFalse(v.mouseListener.controller.lockX)
         assertFalse(v.mouseListener.controller.lockY)
     }

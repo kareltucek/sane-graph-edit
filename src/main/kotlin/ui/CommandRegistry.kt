@@ -53,79 +53,79 @@ object CommandRegistry {
  */
 fun registerAllCommands() {
     val r = CommandRegistry
-    val impl = GraphKeyListener.impl
+    val impl = Actions
 
     // Structural edits
-    r.register("edge-forward") { impl.drawEdge(it, true) }
-    r.register("edge-backward") { impl.drawEdge(it, false) }
-    r.register("new-node-edge-forward") { impl.drawNodeWithEdge(it, forwardEdge = true, append = false) }
-    r.register("new-node-edge-backward") { impl.drawNodeWithEdge(it, forwardEdge = false, append = false) }
-    r.register("append-forward") { impl.drawNodeWithEdge(it, forwardEdge = true, append = true) }
-    r.register("append-backward") { impl.drawNodeWithEdge(it, forwardEdge = false, append = true) }
-    r.register("clear-edges") { impl.clearEdges(it) }
-    r.register("delete") { impl.deleteNode(it, false) }
-    r.register("delete-reconnect") { impl.deleteNode(it, true) }
-    r.register("optimize") { impl.optimize(it, false) }
-    r.register("optimize-restrict") { impl.optimize(it, true) }
+    r.register("edge-forward") { impl.drawEdge(it.model, true) }
+    r.register("edge-backward") { impl.drawEdge(it.model, false) }
+    r.register("new-node-edge-forward") { impl.drawNodeWithEdge(it.model, forwardEdge = true, append = false) }
+    r.register("new-node-edge-backward") { impl.drawNodeWithEdge(it.model, forwardEdge = false, append = false) }
+    r.register("append-forward") { impl.drawNodeWithEdge(it.model, forwardEdge = true, append = true) }
+    r.register("append-backward") { impl.drawNodeWithEdge(it.model, forwardEdge = false, append = true) }
+    r.register("clear-edges") { impl.clearEdges(it.model) }
+    r.register("delete") { impl.deleteNode(it.model, false) }
+    r.register("delete-reconnect") { impl.deleteNode(it.model, true) }
+    r.register("optimize") { impl.optimize(it.model, false) }
+    r.register("optimize-restrict") { impl.optimize(it.model, true) }
     // The per-second factor is LayoutOptimizer.springScaleStep
     // (default 0.8, tuneable via `:set spring-scale-step=<n>`).
     // `spring-longer` uses the inverse so held keys cancel
     // correctly across direction changes.
     r.register("spring-shorter") {
-        impl.tweakSpringScale(it, graph_tools.LayoutOptimizer.springScaleStep)
+        impl.tweakSpringScale(it.model, graph_tools.LayoutOptimizer.springScaleStep)
     }
     r.register("spring-longer") {
-        impl.tweakSpringScale(it, 1.0 / graph_tools.LayoutOptimizer.springScaleStep)
+        impl.tweakSpringScale(it.model, 1.0 / graph_tools.LayoutOptimizer.springScaleStep)
     }
-    r.register("mirror-horizontal") { impl.mirror(it, horizontal = true) }
-    r.register("mirror-vertical") { impl.mirror(it, horizontal = false) }
-    r.register("mirror") { impl.mirror(it, horizontal = true) }  // alias for mirror-horizontal
-    r.register("rotate") { impl.rotate(it) }
-    r.register("scale") { impl.scale(it) }
-    r.register("constrain-axis-x") { impl.constrainAxisX(it) }
-    r.register("constrain-axis-y") { impl.constrainAxisY(it) }
+    r.register("mirror-horizontal") { impl.mirror(it.model, horizontal = true) }
+    r.register("mirror-vertical") { impl.mirror(it.model, horizontal = false) }
+    r.register("mirror") { impl.mirror(it.model, horizontal = true) }  // alias for mirror-horizontal
+    r.register("rotate") { impl.rotate(it.model) }
+    r.register("scale") { impl.scale(it.model) }
+    r.register("constrain-axis-x") { impl.constrainAxisX(it.model) }
+    r.register("constrain-axis-y") { impl.constrainAxisY(it.model) }
 
     // Selection & navigation
-    r.register("invert-selection") { impl.invertSelection(it) }
-    r.register("select-closure-forward") { impl.selectClosure(it, true) }
-    r.register("select-closure-backward") { impl.selectClosure(it, false) }
-    r.register("select-linked-forward") { impl.selectLinked(it, true) }
-    r.register("select-linked-backward") { impl.selectLinked(it, false) }
-    r.register("unselect-oldest-forward") { impl.unselectOldestGen(it, true) }
-    r.register("unselect-oldest-backward") { impl.unselectOldestGen(it, false) }
-    r.register("select-all") { impl.selectAll(it) }
-    r.register("deselect") { impl.unselectAll(it) }
-    r.register("bound-screen") { impl.boundScreen(it) }
-    r.register("center-screen") { impl.centerScreen(it) }
-    r.register("edit-node") { impl.editNode(it, false) }
-    r.register("select-and-edit-node") { impl.editNode(it, true) }
+    r.register("invert-selection") { impl.invertSelection(it.model) }
+    r.register("select-closure-forward") { impl.selectClosure(it.model, true) }
+    r.register("select-closure-backward") { impl.selectClosure(it.model, false) }
+    r.register("select-linked-forward") { impl.selectLinked(it.model, true) }
+    r.register("select-linked-backward") { impl.selectLinked(it.model, false) }
+    r.register("unselect-oldest-forward") { impl.unselectOldestGen(it.model, true) }
+    r.register("unselect-oldest-backward") { impl.unselectOldestGen(it.model, false) }
+    r.register("select-all") { impl.selectAll(it.model) }
+    r.register("deselect") { impl.unselectAll(it.model) }
+    r.register("bound-screen") { impl.boundScreen(it.model) }
+    r.register("center-screen") { impl.centerScreen(it.model) }
+    r.register("edit-node") { impl.editNode(it.model, false) }
+    r.register("select-and-edit-node") { impl.editNode(it.model, true) }
 
     // Filtering
-    r.register("hide") { impl.hideSelected(it) }
-    r.register("unhide") { impl.unhideOneLevel(it) }
+    r.register("hide") { impl.hideSelected(it.model) }
+    r.register("unhide") { impl.unhideOneLevel(it.model) }
 
     // Style
-    r.register("paste-format") { impl.pasteFormat(it) }
-    r.register("copy-format") { impl.copyFormat(it) }
+    r.register("paste-format") { impl.pasteFormat(it.model) }
+    r.register("copy-format") { impl.copyFormat(it.model) }
 
     // History
-    r.register("undo") { impl.undo(it) }
-    r.register("redo") { impl.redo(it) }
+    r.register("undo") { impl.undo(it.model) }
+    r.register("redo") { impl.redo(it.model) }
 
     // Movement
-    r.register("grab") { impl.grab(it) }
+    r.register("grab") { impl.grab(it.model) }
 
     // Composite built-in (G = tw0 = closure → unselect-oldest → fit)
     r.register("subgraph-focus") { gv ->
-        impl.selectClosure(gv, true)
-        impl.unselectOldestGen(gv, true)
-        impl.boundScreen(gv)
+        impl.selectClosure(gv.model, true)
+        impl.unselectOldestGen(gv.model, true)
+        impl.boundScreen(gv.model)
     }
 
     // Clipboard
-    r.register("copy") { impl.copySelection(it) }
-    r.register("cut") { impl.cutSelection(it) }
-    r.register("paste") { impl.pasteClipboard(it) }
+    r.register("copy") { impl.copySelection(it.model) }
+    r.register("cut") { impl.cutSelection(it.model) }
+    r.register("paste") { impl.pasteClipboard(it.model) }
 
     // Files
     r.register("save") { it.saveFile() }

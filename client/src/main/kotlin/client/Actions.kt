@@ -1,0 +1,653 @@
+package client
+
+import graph_tools.GraphTools.computeGeneration
+import graph_tools.AddEdgesCommand
+import graph_tools.AddNodeCommand
+import graph_tools.AddNodesCommand
+import graph_tools.CompositeCommand
+import graph_tools.Command
+import graph_tools.Edge
+import graph_tools.GraphTools
+import graph_tools.GraphTools.computeClosure
+import graph_tools.HideCommand
+import graph_tools.NodeStyle
+import graph_tools.LayoutOptimizer
+import graph_tools.MoveNodesCommand
+import graph_tools.Node
+import graph_tools.RemoveEdgesCommand
+import graph_tools.RemoveNodesCommand
+import graph_tools.RevealCommand
+import graph_tools.StyleNodesCommand
+import graph_tools.UnhideCommand
+import graph_tools.ViewModes
+import utils.Vector2
+import utils.Utils.orElse
+import utils.Utils.toUnit
+
+/**
+ * Command implementations. Each method is a `(EditorView) -> Unit`
+ * registered into [CommandRegistry] at startup by
+ * [registerAllCommands]. The old hardcoded dispatch table is gone;
+ * the mapper + registry replace it.
+ */
+object Actions {
+
+
+    fun copyFormat(graphView: EditorView) {
+        val target = graphView.g.selectedNodes.firstOrNull()
+
+        graphView.defaultNodeStyle = target?.let { n ->
+            NodeStyle.fromNode(n)
+        }.orElse(NodeStyle())
+    }
+
+    fun pasteFormat(graphView: EditorView) {
+        val targets = graphView.g.selectedNodes.toList()
+        if (targets.isEmpty()) return
+        val cmd = StyleNodesCommand.toUniform(graphView.g, targets, graphView.defaultNodeStyle)
+        graphView.g.commit(cmd)
+        graphView.repaint()
+    }
+
+    fun grab(graphView: EditorView) {
+        graphView.gestures.startOrEndMove()
+    }
+
+    fun undo(graphView: EditorView) {
+        graphView.g.undo()
+        // Commands mark specific nodes dirty during their `undo`,
+        // but recompute-on-paint is a full sweep of the dirty set
+        // anyway — marking everything here costs nothing and covers
+        // layout commands that move many nodes at once.
+        graphView.g.needsRecomputing(graphView.g.nodes)
+        graphView.repaint()
+    }
+
+    fun redo(graphView: EditorView) {
+        graphView.g.redo()
+        graphView.g.needsRecomputing(graphView.g.nodes)
+        graphView.repaint()
+    }
+
+    /**
+     * Invert the selection among visible nodes: visible nodes
+     * that were selected become unselected, visible nodes that
+     * were unselected become selected. Hidden nodes are
+     * untouched.
+     *
+     * Useful as a prefix to `h`: select what you want to KEEP,
+     * press `i` to flip, then `h` to hide the (now-selected)
+     * clutter.
+     */
+    fun invertSelection(graphView: EditorView) {
+        val visible = graphView.g.visibleNodes()
+        val inverted = visible - graphView.g.selectedNodes
+        graphView.g.cleanSelect(inverted)
+        graphView.repaint()
+    }
+
+    /**
+     * Hide the selected nodes. Increments hideLevel on every
+     * selected node — including nodes already hidden (which
+     * get buried deeper), so successive hides stack and need
+     * one `H` each to unwind.
+     *
+     * After hiding, the selection is cleared (hidden nodes
+     * shouldn't stay selected — you can't interact with what
+     * you can't see).
+     *
+     * Compose with `i` (invert selection) for the inverse
+     * workflow: select what you want to KEEP, press `ih` to
+     * invert-then-hide.
+     *
+     * No-op if the selection is empty.
+     */
+    fun hideSelected(graphView: EditorView) {
+        val sel = graphView.g.selectedNodes.toList()
+        if (sel.isEmpty()) return
+        graphView.g.commit(HideCommand(sel))
+        graphView.g.unselectAll(sel)
+        graphView.repaint()
+    }
+
+    /**
+     * Unhide one level: decrement hideLevel on every node where
+     * it's > 0. One `H` undoes the effect of one `h`.
+     */
+    fun unhideOneLevel(graphView: EditorView) {
+        val affected = graphView.g.nodes.filter { it.cache.hideLevel > 0 }
+        if (affected.isEmpty()) return
+        graphView.g.commit(UnhideCommand(affected))
+        graphView.repaint()
+    }
+
+    /**
+     * Set mark [mark] to the current selection. Every node
+     * in the selection gains the mark; every node not in the
+     * selection loses it (so the mark exactly names the
+     * current selection afterwards). Case of [mark] picks
+     * between persistent (uppercase → attributes.marks) and
+     * transient (lowercase → cache.sessionMarks) storage.
+     *
+     * Undoable via [graph_tools.SetMarksCommand]. No-op if
+     * nothing changes.
+     */
+    fun setMark(graphView: EditorView, mark: Char) {
+        if (!mark.isLetter()) return
+        val g = graphView.g
+        val upper = mark.isUpperCase()
+        val sel = g.selectedNodes
+        val before = g.nodes.associateWith { it.getMarks(upper) }
+        val after = g.nodes.associateWith { n ->
+            val old = n.getMarks(upper)
+            if (n in sel) {
+                if (old.contains(mark)) old else (old + mark).toCharArray().sorted().joinToString("")
+            } else {
+                if (old.contains(mark)) old.replace(mark.toString(), "") else old
+            }
+        }
+        if (before != after) {
+            g.commit(graph_tools.SetMarksCommand(g, upper, before, after))
+        }
+        graphView.repaint()
+    }
+
+    /**
+     * Replace the selection with all visible nodes carrying
+     * [mark]. Hidden marked nodes are skipped (you can't
+     * select what you can't see). Not undoable — selection
+     * changes aren't, per existing policy.
+     */
+    fun recallMark(graphView: EditorView, mark: Char) {
+        if (!mark.isLetter()) return
+        val g = graphView.g
+        val marked = g.nodes
+            .filter { g.isVisible(it) && it.hasMark(mark) }
+            .toSet()
+        g.cleanSelect(marked)
+        graphView.repaint()
+    }
+
+    /**
+     * Snapshot the current selection to the process-global
+     * [Clipboard] as a [NodeFragment]. Clones the nodes so
+     * subsequent mutations to the source graph don't touch the
+     * clipboard copy; filters edges to "both endpoints selected"
+     * so pasting a disconnected piece doesn't try to re-link to
+     * nodes that weren't copied.
+     *
+     * No-op if the selection is empty; the previous clipboard
+     * contents are left intact in that case (matches how text
+     * editors behave — Ctrl+C on nothing does not wipe state).
+     */
+    fun copySelection(graphView: EditorView) {
+        val sel = graphView.g.selectedNodes.toList()
+        if (sel.isEmpty()) return
+
+        // Map each original node to its clone. Edges use this
+        // map to rewrite their endpoints so the fragment is
+        // fully self-referential.
+        val nodeMap: Map<Node, Node> = sel.associateWith { it.deepClone() }
+        val edges: List<Edge> = graphView.g.edges
+            .filter { it.src in nodeMap && it.dst in nodeMap }
+            .map { Edge(nodeMap[it.src]!!, nodeMap[it.dst]!!) }
+        val reference = GraphTools.computeCenterOfMass(sel)
+
+        Clipboard.fragment = NodeFragment(
+            nodes = nodeMap.values.toList(),
+            edges = edges,
+            referencePoint = reference,
+        )
+    }
+
+    /**
+     * Copy the selection to the clipboard, then delete it from
+     * the graph as an undoable compound. The delete is a single
+     * history entry; the copy itself is not undoable (clipboards
+     * don't participate in undo stacks).
+     */
+    fun cutSelection(graphView: EditorView) {
+        val sel = graphView.g.selectedNodes.toList()
+        if (sel.isEmpty()) return
+        copySelection(graphView)
+        // Delegate to the existing delete-without-reconnect
+        // pathway so the history entry matches what `d` would
+        // produce.
+        deleteNode(graphView, false)
+    }
+
+    /**
+     * Instantiate a fresh copy of the clipboard fragment into
+     * the current graph, positioned so the fragment's reference
+     * point lands under the cursor. The paste is one undoable
+     * history step and the pasted nodes become the new
+     * selection (a convention that lets the user drag the
+     * insertion into place right after pasting).
+     */
+    fun pasteClipboard(graphView: EditorView) {
+        val frag = Clipboard.fragment ?: return
+        val g = graphView.g
+        val target = graphView.lastCursorPosition
+        val delta = target - frag.referencePoint
+
+        // Clone again on every paste so repeated Ctrl+V calls
+        // produce independent copies rather than multiple
+        // references to the same node.
+        val pasteMap: Map<Node, Node> = frag.nodes.associateWith { src ->
+            src.deepClone().also { it.position = src.position + delta }
+        }
+        val newNodes = pasteMap.values.toList()
+        val newEdges = frag.edges.map { e ->
+            // Edges in the fragment point to nodes in the
+            // fragment; rewire them to the fresh clones.
+            Edge(pasteMap[e.src]!!, pasteMap[e.dst]!!)
+        }
+
+        val children = buildList<Command> {
+            add(AddNodesCommand(g, newNodes))
+            if (newEdges.isNotEmpty()) {
+                add(AddEdgesCommand(g, newEdges))
+            }
+        }
+        g.commit(CompositeCommand(children))
+
+        // Select the pasted nodes so the user can move them
+        // with a drag or adjust styling immediately.
+        g.cleanSelect(newNodes.toSet())
+        graphView.repaint()
+    }
+
+    fun unselectAll(graphView: EditorView) {
+        // Escape cancels any active modal drag / rotation
+        // first — so the first Escape aborts a grab or
+        // rotate, and a subsequent one clears the selection
+        // as usual.
+        if (graphView.gestures.cancelActiveModal()) return
+        graphView.g.cleanSelect(emptySet())
+        graphView.repaint()
+    }
+
+    fun centerScreen(graphView: EditorView) {
+        graphView.centerScreen()
+    }
+
+    fun boundScreen(graphView: EditorView) {
+        graphView.boundScreen()
+    }
+
+    fun selectClosure(graphView: EditorView, forward: Boolean) {
+        selectTraversed(graphView, computeClosure(graphView.g, graphView.g.selectedNodes, forward))
+    }
+
+    fun selectLinked(graphView: EditorView, forward: Boolean) {
+        selectTraversed(graphView, computeGeneration(graphView.g, graphView.g.selectedNodes, forward))
+    }
+
+    /**
+     * Add [reached] to the selection. In unhide mode traversal
+     * also reaches hidden nodes; those are unhidden (one undo
+     * step) so the selection never holds nodes you can't see.
+     */
+    private fun selectTraversed(graphView: EditorView, reached: Set<Node>) {
+        val hidden = reached.filter { ViewModes.unhide && it.isHidden }
+        if (hidden.isNotEmpty()) {
+            graphView.g.commit(RevealCommand(hidden.associateWith { it.cache.hideLevel }))
+        }
+        graphView.g.selectAll(reached)
+        graphView.repaint()
+    }
+
+    fun unselectOldestGen(graphView: EditorView, forward: Boolean) {
+        val oldestGen = graphView.g.selectedNodes
+            .filter {
+                if (forward) {
+                    graphView.g.findEddges(graphView.g.selectedNodes, setOf(it)).isEmpty()
+                } else {
+                    graphView.g.findEddges(setOf(it), graphView.g.selectedNodes).isEmpty()
+                }
+            }
+        graphView.g.unselectAll(oldestGen)
+        graphView.repaint()
+    }
+
+    /**
+     * Mirror the selected nodes around their bounding-box
+     * centre. [horizontal] = true flips x (left↔right),
+     * false flips y (top↔bottom).
+     *
+     * No-op if the selection is empty. Wraps the position
+     * changes in a single [MoveNodesCommand] so undo
+     * reverts the whole flip in one step.
+     */
+    fun mirror(graphView: EditorView, horizontal: Boolean) {
+        val sel = graphView.g.movable(graphView.g.selectedNodes)
+        if (sel.isEmpty()) return
+        val box = GraphTools.computeBoundingBox(sel) ?: return
+        val cx = (box.ul.x + box.br.x) / 2
+        val cy = (box.ul.y + box.br.y) / 2
+
+        val before = sel.associateWith { it.position }
+        for (n in sel) {
+            val p = n.position
+            n.position = if (horizontal) {
+                Vector2(2 * cx - p.x, p.y)
+            } else {
+                Vector2(p.x, 2 * cy - p.y)
+            }
+            graphView.g.needsRecomputing(n)
+        }
+        val after = sel.associateWith { it.position }.toMutableMap()
+        if (before != after) {
+            graphView.g.commitApplied(
+                MoveNodesCommand(graphView.g, before, after),
+            )
+        }
+        graphView.repaint()
+    }
+
+    /**
+     * Toggle rotate mode. Delegates to the mouse controller,
+     * which handles the live tracking in [mouseMoved]. See
+     * [GestureController.startOrEndRotate] for the state
+     * machine.
+     *
+     * Matches the shape of [grab]: first call arms the mode,
+     * cursor movement rotates the selection around the
+     * bounding-box centre in step with the mouse angle,
+     * second call commits the final positions as one
+     * [MoveNodesCommand] (undoable as a single step).
+     * Escape cancels and reverts (see [unselectAll]).
+     */
+    fun rotate(graphView: EditorView) {
+        graphView.gestures.startOrEndRotate()
+    }
+
+    fun scale(graphView: EditorView) {
+        graphView.gestures.startOrEndScale()
+    }
+
+    /**
+     * Toggle [GestureController.lockX].
+     * Bound to the `y` key in Transform mode (Blender semantic:
+     * `y` constrains to the Y axis by freezing X).
+     */
+    /**
+     * "Constrain to X": press `x` to scale / move along X
+     * only. Internally that means locking Y (the other axis).
+     * Tapping `x` while already X-constrained releases the
+     * constraint; tapping `x` while Y-constrained switches
+     * (radio-style) so only one axis is locked at a time.
+     *
+     * Blender convention: the letter you press names the
+     * axis that *remains free*.
+     */
+    fun constrainAxisX(graphView: EditorView) {
+        val c = graphView.gestures
+        val alreadyConstrainedToX = c.lockY && !c.lockX
+        if (alreadyConstrainedToX) {
+            c.lockY = false   // release
+        } else {
+            c.lockY = true    // lock the *other* axis
+            c.lockX = false   // radio clear
+        }
+        // Re-render positions with the new constraint, then
+        // refresh the status bar so the "(X)/(Y)" suffix
+        // reflects the new state.
+        reapplyActiveGesture(graphView)
+        graphView.refreshStatus()
+    }
+
+    fun constrainAxisY(graphView: EditorView) {
+        val c = graphView.gestures
+        val alreadyConstrainedToY = c.lockX && !c.lockY
+        if (alreadyConstrainedToY) {
+            c.lockX = false
+        } else {
+            c.lockX = true
+            c.lockY = false
+        }
+        reapplyActiveGesture(graphView)
+        graphView.refreshStatus()
+    }
+
+    /**
+     * After an axis-lock flip, re-run the active gesture's
+     * drag function so nodes snap to the axis-locked position
+     * without waiting for the next mouse-move event. Scale is
+     * the common case; grab's next delta is zero (cursor
+     * hasn't moved) so re-running dragMoveNode is a no-op; we
+     * skip rotate entirely (axis lock is meaningless in 2D).
+     */
+    private fun reapplyActiveGesture(graphView: EditorView) {
+        val c = graphView.gestures
+        when (c.state) {
+            GestureController.States.Scaling ->
+                c.dragScale(graphView.lastScreenCursorPosition)
+            // Grab's dragMoveNode is now idempotent (from-start
+            // + total delta), so re-invoking it with the last
+            // cursor reverts any drift on the newly-frozen
+            // axis instead of leaving it stranded.
+            GestureController.States.MovingNodes ->
+                c.dragMoveNode(graphView.lastCursorPosition, restrictOperator = false)
+            else -> Unit  // rotate: axis lock is a 2D no-op.
+        }
+    }
+
+    /**
+     * Time of the last spring-scale tweak, for rate-limiting
+     * the multiplier so held keys and single taps both feel
+     * right regardless of the OS key-repeat rate.
+     * Package-visible so tests can reset it between runs —
+     * this is singleton state on the `impl` object and
+     * persists across test cases otherwise.
+     */
+    internal var lastSpringTweakTime: Long = 0L
+
+    /**
+     * Adjust [LayoutOptimizer.springScale] toward [perSecFactor]
+     * and run one optimize pass.
+     *
+     * [perSecFactor] is the "rate": the scale the multiplier
+     * would reach if the key were held for a full second
+     * (e.g. 0.9 for shorter, 1/0.9 for longer). The actual
+     * multiplier per call is `perSecFactor^elapsedSec`, where
+     * `elapsedSec` is the time since the last call, clamped
+     * to a minimum of 200 ms so a single tap produces a
+     * visible 0.2-seconds-worth step.
+     *
+     * Consequence: sustained key-repeat yields a smooth
+     * per-second scaling regardless of repeat rate — fast
+     * repeats produce many tiny steps, slow repeats produce
+     * fewer larger ones, both totalling to perSecFactor per
+     * second. A single press gives 0.2 s worth.
+     */
+    fun tweakSpringScale(graphView: EditorView, perSecFactor: Double) {
+        val now = System.currentTimeMillis()
+        // Elapsed since last tap, clamped to at most 200 ms.
+        // A single tap after a long pause = 200 ms of effect.
+        // A held key firing every 30 ms = 30 ms of effect per
+        // tick, 33 ticks/sec → perSecFactor per second total.
+        // First call (lastSpringTweakTime == 0) also lands at
+        // 200 ms due to the clamp.
+        val elapsedMs = (now - lastSpringTweakTime).coerceAtMost(200L)
+        val elapsedSec = elapsedMs / 1000.0
+        LayoutOptimizer.springScale *= Math.pow(perSecFactor, elapsedSec)
+        lastSpringTweakTime = now
+        optimize(graphView, restrict = false)
+    }
+
+    fun optimize(graphView: EditorView, restrict: Boolean) {
+        // Capture positions before optimising, then build a
+        // MoveNodesCommand so the user can undo a layout pass with
+        // Ctrl+Z. We snapshot all nodes because the optimiser may
+        // touch any of them; unchanged nodes cost nothing to record.
+        val before = graphView.g.nodes.associateWith { it.position }
+        LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
+        val after = graphView.g.nodes.associateWith { it.position }.toMutableMap()
+        if (before != after) {
+            graphView.g.commitApplied(MoveNodesCommand(graphView.g, before, after))
+        }
+        graphView.repaint()
+    }
+
+    fun selectAll(graphView: EditorView) {
+        val visible = graphView.g.visibleNodes()
+        if (graphView.g.selectedNodes == visible) {
+            graphView.g.cleanSelect(setOf())
+        } else {
+            graphView.g.cleanSelect(visible)
+        }
+        graphView.repaint()
+    }
+
+    fun editNode(graphView: EditorView, select: Boolean) {
+        graphView.g.lastActiveNode?.let { n ->
+            if (select) {
+                graphView.g.cleanSelect(setOf(n))
+            }
+            graphView.startNodeEdit(n, null)
+        }
+    }
+
+    fun deleteNode(graphView: EditorView, reconnectNodes: Boolean) {
+        val g = graphView.g
+        val sel = g.selectedNodes.toList()
+        if (sel.isEmpty()) return
+
+        // Collect the reconnection edges first, before we compute the
+        // edges to remove — we want the new bridges in the graph
+        // *after* the originals are gone, but we need to derive them
+        // from the structure *before* deletion. Building them now and
+        // letting the composite command re-play the add after the
+        // removes is the cleanest order.
+        val reconnects: List<Edge> =
+            if (reconnectNodes) {
+                sel.flatMap { n ->
+                    val ins = g.findInEdges(n).map { it.src }.toSet()
+                    val outs = g.findOutEdges(n).map { it.dst }.toSet()
+                    ins.flatMap { src -> outs.map { dst -> src to dst } }
+                }
+                    .distinct()
+                    // Don't bridge through deleted nodes.
+                    .filter { it.first !in sel && it.second !in sel }
+                    .map { Edge(it.first, it.second) }
+            } else {
+                emptyList()
+            }
+
+        val incidentEdges = g.edges
+            .filter { sel.contains(it.src) || sel.contains(it.dst) }
+            .toList()
+
+        g.unselectAll(sel)
+
+        val children = buildList<Command> {
+            add(RemoveEdgesCommand(g, incidentEdges))
+            add(RemoveNodesCommand(g, sel))
+            if (reconnects.isNotEmpty()) {
+                add(AddEdgesCommand(g, reconnects))
+            }
+        }
+        g.commit(CompositeCommand(children))
+
+        graphView.repaint()
+    }
+
+
+    fun clearEdges(graphView: EditorView) {
+        val g = graphView.g
+        val sel = g.selectedNodes
+
+        val edgesInComponent = g.findEddges(sel, sel)
+
+        val victims: List<Edge> =
+            if (edgesInComponent.isNotEmpty()) {
+                edgesInComponent.toList()
+            } else {
+                sel.flatMap { n ->
+                    g.edges.filter { it.src == n || it.dst == n }
+                }.distinct()
+            }
+
+        if (victims.isNotEmpty()) {
+            g.commit(RemoveEdgesCommand(g, victims))
+        }
+
+        graphView.repaint()
+    }
+
+    fun drawNodeWithEdge(graphView: EditorView, forwardEdge: Boolean, append: Boolean) {
+        val g = graphView.g
+        val pos = graphView.lastCursorPosition
+
+        val from = if (append) {
+            g.lastActiveNode
+                ?.let { listOf(it) }
+                .orElse(g.selectedNodes)
+        } else {
+            g.selectedNodes
+        }
+
+        val style = from
+            .takeIf { it.size == 1 }
+            ?.let { GraphTools.pickNodeStyle(g, it.first()) }
+            .orElse(graphView.defaultNodeStyle)
+
+        val newNode = Node(
+            label = "New node",
+            pos = pos,
+            style = style,
+        )
+
+        val newEdges = from.map { selectedNode ->
+            if (forwardEdge) Edge(selectedNode, newNode) else Edge(newNode, selectedNode)
+        }
+
+        val children = buildList<Command> {
+            add(AddNodeCommand(g, newNode))
+            if (newEdges.isNotEmpty()) {
+                add(AddEdgesCommand(g, newEdges))
+            }
+        }
+        g.commit(CompositeCommand(children))
+
+        graphView.repaint()
+    }
+
+    fun drawEdge(graphView: EditorView, forward: Boolean) {
+        val g = graphView.g
+        val pos = graphView.lastCursorPosition
+        val pointed = Clicker.selectClickedNode(g, pos, graphView.viewTransform.scale)
+        val selected = g.selectedNodes - pointed
+
+        val (src, dst) = if (forward) selected to pointed else pointed to selected
+
+        val existingEdges = g.findEddges(src, dst)
+        val representedSrcs = existingEdges.map { it.src }.toSet()
+        val representedDsts = existingEdges.map { it.dst }.toSet()
+
+        // Branch 1: all endpoints already covered → user is toggling
+        // the edges off. Branch 2: at least one pair is missing →
+        // add those, leave existing ones alone.
+        if (representedDsts.size == dst.size && representedSrcs.size == src.size) {
+            if (existingEdges.isNotEmpty()) {
+                g.commit(RemoveEdgesCommand(g, existingEdges))
+            }
+        } else {
+            val existingConnections = existingEdges.associateBy { it.src to it.dst }
+            val missingEdges = src.flatMap { s ->
+                dst.map { d ->
+                    Edge(src = s, dst = d)
+                }
+            }
+                .filter { !existingConnections.containsKey(it.src to it.dst) }
+                .filter { it.src != it.dst }
+
+            if (missingEdges.isNotEmpty()) {
+                g.commit(AddEdgesCommand(g, missingEdges))
+            }
+        }
+
+        graphView.repaint()
+    }
+}

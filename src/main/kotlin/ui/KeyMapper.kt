@@ -250,7 +250,7 @@ class KeyMapper(
         // else is swallowed so an accidental `u` / `d` / etc. can't
         // clobber the gesture. `<Esc>` is included so the user's
         // first Escape still cancels the gesture (routes through
-        // the `deselect` command → GraphMouseController.cancelActiveModal).
+        // the `deselect` command → GestureController.cancelActiveModal).
         if (mode == Mode.Transform) {
             transformModeBindings[key]?.let { executeCommand(it) }
             // Don't record in macros, don't accumulate in pending —

@@ -33,6 +33,7 @@ class GraphCanvas(
 
     fun doDrawing(graphics: Graphics) {
         val g2d = graphics as Graphics2D
+        parent.syncSize()
 
 
         if (!initialized && this.width != 0 && this.height != 0) {

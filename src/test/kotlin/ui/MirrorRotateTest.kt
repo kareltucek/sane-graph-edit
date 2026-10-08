@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import Graph
 import graph_tools.Edge
 import graph_tools.Node
@@ -36,7 +37,7 @@ class MirrorRotateTest {
     fun `hmirror flips x around bounding-box center`() {
         val g = trianglesGraph()
         val v = viewWith(g)
-        GraphKeyListener.impl.mirror(v, horizontal = true)
+        Actions.mirror(v.model, horizontal = true)
 
         val byName = g.nodes.associateBy { it.attributes.text }
         // Center x = 50. So x' = 2*50 - x = 100 - x.
@@ -49,7 +50,7 @@ class MirrorRotateTest {
     fun `vmirror flips y around bounding-box center`() {
         val g = trianglesGraph()
         val v = viewWith(g)
-        GraphKeyListener.impl.mirror(v, horizontal = false)
+        Actions.mirror(v.model, horizontal = false)
 
         val byName = g.nodes.associateBy { it.attributes.text }
         // Center y = 50. So y' = 2*50 - y = 100 - y.
@@ -114,7 +115,7 @@ class MirrorRotateTest {
         val v = viewWith(g)
         val originals = g.nodes.associateWith { it.position }
 
-        GraphKeyListener.impl.mirror(v, horizontal = true)
+        Actions.mirror(v.model, horizontal = true)
         // Verify something changed
         val a = g.nodes.first { it.attributes.text == "A" }
         assertEquals(100.0, a.position.x, absoluteTolerance = 0.001)
@@ -132,7 +133,7 @@ class MirrorRotateTest {
         g.add(a)
         // No selection
         val v = viewWith(g)
-        GraphKeyListener.impl.mirror(v, horizontal = true)
+        Actions.mirror(v.model, horizontal = true)
         assertEquals(Vector2(42.0, 42.0), a.position)
     }
 }
