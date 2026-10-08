@@ -68,7 +68,9 @@ rpm:
 install: package
 	@echo "Installing to $(APPDIR) ..."
 	install -d $(APPDIR)
-	cp -a $(BUILD_DIST)/. $(APPDIR)/
+	# replace files instead of writing into them: a running editor keeps its
+	# old launcher, and overwriting that in place fails with "Text file busy"
+	cp -a --remove-destination $(BUILD_DIST)/. $(APPDIR)/
 	install -d $(dir $(BINLINK))
 	ln -sf $(APPDIR)/bin/sane-graph-edit $(BINLINK)
 	@echo "Installed. Run with: sane-graph-edit"
