@@ -299,9 +299,13 @@ class KeyMapper(
             return
         }
 
+        // The prefix keys below start a sequence of their own; after
+        // a waiting key they are its continuation (`gm` = link-m).
+        val startsSequence = pending.isEmpty()
+
         // `q` toggles recording. If recording, stop. If not
         // recording, wait for the next key as register name.
-        if (key == "q") {
+        if (key == "q" && startsSequence) {
             if (isRecording) {
                 stopRecording()
             } else {
@@ -311,19 +315,19 @@ class KeyMapper(
         }
 
         // `@` starts replay — wait for the register name.
-        if (key == "@") {
+        if (key == "@" && startsSequence) {
             waitingForPrefix = PrefixAction.ReplayMacro
             return
         }
 
         // `m` sets a mark — wait for the register letter.
-        if (key == "m") {
+        if (key == "m" && startsSequence) {
             waitingForPrefix = PrefixAction.SetMark
             return
         }
 
         // `'` recalls a mark — wait for the register letter.
-        if (key == "'") {
+        if (key == "'" && startsSequence) {
             waitingForPrefix = PrefixAction.RecallMark
             return
         }

@@ -365,6 +365,27 @@ class KeyMapperTest {
     }
 
     @Test
+    fun `gm and gq follow links, m and q after another waiting key keep their meaning`() {
+        val executed = mutableListOf<String>()
+        val followed = mutableListOf<Char>()
+        val marks = mutableListOf<Char>()
+        val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "d" to "delete", "dd" to "delete-reconnect"))
+        mapper.activeView = GraphView(initialGraph = Graph())
+        mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
+        mapper.linkFollower = { _, letter, _ -> followed.add(letter) }
+        mapper.markSetter = { _, letter -> marks.add(letter) }
+
+        listOf("g", "m", "g", "q").forEach { mapper.feedKey(it) }
+        assertEquals(listOf('m', 'q'), followed)
+        assertEquals(emptyList(), executed)
+
+        // `d` waits (it could become `dd`); `m` ends that wait and still sets a mark
+        listOf("d", "m", "a").forEach { mapper.feedKey(it) }
+        assertEquals(listOf("delete"), executed)
+        assertEquals(listOf('a'), marks)
+    }
+
+    @Test
     fun `g and a grab key without a link still grabs`() {
         val executed = mutableListOf<String>()
         val followed = mutableListOf<Char>()
