@@ -1,12 +1,9 @@
-package ui
-
-import java.awt.event.KeyEvent
-import java.awt.event.KeyEvent.*
+package client
 
 /**
- * Bidirectional conversion between AWT [KeyEvent]s and the
- * vim-style notation strings used in the mapping tables
- * (`"a"`, `"<C-s>"`, `"<CR>"`, `"<Space>"`, etc.).
+ * The vim-style notation of keys used in the mapping tables
+ * (`"a"`, `"<C-s>"`, `"<CR>"`, `"<Space>"`, etc.). A renderer turns
+ * its toolkit's key events into this notation.
  */
 object KeyNotation {
 
@@ -28,31 +25,16 @@ object KeyNotation {
     }
 
     /**
-     * Convert a `keyPressed` event to notation. Returns null for
-     * events that should be handled by [fromKeyTyped] instead
-     * (plain characters without Ctrl).
+     * Notation of a pressed key. [special] is its name when it is not
+     * a character key (`Esc`, `CR`, `F5`, …), [character] its letter
+     * or digit otherwise. Returns null for what [fromKeyTyped]
+     * handles instead: plain characters without Ctrl.
      */
-    fun fromKeyPressed(e: KeyEvent): String? {
-        val hasCtrl = e.isControlDown
-        val hasShift = e.isShiftDown
-
-        // Special keys handled here regardless of modifiers
-        val specialName = specialKeyName(e.keyCode)
-        if (specialName != null) {
-            return buildNotation(hasCtrl, hasShift, specialName)
-        }
-
-        // Plain chars without Ctrl → let keyTyped handle them
-        if (!hasCtrl) return null
-
-        // Ctrl+letter / Ctrl+digit
-        val keyName = when (e.keyCode) {
-            in VK_A..VK_Z -> ('a' + (e.keyCode - VK_A)).toString()
-            in VK_0..VK_9 -> ('0' + (e.keyCode - VK_0)).toString()
-            else -> return null
-        }
-
-        return buildNotation(ctrl = true, shift = hasShift, keyName)
+    fun fromKeyPressed(special: String?, character: Char?, ctrl: Boolean, shift: Boolean): String? = when {
+        // special keys are handled here regardless of modifiers
+        special != null -> buildNotation(ctrl, shift, special)
+        ctrl && character != null -> buildNotation(ctrl = true, shift = shift, character.toString())
+        else -> null
     }
 
     /**
@@ -156,23 +138,6 @@ object KeyNotation {
     private val functionKeyNames: Set<String> = (1..12).map { "f$it" }.toSet()
 
     // --- internal helpers ---
-
-    private fun specialKeyName(keyCode: Int): String? = when (keyCode) {
-        VK_ESCAPE -> "Esc"
-        VK_ENTER -> "CR"
-        VK_SPACE -> "Space"
-        VK_TAB -> "Tab"
-        VK_PAGE_DOWN -> "PgDn"
-        VK_PAGE_UP -> "PgUp"
-        VK_UP -> "Up"
-        VK_DOWN -> "Down"
-        VK_LEFT -> "Left"
-        VK_RIGHT -> "Right"
-        VK_BACK_SPACE -> "BS"
-        VK_DELETE -> "Del"
-        in VK_F1..VK_F12 -> "F${keyCode - VK_F1 + 1}"
-        else -> null
-    }
 
     private fun buildNotation(ctrl: Boolean, shift: Boolean, keyName: String): String {
         val parts = mutableListOf<String>()

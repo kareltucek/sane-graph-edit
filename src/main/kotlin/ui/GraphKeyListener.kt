@@ -78,7 +78,7 @@ class GraphKeyListener(
 
     override fun keyPressed(e: KeyEvent) {
         if (e.keyCode in modifierKeys) graphView.keyMapper?.modifierPressed()
-        val notation = KeyNotation.fromKeyPressed(e) ?: return
+        val notation = AwtKeys.fromKeyPressed(e) ?: return
 
         val mapper = graphView.keyMapper ?: return
         mapper.activeView = graphView

@@ -133,12 +133,7 @@ fun runHeadless(file: String?, execs: List<String>): Int {
 
     // Register commands + build the mapper, same as Window does.
     registerAllCommands()
-    val mapper = KeyMapper(KeyMapper.defaultBindings())
-    mapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
-    mapper.markSetter = { gv, letter -> Actions.setMark(gv.model, letter) }
-    mapper.markRecaller = { gv, letter -> Actions.recallMark(gv.model, letter) }
-    mapper.linkFollower = { gv, letter -> gv.followFileLink(letter, quiet = true) }
-    mapper.installDefaultTransformBindings()
+    val mapper = applicationKeyMapper()
     mapper.loadInitFile(XdgPaths.appConfigDir.resolve("init"))
 
     // Construct a minimal headless GraphView (no Window, no

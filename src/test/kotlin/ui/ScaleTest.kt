@@ -242,7 +242,7 @@ class ScaleTest {
         // Route a dummy command executor so we can observe what
         // fires (or doesn't). Use a standalone mapper — no view.
         val executed = mutableListOf<String>()
-        val mapper = KeyMapper(KeyMapper.defaultBindings())
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
         mapper.commandExecutor = { cmd, _ -> executed += cmd }
         mapper.installDefaultTransformBindings()
         mapper.activeView = GraphView(initialGraph = Graph())
@@ -257,7 +257,7 @@ class ScaleTest {
     @Test
     fun `Transform mode fires axis-lock bindings`() {
         val executed = mutableListOf<String>()
-        val mapper = KeyMapper(KeyMapper.defaultBindings())
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
         mapper.commandExecutor = { cmd, _ -> executed += cmd }
         mapper.installDefaultTransformBindings()
         mapper.activeView = GraphView(initialGraph = Graph())
@@ -358,7 +358,7 @@ class ScaleTest {
         // future) gets the cleanup for free.
         val g = trianglesGraph()
         val v = viewWith(g)
-        val mapper = KeyMapper(KeyMapper.defaultBindings()).also {
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler).also {
             it.installDefaultTransformBindings()
         }
         v.keyMapper = mapper
@@ -384,7 +384,7 @@ class ScaleTest {
     fun `entering scale flips KeyMapper to Transform mode, exiting restores Normal`() {
         val g = trianglesGraph()
         val v = viewWith(g)
-        val mapper = KeyMapper(KeyMapper.defaultBindings()).also {
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler).also {
             it.installDefaultTransformBindings()
         }
         v.keyMapper = mapper

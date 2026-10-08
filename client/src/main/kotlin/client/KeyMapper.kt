@@ -1,9 +1,6 @@
-package ui
+package client
 
-import client.*
 import Graph
-import javax.swing.SwingUtilities
-import javax.swing.Timer
 
 /**
  * Two-table key dispatcher with multi-key timeout.
@@ -39,8 +36,16 @@ import javax.swing.Timer
  */
 class KeyMapper(
     private val defaults: Map<String, String>,
+    /** For the timeout that resolves an ambiguous key sequence. */
+    private val scheduler: Scheduler,
     var timeoutMs: Int = DEFAULT_TIMEOUT_MS,
 ) {
+    /** Names of the commands [commandExecutor] knows, for `:help commands`. */
+    var commandNames: () -> List<String> = { emptyList() }
+
+    /** `:set <name>=<value>` settings that belong to the application rather than to the client. */
+    val applicationSettings: MutableMap<String, (String) -> Unit> = mutableMapOf()
+
     data class Mapping(val rhs: String, val recursive: Boolean)
 
     /**
@@ -122,16 +127,17 @@ class KeyMapper(
 
     private val mappings = mutableMapOf<String, Mapping>()
     private var pending: String = ""
-    private var pendingTimer: Timer? = null
+    /** Cancels the running timeout, when there is one. */
+    private var pendingTimer: (() -> Unit)? = null
 
     /** Callback invoked to execute a resolved command name. */
-    var commandExecutor: ((String, GraphView) -> Unit)? = null
+    var commandExecutor: ((String, KeyTarget) -> Unit)? = null
 
     /** Callback invoked when `:` is replayed (opens the command bar). */
-    var commandBarOpener: ((GraphView) -> Unit)? = null
+    var commandBarOpener: ((KeyTarget) -> Unit)? = null
 
-    /** The currently active GraphView — set by the key listener before feeding keys. */
-    var activeView: GraphView? = null
+    /** The currently active KeyTarget — set by the key listener before feeding keys. */
+    var activeView: KeyTarget? = null
 
     // --- macro registers ---
 
@@ -161,17 +167,17 @@ class KeyMapper(
     private var replaying: Boolean = false
 
     /** Callback for setting a mark on the current selection. Set by Window. */
-    var markSetter: ((GraphView, Char) -> Unit)? = null
+    var markSetter: ((KeyTarget, Char) -> Unit)? = null
 
     /** Callback for recalling a mark. Set by Window. */
-    var markRecaller: ((GraphView, Char) -> Unit)? = null
+    var markRecaller: ((KeyTarget, Char) -> Unit)? = null
 
     /**
      * Callback for an unmapped `g<letter>`: follow the selected
      * node's `link-<letter>`. Returns false when there is no such
      * link, and the keys are then resolved as before. Set by Window.
      */
-    var linkFollower: ((GraphView, Char) -> Boolean)? = null
+    var linkFollower: ((KeyTarget, Char) -> Boolean)? = null
 
     /**
      * When non-null, we're accumulating characters into a
@@ -597,7 +603,7 @@ class KeyMapper(
 
     /**
      * Execute a command-bar line. Config commands (`map`, `set`,
-     * `source`, etc.) work without a [GraphView]; graph commands
+     * `source`, etc.) work without a [KeyTarget]; graph commands
      * (`:w`, `:q`, `:e`, named commands) require one and are
      * silently skipped if [activeView] is null (which happens
      * during init-file loading before the UI is up).
@@ -607,7 +613,7 @@ class KeyMapper(
         val cmd = parts[0]
         val args = parts.getOrNull(1)
 
-        // --- Config commands (no GraphView needed) ---
+        // --- Config commands (no KeyTarget needed) ---
         when (cmd) {
             "map", "noremap" -> {
                 if (args != null) {
@@ -661,22 +667,21 @@ class KeyMapper(
             "w" -> {
                 if (args != null) {
                     try {
-                        val target = resolvePath(args).toAbsolutePath().normalize().toString()
-                        gv.document?.saveCopy(target) ?: DotGraphLoader.saveToFile(gv.g, target)
+                        gv.saveCopy(resolvePath(args).toAbsolutePath().normalize())
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :w failed: ${t.message}")
                     }
                 } else {
-                    CommandRegistry.execute("save", gv)
+                    commandExecutor?.invoke("save", gv)
                 }
             }
-            "q" -> gv.tabManager?.quitCurrent(force = false)
-            "q!" -> gv.tabManager?.quitCurrent(force = true)
-            "qa" -> gv.tabManager?.window?.quit(force = false)
-            "qa!" -> gv.tabManager?.window?.quit(force = true)
+            "q" -> gv.quit(force = false, all = false)
+            "q!" -> gv.quit(force = true, all = false)
+            "qa" -> gv.quit(force = false, all = true)
+            "qa!" -> gv.quit(force = true, all = true)
             "wq" -> {
                 if (gv.saveFile()) {
-                    gv.tabManager?.quitCurrent(force = false)
+                    gv.quit(force = false, all = false)
                 }
             }
             "help" -> {
@@ -699,17 +704,17 @@ class KeyMapper(
                     if (parsed != null) {
                         val (fmt, path) = parsed
                         try {
-                            val visible = gv.g.visibleNodes()
+                            val visible = gv.model.g.visibleNodes()
                             java.nio.file.Files.writeString(
                                 resolvePath(path),
-                                renderExport(gv.g, visible, fmt),
+                                renderExport(gv.model.g, visible, fmt),
                             )
                         } catch (t: Throwable) {
                             System.err.println("sane-graph-edit: :export failed: ${t.message}")
                         }
                     }
                 } else {
-                    CommandRegistry.execute("export-svg", gv)
+                    commandExecutor?.invoke("export-svg", gv)
                 }
             }
             "export-selection" -> {
@@ -719,58 +724,50 @@ class KeyMapper(
                     if (parsed != null) {
                         val (fmt, path) = parsed
                         try {
-                            val sel = gv.g.selectedNodes.takeIf { it.isNotEmpty() }
-                                ?: gv.g.nodes.toSet()
+                            val sel = gv.model.g.selectedNodes.takeIf { it.isNotEmpty() }
+                                ?: gv.model.g.nodes.toSet()
                             java.nio.file.Files.writeString(
                                 resolvePath(path),
-                                renderExport(gv.g, sel, fmt),
+                                renderExport(gv.model.g, sel, fmt),
                             )
                         } catch (t: Throwable) {
                             System.err.println("sane-graph-edit: :export-selection failed: ${t.message}")
                         }
                     }
                 } else {
-                    CommandRegistry.execute("export-selection", gv)
+                    commandExecutor?.invoke("export-selection", gv)
                 }
             }
             "e" -> {
                 if (args != null) {
                     try {
-                        val resolved = resolvePath(args)
-                        if (java.nio.file.Files.isDirectory(resolved)) {
-                            gv.tabManager?.browse(resolved)
-                        } else {
-                            val loaded = DotGraphLoader.loadFromFile(resolved.toString())
-                            gv.tabManager?.newTab(graph = loaded, path = resolved)
-                            AppState.lastOpenDir = resolved.toAbsolutePath().parent
-                        }
+                        gv.edit(resolvePath(args))
                     } catch (t: Throwable) {
                         System.err.println("sane-graph-edit: :e failed: ${t.message}")
                     }
                 } else {
                     // vim: bare :e re-reads the current file
-                    CommandRegistry.execute("reload", gv)
+                    commandExecutor?.invoke("reload", gv)
                 }
             }
             "e!" -> gv.reloadFile(force = true)
             "browse" -> {
                 // :browse [dir] — file-tree tab; no arg = working directory
                 val dir = args?.let { resolvePath(it) } ?: Workspace.dir
-                gv.tabManager?.browse(dir)
+                gv.browse(dir)
             }
             "cd" -> {
                 // :cd <dir> — switch the workspace; no arg = show it
                 val dir = args?.let { resolvePath(it) }
                 when {
-                    dir == null -> gv.messageArea?.show(Workspace.dir.toString())
-                    !java.nio.file.Files.isDirectory(dir) -> gv.messageArea?.show("cd: not a directory: $dir")
-                    // headless: no tabs, just the directory
-                    else -> gv.tabManager?.switchWorkspace(dir) ?: run { Workspace.dir = dir }
+                    dir == null -> gv.message(Workspace.dir.toString())
+                    !java.nio.file.Files.isDirectory(dir) -> gv.message("cd: not a directory: $dir")
+                    else -> gv.switchWorkspace(dir)
                 }
             }
             else -> {
                 // Try as a registered command name
-                CommandRegistry.execute(cmd, gv)
+                commandExecutor?.invoke(cmd, gv)
             }
         }
     }
@@ -780,8 +777,7 @@ class KeyMapper(
             "timeoutlen" -> value.toIntOrNull()?.let { timeoutMs = it }
             "spring-scale" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScale = it }
             "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
-            "picker" -> FilePicker.command = value.ifBlank { FilePicker.DEFAULT_COMMAND }
-            else -> System.err.println("sane-graph-edit: unknown setting '$name'")
+            else -> applicationSettings[name]?.invoke(value) ?: System.err.println("sane-graph-edit: unknown setting '$name'")
         }
     }
 
@@ -807,10 +803,7 @@ class KeyMapper(
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
             else -> System.err.println("sane-graph-edit: unknown setting '$spec'")
         }
-        activeView?.let { gv ->
-            gv.refreshStatus()
-            gv.tabManager?.forEachView { it.repaint() } ?: gv.repaint()
-        }
+        activeView?.modesChanged()
     }
 
     /** [FLAG_SETTINGS] plus aliases (not offered by completion). */
@@ -849,14 +842,11 @@ class KeyMapper(
     }
 
     private fun startTimeout() {
-        val timer = Timer(timeoutMs) { onTimeout() }
-        timer.isRepeats = false
-        timer.start()
-        pendingTimer = timer
+        pendingTimer = scheduler.after(timeoutMs) { onTimeout() }
     }
 
     private fun cancelTimer() {
-        pendingTimer?.stop()
+        pendingTimer?.invoke()
         pendingTimer = null
     }
 
@@ -990,7 +980,7 @@ class KeyMapper(
      * alphabetical list. Used by `:help commands`.
      */
     private fun formatCommandList(): String {
-        val registered = CommandRegistry.list()
+        val registered = commandNames()
         // Built-in :bar verbs (handled inline in executeCommandLine,
         // not registered in CommandRegistry).
         val builtins = listOf(
@@ -1152,17 +1142,7 @@ class KeyMapper(
      * if the message area isn't available (e.g., unit tests).
      */
     private fun showHelpText(text: String) {
-        val headless = java.awt.GraphicsEnvironment.isHeadless()
-        if (headless) {
-            print(text)
-            return
-        }
-        val msg = activeView?.messageArea
-        if (msg != null) {
-            msg.show(text)
-        } else {
-            print(text)
-        }
+        activeView?.message(text) ?: print(text)
     }
 
     companion object {

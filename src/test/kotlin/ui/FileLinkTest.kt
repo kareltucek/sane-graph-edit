@@ -60,7 +60,7 @@ class FileLinkTest {
 
     @Test
     fun `a letter is followable unless g-letter is taken`() {
-        val mapper = KeyMapper(KeyMapper.defaultBindings())
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
         assertTrue(mapper.followsLink('d'))
         assertTrue(mapper.followsLink('f'))   // gf = follow-file-link
         assertFalse(mapper.followsLink('t'))  // gt = tabnext

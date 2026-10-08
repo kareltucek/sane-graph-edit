@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -149,10 +150,10 @@ class KeyNotationTest {
                 java.awt.event.KeyEvent.CHAR_UNDEFINED,
             )
         }
-        assertEquals("<F5>", KeyNotation.fromKeyPressed(press(java.awt.event.KeyEvent.VK_F5, 0)))
+        assertEquals("<F5>", AwtKeys.fromKeyPressed(press(java.awt.event.KeyEvent.VK_F5, 0)))
         assertEquals(
             "<C-F1>",
-            KeyNotation.fromKeyPressed(press(java.awt.event.KeyEvent.VK_F1, java.awt.event.InputEvent.CTRL_DOWN_MASK)),
+            AwtKeys.fromKeyPressed(press(java.awt.event.KeyEvent.VK_F1, java.awt.event.InputEvent.CTRL_DOWN_MASK)),
         )
     }
 

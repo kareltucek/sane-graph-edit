@@ -50,7 +50,7 @@ import javax.swing.SpringLayout
 class GraphView(
     initialGraph: Graph = Graph.defaultGraph(),
     initialFile: Path? = null,
-) : JLayeredPane(), Renderer {
+) : JLayeredPane(), Renderer, KeyTarget {
     val graphCanvas = GraphCanvas(this)
     val nodeEditor = NodeEditor(this)
     val stylePicker = StylePicker(this)
@@ -104,7 +104,7 @@ class GraphView(
      * cursor, the gesture in progress, and the editing done with
      * them. This class is its [Renderer]: the Swing half.
      */
-    val model: EditorView = EditorView(adopt(initialGraph, initialFile), this)
+    override val model: EditorView = EditorView(adopt(initialGraph, initialFile), this)
 
     /**
      * Make the document of [file] — or, without one, a new document
@@ -127,6 +127,46 @@ class GraphView(
         doc?.onRejected = { reason -> messageArea?.show("change refused: $reason") }
         doc?.onLost = { document = null }
         return doc?.graph ?: graph
+    }
+
+    // --- what `:` commands ask of the application (KeyTarget) ---
+
+    /** In the message area; printed when there is none (headless runs, tests). */
+    override fun message(text: String) {
+        val area = messageArea.takeIf { !java.awt.GraphicsEnvironment.isHeadless() }
+        area?.show(text) ?: print(text)
+    }
+
+    override fun saveCopy(path: Path) {
+        document?.saveCopy(path.toString()) ?: DotGraphLoader.saveToFile(g, path.toString())
+    }
+
+    override fun edit(path: Path) {
+        if (java.nio.file.Files.isDirectory(path)) {
+            tabManager?.browse(path)
+        } else {
+            val loaded = DotGraphLoader.loadFromFile(path.toString())
+            tabManager?.newTab(graph = loaded, path = path)
+            AppState.lastOpenDir = path.toAbsolutePath().parent
+        }
+    }
+
+    override fun browse(dir: Path) {
+        tabManager?.browse(dir)
+    }
+
+    override fun switchWorkspace(dir: Path) {
+        // headless: no tabs, just the directory
+        tabManager?.switchWorkspace(dir) ?: run { Workspace.dir = dir }
+    }
+
+    override fun quit(force: Boolean, all: Boolean) {
+        if (all) tabManager?.window?.quit(force) else tabManager?.quitCurrent(force)
+    }
+
+    override fun modesChanged() {
+        refreshStatus()
+        tabManager?.forEachView { it.repaint() } ?: repaint()
     }
 
     /** Leave the document; for when the view goes away. */
@@ -429,7 +469,7 @@ class GraphView(
      * graph has never been saved. Returns true on success, false if
      * the user cancelled a Save-As dialog.
      */
-    fun saveFile(): Boolean {
+    override fun saveFile(): Boolean {
         val path = currentFile ?: return saveFileAs()
         return writeTo(path)
     }
@@ -519,7 +559,7 @@ class GraphView(
      * first unless [force] is set (`:e!`). The view transform is
      * kept, so the user keeps looking at the same spot.
      */
-    fun reloadFile(force: Boolean = false) {
+    override fun reloadFile(force: Boolean) {
         val path = currentFile
         if (path == null) {
             JOptionPane.showMessageDialog(
@@ -910,19 +950,13 @@ class Window(
     title: String,
     private val initialFile: String? = null,
 ) : JFrame() {
-    val keyMapper: KeyMapper = KeyMapper(KeyMapper.defaultBindings())
+    // Registers all commands before anything else — the mapper
+    // and the : bar both need the registry populated.
+    val keyMapper: KeyMapper = registerAllCommands().let { applicationKeyMapper() }
     val tabManager: TabManager = TabManager(this)
     val autosave: AutosaveManager = AutosaveManager(tabManager)
 
     init {
-        // Register all commands before anything else — the mapper
-        // and the : bar both need the registry populated.
-        registerAllCommands()
-        keyMapper.commandExecutor = { cmd, gv -> CommandRegistry.execute(cmd, gv) }
-        keyMapper.markSetter = { gv, letter -> Actions.setMark(gv.model, letter) }
-        keyMapper.markRecaller = { gv, letter -> Actions.recallMark(gv.model, letter) }
-        keyMapper.linkFollower = { gv, letter -> gv.followFileLink(letter, quiet = true) }
-        keyMapper.installDefaultTransformBindings()
         // Mode changes (Normal ↔ Transform) → refresh the active
         // view's status bar. We can't know which tab the change
         // applied to, so refresh the currently-focused one —

@@ -1,5 +1,6 @@
 package ui
 
+import client.*
 import Graph
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +29,7 @@ class KeyMapperTest {
         setup: (KeyMapper) -> Unit = {},
     ): List<String> {
         val executed = mutableListOf<String>()
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
         // Need a dummy GraphView — but we can't construct one without
         // AWT. Use a null-safe path: commandExecutor ignores the view.
@@ -81,7 +82,7 @@ class KeyMapperTest {
 
     @Test
     fun `map adds a user mapping`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.map("z", "u", recursive = false)
         // We can't easily test fire() without a GraphView, but we
         // can verify the mapping was stored by adding and checking
@@ -96,7 +97,7 @@ class KeyMapperTest {
 
     @Test
     fun `unmap removes a user mapping`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.map("z", "u")
         mapper.unmap("z")
         // "z" has no mapping and no default → feedKey should not
@@ -107,7 +108,7 @@ class KeyMapperTest {
 
     @Test
     fun `multi-key prefix causes pending state`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.map("gt", ":tabnext<CR>")
         // "g" is in defaults (→ grab) AND is a prefix of "gt" in
         // mappings → ambiguous → pending.
@@ -117,7 +118,7 @@ class KeyMapperTest {
 
     @Test
     fun `multi-key completes on second key`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.map("gt", ":tabnext<CR>")
         mapper.feedKey("g")
         assertTrue(mapper.isPending)
@@ -129,14 +130,14 @@ class KeyMapperTest {
 
     @Test
     fun `single key with no match and no prefix is ignored`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.feedKey("z")  // not in defaults, not in mappings
         assertFalse(mapper.isPending)
     }
 
     @Test
     fun `single key exact match and not prefix resolves immediately`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         // "d" is in defaults, and nothing starts with "d..."
         mapper.feedKey("d")
         assertFalse(mapper.isPending)
@@ -144,7 +145,7 @@ class KeyMapperTest {
 
     @Test
     fun `reset clears pending state`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.map("gt", ":tabnext<CR>")
         mapper.feedKey("g")
         assertTrue(mapper.isPending)
@@ -154,7 +155,7 @@ class KeyMapperTest {
 
     @Test
     fun `clearMappings removes all user mappings`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.map("z", "u")
         mapper.map("x", "d")
         mapper.clearMappings()
@@ -174,7 +175,7 @@ class KeyMapperTest {
             set timeoutlen=300
         """.trimIndent())
 
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.loadInitFile(initFile)
 
         // "z" should now be in mappings
@@ -202,7 +203,7 @@ class KeyMapperTest {
             map z u
         """.trimIndent())
 
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.loadInitFile(initFile)
         mapper.feedKey("z")
         assertFalse(mapper.isPending)
@@ -210,7 +211,7 @@ class KeyMapperTest {
 
     @Test
     fun `loadInitFile ignores missing file`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.loadInitFile(java.nio.file.Paths.get("/nonexistent/path/init"))
         // Should not throw
     }
@@ -219,7 +220,7 @@ class KeyMapperTest {
 
     @Test
     fun `q then register letter starts recording`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         assertFalse(mapper.isRecording)
         mapper.feedKey("q")
         mapper.feedKey("a")
@@ -228,7 +229,7 @@ class KeyMapperTest {
 
     @Test
     fun `q stops recording`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.feedKey("q")
         mapper.feedKey("a")
         assertTrue(mapper.isRecording)
@@ -238,7 +239,7 @@ class KeyMapperTest {
 
     @Test
     fun `recording captures keys`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.feedKey("q")
         mapper.feedKey("a")
         // Record some keys
@@ -254,7 +255,7 @@ class KeyMapperTest {
     @Test
     fun `replay feeds keys through the mapper`() {
         val executed = mutableListOf<String>()
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
         // Can't set activeView without AWT, but commandExecutor
         // is called with whatever activeView is (even null in the
@@ -290,7 +291,7 @@ class KeyMapperTest {
 
     @Test
     fun `replay does not record into active register`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
 
         // Record "u" into register a
         mapper.feedKey("q")
@@ -313,7 +314,7 @@ class KeyMapperTest {
 
     @Test
     fun `q followed by non-alphanumeric is ignored`() {
-        val mapper = KeyMapper(testDefaults())
+        val mapper = KeyMapper(testDefaults(), SwingScheduler)
         mapper.feedKey("q")
         mapper.feedKey("<Esc>")  // not a valid register name
         assertFalse(mapper.isRecording)
@@ -323,7 +324,7 @@ class KeyMapperTest {
 
     /** `g` = grab, `gt` = tabnext; the link follower knows only `link-d`. */
     private fun linkMapper(executed: MutableList<String>, followed: MutableList<Char>): KeyMapper {
-        val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "x" to "delete"))
+        val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "x" to "delete"), SwingScheduler)
         mapper.activeView = GraphView(initialGraph = Graph())
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
         mapper.linkFollower = { _, letter -> (letter == 'd').also { if (it) followed.add(letter) } }
@@ -366,7 +367,7 @@ class KeyMapperTest {
     @Test
     fun `gt and gT switch tabs with the default bindings and a typical init`() {
         val executed = mutableListOf<String>()
-        val mapper = KeyMapper(KeyMapper.defaultBindings())
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
         mapper.activeView = GraphView(initialGraph = Graph())
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
         listOf("map gg tw0", "map gf tih0<Esc>", "map gp :follow-file-link<Enter>", "set timeoutlen=300")
@@ -381,7 +382,7 @@ class KeyMapperTest {
     @Test
     fun `pressing Shift while g waits restarts the timeout, so gT isn't cut into g + T`() {
         val executed = java.util.Collections.synchronizedList(mutableListOf<String>())
-        val mapper = KeyMapper(KeyMapper.defaultBindings(), timeoutMs = 300)
+        val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler, timeoutMs = 300)
         val edt = { f: () -> Unit -> javax.swing.SwingUtilities.invokeAndWait { f() } }
         edt {
             mapper.activeView = GraphView(initialGraph = Graph())
@@ -397,7 +398,7 @@ class KeyMapperTest {
 
     @Test
     fun `show-childs is an alias of show-children, se of set`() {
-        val mapper = KeyMapper(emptyMap())
+        val mapper = KeyMapper(emptyMap(), SwingScheduler)
         try {
             mapper.executeCommandLine("se show-childs")
             assertTrue(graph_tools.ViewModes.showChildren)
