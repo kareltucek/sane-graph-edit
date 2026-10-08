@@ -25,10 +25,10 @@ import utils.Utils.orElse
 import utils.Utils.toUnit
 
 /**
- * Command implementations. Each method is a `(EditorView) -> Unit`
- * registered into [CommandRegistry] at startup by
- * [registerAllCommands]. The old hardcoded dispatch table is gone;
- * the mapper + registry replace it.
+ * What the editing commands do, on an [EditorView]: they read its
+ * graph, selection and cursor and commit [Command]s. No GUI toolkit
+ * involved — a renderer registers them under their command names
+ * and runs them on key presses.
  */
 object Actions {
 
