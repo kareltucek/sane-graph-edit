@@ -129,42 +129,14 @@ class StylePicker(
 
     } // </editor-fold>
 
-    private fun setSize(r: Double) {
-        val targets = parent.g.selectedNodes.toList()
-        if (targets.isEmpty()) return
-        val before = targets.associateWith { it.attributes.nodeScale }
-        parent.g.commit(SetSizeCommand(parent.g, before, delta = r, absolute = null))
-        parent.refreshStatus()
-        parent.repaint()
-    }
+    // The picker only reports what was picked; the client changes the nodes.
 
-    private fun setShape(s: NodeShape) {
-        val targets = parent.g.selectedNodes.toList()
-        if (targets.isEmpty()) return
-        val before = targets.associateWith { n ->
-            // n.cache.shape is a NodeShapeImpl, but commands round-trip
-            // through the NodeShape enum (which the setShape API accepts).
-            // Recover the enum entry for each current shape.
-            NodeShape.values().firstOrNull { it.impl === n.cache.shape }
-        }
-        parent.g.commit(SetShapeCommand(parent.g, before, s))
-        parent.repaint()
-    }
+    private fun setSize(r: Double) = Actions.resizeSelection(parent.model, r)
+
+    private fun setShape(s: NodeShape) = Actions.shapeSelection(parent.model, s)
 
     private fun colorFieldClicked(style: ColorStyle) {
-        val targets = parent.g.selectedNodes.toList()
-        if (targets.isNotEmpty()) {
-            val before = targets.associateWith { StyleSnapshot.of(it) }
-            val after = targets.associateWith {
-                StyleSnapshot(
-                    bg = style.background,
-                    fg = style.foreground,
-                    // Colour picks don't touch node scale; preserve it.
-                    nodeScale = it.attributes.nodeScale,
-                )
-            }
-            parent.g.commit(StyleNodesCommand(parent.g, before, after))
-        }
+        Actions.colorSelection(parent.model, style)
         parent.endStylePicker()
     }
 

@@ -1,6 +1,7 @@
 package client
 
 import Graph
+import graph_tools.EditTextCommand
 import graph_tools.GraphTools
 import graph_tools.Node
 import graph_tools.NodeStyle
@@ -60,6 +61,35 @@ class EditorView(initialGraph: Graph, private val renderer: Renderer) : Renderer
     var onTransformMode: (Boolean) -> Unit = {}
 
     fun startNodeEdit(n: Node, screenClick: Vector2?) = startNodeEdit(n.id, screenClick)
+
+    // --- text of a node being edited in place (renderer → client) ---
+
+    /** The node whose text the user is editing, and the text it had before. */
+    private var textEdit: Pair<Node, String>? = null
+
+    /** The renderer opened its editor on the node. */
+    fun textEditStarted(nodeId: String) {
+        textEdit = g.node(nodeId)?.let { it to it.attributes.text }
+    }
+
+    /** The text in the renderer's editor is now [text]: show it in the node as the user types. */
+    fun textTyped(text: String) {
+        textEdit?.let { (n, _) ->
+            n.attributes.text = text
+            g.needsRecomputing(n)
+        }
+    }
+
+    /** The renderer closed its editor with [text] in it: the edit becomes one undo step. */
+    fun textEditEnded(text: String) {
+        textEdit?.let { (n, before) ->
+            // back to the text before the edit, so that the command's redo is what applies the change
+            n.attributes.text = before
+            if (before != text) g.commit(EditTextCommand(g, n, before, text))
+            g.needsRecomputing(n)
+        }
+        textEdit = null
+    }
 
     /** Look at [pos] with zoom [scale]: [pos] goes to the middle of the view. */
     fun setViewTo(pos: Vector2, scale: Double = 1.0) {

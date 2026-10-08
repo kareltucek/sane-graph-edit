@@ -17,7 +17,11 @@ import graph_tools.Node
 import graph_tools.RemoveEdgesCommand
 import graph_tools.RemoveNodesCommand
 import graph_tools.RevealCommand
+import graph_tools.NodeShape
+import graph_tools.SetShapeCommand
+import graph_tools.SetSizeCommand
 import graph_tools.StyleNodesCommand
+import graph_tools.StyleSnapshot
 import graph_tools.UnhideCommand
 import graph_tools.ViewModes
 import utils.Vector2
@@ -47,6 +51,41 @@ object Actions {
         val cmd = StyleNodesCommand.toUniform(graphView.g, targets, graphView.defaultNodeStyle)
         graphView.g.commit(cmd)
         graphView.repaint()
+    }
+
+    // --- what the style picker offers, on the selection ---
+
+    /** Give the selected nodes the colours of [style]; their sizes stay. */
+    fun colorSelection(graphView: EditorView, style: ColorStyle) {
+        val g = graphView.g
+        val targets = g.selectedNodes.toList()
+        if (targets.isNotEmpty()) {
+            val before = targets.associateWith { StyleSnapshot.of(it) }
+            val after = targets.associateWith { StyleSnapshot(bg = style.background, fg = style.foreground, nodeScale = it.attributes.nodeScale) }
+            g.commit(StyleNodesCommand(g, before, after))
+        }
+    }
+
+    /** Make the selected nodes [steps] size steps bigger (smaller when negative). */
+    fun resizeSelection(graphView: EditorView, steps: Double) {
+        val g = graphView.g
+        val targets = g.selectedNodes.toList()
+        if (targets.isNotEmpty()) {
+            g.commit(SetSizeCommand(g, targets.associateWith { it.attributes.nodeScale }, delta = steps, absolute = null))
+            graphView.refreshStatus()
+            graphView.repaint()
+        }
+    }
+
+    fun shapeSelection(graphView: EditorView, shape: NodeShape) {
+        val g = graphView.g
+        val targets = g.selectedNodes.toList()
+        if (targets.isNotEmpty()) {
+            // the command wants the shapes before as NodeShape entries; nodes hold their implementations
+            val before = targets.associateWith { n -> NodeShape.values().firstOrNull { it.impl === n.cache.shape } }
+            g.commit(SetShapeCommand(g, before, shape))
+            graphView.repaint()
+        }
     }
 
     fun grab(graphView: EditorView) {
