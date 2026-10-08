@@ -445,10 +445,11 @@ class GraphView(
 
     /**
      * Re-read [currentFile] from disk, e.g. after an external tool
-     * regenerated it. Unsaved changes are lost (and so is the undo
-     * history, which belongs to the old graph), so a dirty tab asks
-     * first unless [force] is set (`:e!`). The view transform is
-     * kept, so the user keeps looking at the same spot.
+     * regenerated it or another editor saved it. The reload is a step
+     * in the undo history: undo brings back the graph as it was,
+     * unsaved changes included. A dirty tab still asks first unless
+     * [force] is set (`:e!`). The view transform is kept, so the
+     * user keeps looking at the same spot.
      */
     fun reloadFile(force: Boolean = false) {
         val path = currentFile
@@ -463,7 +464,10 @@ class GraphView(
         }
         if (!force && !confirmDiscard("reload ${path.fileName}")) return
         try {
-            replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
+            // one more step in this graph's history: undo brings back what the reload replaced
+            val loaded = DotGraphLoader.loadFromFile(path.toString())
+            g.commit(graph_tools.ReplaceContentCommand(g, g.content(), loaded.content()))
+            isDirty = false
             repaint()
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(

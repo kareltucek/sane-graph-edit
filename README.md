@@ -263,7 +263,7 @@ navigation, not data.
 | `Ctrl+O` / `Ctrl+I` | Jump back / forward (vim jump list): to where a `gf` / `g<letter>` / `:open` in this tab started, restoring selection and view |
 | `Ctrl+S`        | Save — writes to the current file, prompts on first save |
 | `Ctrl+Shift+S`  | Save As — always prompts                               |
-| `F5`            | Reload the current file from disk (asks if unsaved)    |
+| `F5`            | Reload the current file from disk (asks if unsaved). Undo brings back the graph as it was before the reload |
 | `gf`            | Follow the selected node's `link` in this tab: open the file (and focus `:nodeid` if given), or show the directory's file tree |
 | `g<letter>`     | Same for `link-<letter>`, unless `g<letter>` is mapped to something else. Without such a link it reports that and does nothing (it doesn't grab) — except `gx` / `gy` / `gs` / `gg`, which then grab |
 | `gF`            | Same as `gf`, but into a new tab                       |

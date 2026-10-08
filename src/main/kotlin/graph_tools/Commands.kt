@@ -385,3 +385,23 @@ class UnhideCommand(
         affected.forEach { it.cache.hideLevel++ }
     }
 }
+
+/**
+ * A reload: the graph holds [after] (the file as it is on disk now)
+ * instead of [before]. The earlier history stays, so undoing the
+ * reload brings back the graph as it was, e.g. when another editor
+ * saved over the file.
+ */
+class ReplaceContentCommand(
+    private val graph: Graph,
+    private val before: Graph.Content,
+    private val after: Graph.Content,
+) : Command {
+    override fun redo() {
+        graph.replaceContent(after)
+    }
+
+    override fun undo() {
+        graph.replaceContent(before)
+    }
+}

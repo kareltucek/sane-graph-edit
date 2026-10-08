@@ -93,6 +93,34 @@ class Graph(
         history.apply(cmd)
     }
 
+    /** What a file holds: everything a (re)load replaces. See [ReplaceContentCommand]. */
+    class Content(
+        val id: String,
+        val nodes: List<Node>,
+        val edges: List<Edge>,
+        val selectedNodes: List<Node>,
+        val lastActiveNode: Node?,
+        val parseLog: ParseLog?,
+        val attributes: Map<String, String>,
+    )
+
+    fun content(): Content =
+        Content(id, nodes.toList(), edges.toList(), selectedNodes.toList(), lastActiveNode, parseLog, LinkedHashMap(attributes))
+
+    /** Make this graph hold [content] instead of what it holds now; the [history] stays. */
+    fun replaceContent(content: Content) {
+        removeAllNodes(nodes.toList())
+        id = content.id
+        parseLog = content.parseLog
+        attributes.clear()
+        attributes.putAll(content.attributes)
+        dynamicBaseline = null
+        addAllNodes(content.nodes)
+        addAllEdges(content.edges)
+        cleanSelect(content.selectedNodes)
+        lastActiveNode = content.lastActiveNode
+    }
+
     val nodes: Set<Node>
         get() {
             return nodesRestricted
