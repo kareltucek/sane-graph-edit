@@ -783,6 +783,11 @@ Items currently missing and planned under `tasks/`:
   `client.StatusLine`, shared by the renderers. A renderer supplies
   a text field (`CommandLineWidget`): Swing's `CommandBar`, the
   Electron page's `<input>`.
+- **Autosave and the file picker are in the client core**
+  (`client.Autosave`, `client.FilePicker`). An application gives the
+  first its tabs and a `Scheduler`, and the second a way to run a
+  shell command in the background (`FilePicker.ShellRunner`:
+  `SwingShellRunner`, and `NodeShellRunner` for JavaScript).
 - **Which tabs a window has and what opening, closing and quitting
   do is in `client.Tabs`**; an application shows the strip and the
   current view (`TabsHost`) and asks the user (`Dialogs`). It also

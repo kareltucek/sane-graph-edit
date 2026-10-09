@@ -19,7 +19,7 @@ fun registerAllCommands() {
     registerEditingCommands()
     val r = CommandRegistry
 
-    r.register("pick-file") { FilePicker.run(it.graphView) }
+    client.FilePicker.runner = SwingShellRunner
     r.register("browse") { it.graphView.tabManager?.browse(Workspace.dir) }
 
     // Tabs

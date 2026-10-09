@@ -29,6 +29,9 @@ expect object Fs {
     /** Where the application keeps its configuration (the `init` file). */
     val configDir: Path
 
+    /** Where the application keeps what it could make again or do without: `$XDG_CACHE_HOME/sane-graph-edit` (the autosave backups). */
+    val cacheDir: Path
+
     /** The user's directory for what lasts as long as the login: `$XDG_RUNTIME_DIR`, or a directory of the user's among the temporary files. */
     val runtimeDir: Path
 

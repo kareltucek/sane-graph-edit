@@ -14,6 +14,7 @@ private val PAGE_SETTINGS = listOf("nvim-theme", "node-editor")
 private fun keyMapper(page: dynamic): KeyMapper {
     registerEditingCommands()
     registerTabCommands()
+    FilePicker.runner = NodeShellRunner
     val mapper = KeyMapper(KeyMapper.defaultBindings(), JsScheduler, defaultMappings = KeyMapper.defaultKeyMappings())
     PAGE_SETTINGS.forEach { name -> mapper.applicationSettings[name] = { value -> page.setting(name, value) } }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
@@ -24,6 +25,27 @@ private fun keyMapper(page: dynamic): KeyMapper {
     mapper.installDefaultTransformBindings()
     runCatching { mapper.loadInitFile(Fs.configDir.resolve("init")) }
     return mapper
+}
+
+private external fun require(module: String): dynamic
+private external val process: dynamic
+
+/** How a Node.js application runs the shell command of [FilePicker]: Node calls back when it has ended. */
+internal object NodeShellRunner : FilePicker.ShellRunner {
+    override fun run(command: String, dir: Path, environment: Map<String, String>, then: (FilePicker.Output) -> Unit) {
+        val options: dynamic = js("({})")
+        options.cwd = dir.toString()
+        options.env = js("Object").assign(js("({})"), process.env)
+        environment.forEach { (name, value) -> options.env[name] = value }
+        val child: dynamic = require("child_process").exec(command, options) { error: dynamic, printed: String, complaints: String ->
+            val lines = FilePicker.lines(printed)
+            // what the command complained of goes where the application's own complaints go
+            if (complaints.isNotBlank()) utils.Platform.warn(complaints.trimEnd())
+            then(FilePicker.Output(lines, if (error != null && lines.isEmpty()) "picker failed (${error.message})" else null))
+        }
+        // no input for it
+        child.stdin.end()
+    }
 }
 
 internal fun css(c: Rgb): String = "#" + ((c.red shl 16) or (c.green shl 8) or c.blue).toString(16).padStart(6, '0')
@@ -102,16 +124,21 @@ class JsApp internal constructor(private val client: EditorClient, private val m
         }
 
         override fun exit() {
+            autosave.stop()
             page.exit()
         }
     }
 
     private val tabs: Tabs = Tabs(host, dialogs) { Workspace.session() }
 
+    /** Snapshots of every tab with unsaved changes, as long as the window lives. */
+    private val autosave = Autosave({ tabs.views }, JsScheduler)
+
     /** The tabs of the workspace's last session, and [path] in one more. */
     internal fun start(path: String?) {
         tabs.restore()
         if (path != null) tabs.open(Fs.path(path))
+        autosave.start()
     }
 
     /** The view the page shows now. */

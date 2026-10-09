@@ -36,6 +36,12 @@ actual object Fs {
             return path(xdg ?: "$home/.config").resolve("sane-graph-edit")
         }
 
+    actual val cacheDir: Path
+        get() {
+            val xdg = (process.env.XDG_CACHE_HOME as String?)?.takeIf { it.isNotBlank() }
+            return path(xdg ?: "$home/.cache").resolve("sane-graph-edit")
+        }
+
     // as the JVM's: the same session socket whichever of them looks for it
     actual val runtimeDir: Path
         get() {

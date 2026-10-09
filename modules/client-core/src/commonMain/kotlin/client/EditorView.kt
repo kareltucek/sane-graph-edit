@@ -64,6 +64,13 @@ class EditorView(
     /** Cursor position on screen: stable against pan and zoom, which a scale gesture needs. */
     var lastScreenCursorPosition: Vector2 = Vector2.Zero
 
+    /**
+     * What an autosave backup of this view is named by while the
+     * view has no file ([BackupPaths]); a view with a file is named
+     * by the file. The same for as long as the view lives.
+     */
+    val autosaveId: String = List(32) { "0123456789abcdef".random() }.joinToString("")
+
     var optimizeOnDrag: Boolean = false
     var defaultNodeStyle: NodeStyle = NodeStyle()
 

@@ -15,6 +15,8 @@ actual object Fs {
 
     actual val configDir: Path get() = XdgPaths.appConfigDir
 
+    actual val cacheDir: Path get() = XdgPaths.appCacheDir
+
     actual val runtimeDir: Path
         get() = System.getenv("XDG_RUNTIME_DIR")?.takeIf { it.isNotBlank() }?.let { Paths.get(it) }
             ?: Paths.get(System.getProperty("java.io.tmpdir"), "runtime-${System.getProperty("user.name")}")

@@ -1,6 +1,7 @@
 package ui
 
 import DotGraphLoader
+import client.FilePicker
 import client.Workspace
 import java.nio.file.Files
 import javax.swing.SwingUtilities
@@ -19,9 +20,14 @@ class FilePickerTest {
 
     private val launchDir = Workspace.dir
 
+    init {
+        // as the application does when it registers its commands
+        FilePicker.runner = SwingShellRunner
+    }
+
     /** Run the picker and wait until its result has been applied on the EDT. */
     private fun pick(gv: GraphView, done: () -> Boolean) {
-        FilePicker.run(gv)
+        FilePicker.run(gv.model)
         val deadline = System.currentTimeMillis() + 10_000
         while (!done() && System.currentTimeMillis() < deadline) {
             SwingUtilities.invokeAndWait { }
@@ -57,7 +63,7 @@ class FilePickerTest {
         val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(a.toString()), initialFile = a)
         var finished = false
         FilePicker.command = "true"
-        FilePicker.run(gv)
+        FilePicker.run(gv.model)
         Thread.sleep(500)
         SwingUtilities.invokeAndWait { finished = true }
         assertEquals(true, finished)

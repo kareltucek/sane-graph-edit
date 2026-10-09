@@ -858,6 +858,7 @@ class KeyMapper(
             "timeoutlen" -> value.toIntOrNull()?.let { timeoutMs = it }
             "spring-scale" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScale = it }
             "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
+            "picker" -> FilePicker.command = value.ifBlank { FilePicker.DEFAULT_COMMAND }
             else -> applicationSettings[name]?.invoke(value) ?: utils.Platform.warn("sane-graph-edit: unknown setting '$name'")
         }
     }

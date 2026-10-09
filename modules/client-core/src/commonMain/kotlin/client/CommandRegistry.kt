@@ -141,6 +141,7 @@ fun registerEditingCommands() {
     r.register("open") { it.content.open() }
     r.register("reload") { it.content.reload() }
     r.register("file") { it.content.showFilePath() }
+    r.register("pick-file") { FilePicker.run(it) }
     r.register("follow-file-link") { it.content.followFileLink() }
     r.register("follow-file-link-in-tab") { it.content.followFileLinkInTab() }
     r.register("jump-back") { it.content.jumpBack() }

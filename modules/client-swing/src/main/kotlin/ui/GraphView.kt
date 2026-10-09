@@ -170,17 +170,6 @@ class GraphView(
      */
     var statusBar: StatusBar? = null
 
-    /**
-     * Opaque per-tab identifier used as the autosave-backup
-     * filename for untitled tabs (tabs with a file hash their
-     * path instead — see [BackupPaths]). Stable for the tab's
-     * entire lifetime, even if it gets saved and so starts using
-     * the file-hash key; holding on to the UUID means
-     * `deleteBackup` can clean up a pre-save untitled backup
-     * during a save-as.
-     */
-    val autosaveId: String = UUID.randomUUID().toString()
-
     init {
         AwtTextMeasurer.install()
         // during a transform gesture the keys are its controls (axis locks, confirm, cancel)
