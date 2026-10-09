@@ -19,6 +19,9 @@ kotlin {
                 useMocha { timeout = "30s" }
             }
         }
+        // what a renderer written in TypeScript links against (`client.Bridge`), with type declarations
+        binaries.library()
+        generateTypeScriptDefinitions()
     }
     compilerOptions {
         languageVersion.set(KotlinVersion.KOTLIN_2_0)

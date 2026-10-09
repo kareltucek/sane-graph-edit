@@ -1,0 +1,24 @@
+{
+  "name": "sane-graph-edit-electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron client of a sane-graph-edit session",
+  "main": "dist/main.js",
+  "scripts": {
+    "core": "cd ../.. && ./gradlew :client-core:jsNodeDevelopmentLibraryDistribution",
+    "check": "tsc --noEmit",
+    "build:main": "esbuild src/main.ts --bundle --platform=node --external:electron --outfile=dist/main.js",
+    "build:renderer": "esbuild src/renderer.ts --bundle --platform=node --external:electron --sourcemap --outfile=dist/renderer.js",
+    "build": "npm run build:main && npm run build:renderer && cp src/index.html dist/",
+    "start": "npm run build && electron ."
+  },
+  "dependencies": {
+    "sane-graph-edit-client-core": "file:../client-core/build/dist/js/developmentLibrary"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "electron": "^33.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.5.4"
+  }
+}

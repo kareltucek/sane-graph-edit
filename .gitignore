@@ -2,6 +2,8 @@ out/
 build/
 .gradle/
 .kotlin/
+node_modules/
+/modules/client-electron/dist/
 
 # IntelliJ regenerates these from the Gradle model on import — keep them out of VCS
 *.iml

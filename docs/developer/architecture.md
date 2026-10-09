@@ -28,6 +28,20 @@ directory of its name under `modules/`:
 | `:editor-host` | Runs an editor on the JVM: files, in-process and socket connections (`host`). |
 | `:client-swing` | The Swing renderer and application: widgets, AWT event translation, tabs, dialogs (`ui`), painting (`graph_tools.Plotter`). |
 
+Beside them, `modules/client-electron` is a second renderer, a
+proof of concept in TypeScript on Electron (an npm project, not a
+Gradle one). It links `:client-core` compiled to JavaScript and
+sees only what `client/Bridge.kt` exports: it gets the scene as
+plain objects and passes input back. It attaches to a Swing window
+started with `--ws`. Build and run:
+
+```sh
+cd modules/client-electron
+npm run core      # client-core as a JavaScript library (Gradle)
+npm install
+npm start -- <file>     # in the directory of the window started with --ws
+```
+
 `:model`, `:editor-core` and `:client-core` are Kotlin Multiplatform
 subprojects with two targets, the JVM and JavaScript for Node.js;
 `:editor-host` and `:client-swing` are JVM only. The root project
