@@ -206,6 +206,31 @@ Flags:
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |
 
+### Keyboard — `z`: view and folding
+
+These act on the selection, or on the last active node when nothing
+is selected.
+
+| Key           | Action                                                      |
+|---------------|-------------------------------------------------------------|
+| `zz` / `z1`   | Centre the view on it (as `1`)                              |
+| `z0`          | Fit the view to it (as `0`)                                 |
+| `zt` / `zb`   | Move the view up or down so that it is at the top / bottom edge |
+| `zs` / `ze`   | Move the view sideways so that it is at the left / right edge |
+| `zf{motion}`  | Fold: hide the nodes the motion reaches                     |
+| `zd{motion}`  | Unfold: show the nodes the motion reaches                   |
+| `za{motion}`  | Toggle: unfold if the motion reaches a hidden node, else fold |
+| `zi` / `zI`   | Toggle the children / everything downstream (`zal`, `zat`)  |
+| `zo` / `zO`   | Toggle the parents / everything upstream (`zaL`, `zaT`)     |
+| `zm` / `zr`   | Hide the selected nodes / unhide one level (`h`, `H`)       |
+| `zR`          | Unhide everything                                           |
+
+The edge commands keep the zoom and leave 40 pixels to the edge.
+A motion is one of `t`, `T`, `l`, `L`: what it would add to the
+selection is what is folded, hidden nodes included; whatever is
+selected stays visible. Each fold is one undo step. As commands:
+`:fold t`, `:unfold L`, `:toggle-fold select-closure-forward`.
+
 Two modes change how hiding interacts with selection. Turn them on
 with `:set <mode>`, off with `:set no<mode>`, toggle with
 `:set <mode>!`. They apply to all tabs and show in the status bar

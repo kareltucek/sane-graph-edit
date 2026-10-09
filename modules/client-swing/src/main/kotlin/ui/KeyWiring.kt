@@ -11,7 +11,7 @@ import client.KeyMapper
  * is given is a [GraphView].
  */
 fun applicationKeyMapper(): KeyMapper {
-    val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
+    val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler, defaultMappings = KeyMapper.defaultKeyMappings())
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
     mapper.commandNames = { CommandRegistry.list() }
     mapper.markSetter = { view, letter -> Actions.setMark(view, letter) }

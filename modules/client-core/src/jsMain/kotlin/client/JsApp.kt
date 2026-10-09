@@ -14,7 +14,7 @@ private val PAGE_SETTINGS = listOf("nvim-theme", "node-editor")
 private fun keyMapper(page: dynamic): KeyMapper {
     registerEditingCommands()
     registerTabCommands()
-    val mapper = KeyMapper(KeyMapper.defaultBindings(), JsScheduler)
+    val mapper = KeyMapper(KeyMapper.defaultBindings(), JsScheduler, defaultMappings = KeyMapper.defaultKeyMappings())
     PAGE_SETTINGS.forEach { name -> mapper.applicationSettings[name] = { value -> page.setting(name, value) } }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
     mapper.commandNames = { CommandRegistry.list() }

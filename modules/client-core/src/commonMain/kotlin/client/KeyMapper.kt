@@ -39,6 +39,13 @@ class KeyMapper(
     /** For the timeout that resolves an ambiguous key sequence. */
     private val scheduler: Scheduler,
     var timeoutMs: Int = DEFAULT_TIMEOUT_MS,
+    /**
+     * Keys that stand for other keys out of the box
+     * ([defaultKeyMappings]), as a user's `noremap` would make them:
+     * the keys on the right are looked up in [defaults]. A user
+     * mapping of the same keys comes first.
+     */
+    private val defaultMappings: Map<String, String> = emptyMap(),
 ) {
     /** Names of the commands [commandExecutor] knows, for `:help commands`. */
     var commandNames: () -> List<String> = { emptyList() }
@@ -471,6 +478,12 @@ class KeyMapper(
             return
         }
 
+        val standsFor = defaultMappings[keys]
+        if (standsFor != null) {
+            replayRhs(standsFor, recursive = false)
+            return
+        }
+
         val command = defaults[keys]
         if (command != null) {
             executeCommand(command)
@@ -569,37 +582,51 @@ class KeyMapper(
                 continue
             }
 
-            if (recursive) {
-                // Feed through the full pipeline (mappings + defaults).
-                // Use recursion depth to prevent infinite loops.
-                val mapping = mappings[tok]
-                if (mapping != null) {
-                    replayRhs(mapping.rhs, mapping.recursive, depth + 1)
-                } else {
-                    val cmd = defaults[tok]
-                    if (cmd != null) executeCommand(cmd)
-                }
-            } else {
-                // Non-recursive: defaults only, skip mappings.
-                val cmd = defaults[tok]
-                if (cmd != null) executeCommand(cmd)
+            // The longest run of keys from here that means something: `gt` is one key sequence, not `g` and `t`.
+            // Recursive: the full pipeline (mappings + defaults), with the depth against loops. Non-recursive: defaults only.
+            val known = { keys: String -> (recursive && keys in mappings) || keys in defaultMappings || keys in defaults }
+            val length = (tokens.size - i downTo 1).firstOrNull { n -> known(tokens.subList(i, i + n).joinToString("")) } ?: 1
+            val keys = tokens.subList(i, i + length).joinToString("")
+            val mapping = mappings[keys].takeIf { recursive }
+            val standsFor = defaultMappings[keys]
+            when {
+                mapping != null -> replayRhs(mapping.rhs, mapping.recursive, depth + 1)
+                standsFor != null -> replayRhs(standsFor, recursive = false, depth + 1)
+                else -> defaults[keys]?.let { executeCommand(it) }
             }
-            i++
+            i += length
         }
     }
 
     // --- helpers ---
 
     private fun hasExactMatch(keys: String): Boolean =
-        keys in mappings || keys in defaults
+        keys in mappings || keys in defaultMappings || keys in defaults
 
     private fun isPrefixOfLonger(prefix: String): Boolean =
-        mappings.keys.any { it.startsWith(prefix) && it != prefix } ||
-            defaults.keys.any { it.startsWith(prefix) && it != prefix }
+        (mappings.keys + defaultMappings.keys + defaults.keys).any { it.startsWith(prefix) && it != prefix }
+
+    /**
+     * An operator that was run and waits for its motion (`zf` waits
+     * for `t`, `T`, `l` or `L`): the next command is not run but
+     * given to it. Null when none waits.
+     */
+    private var waitingOperator: String? = null
 
     private fun executeCommand(name: String) {
         val gv = activeView ?: return
-        commandExecutor?.invoke(name, gv)
+        val operator = waitingOperator
+        when {
+            operator != null -> {
+                waitingOperator = null
+                // Escape takes the operator back
+                if (name != "deselect") executeCommandLine("$operator $name")
+            }
+            name in OPERATORS -> waitingOperator = name
+            // a binding to a command with its arguments
+            ' ' in name -> executeCommandLine(name)
+            else -> commandExecutor?.invoke(name, gv)
+        }
     }
 
     /**
@@ -795,6 +822,16 @@ class KeyMapper(
                 }
             }
             "e!" -> gv.content.reload(force = true)
+            "fold", "unfold", "toggle-fold" -> {
+                val how = when (cmd) {
+                    "fold" -> ZCommands.Fold.Fold
+                    "unfold" -> ZCommands.Fold.Unfold
+                    else -> ZCommands.Fold.Toggle
+                }
+                // the motion as its command, or as the key that runs it out of the box (`fold t`)
+                val motion = args?.trim().orEmpty()
+                ZCommands.fold(gv, how, defaults[motion]?.takeIf { ZCommands.isMotion(it) } ?: motion, cmd)
+            }
             "browse" -> {
                 // :browse [dir] — file-tree tab; no arg = working directory
                 val dir = args?.let { resolvePath(it) } ?: Workspace.dir
@@ -1111,6 +1148,7 @@ class KeyMapper(
             val userMapping = mappings[key]
             if (userMapping != null) return "→ ${userMapping.rhs}" +
                 if (userMapping.recursive) "  [recursive]" else ""
+            defaultMappings[key]?.let { return "→ $it" }
             defaults[key]?.let { return it }
             prefixKeyLabels[key]?.let { return it }
             return null
@@ -1151,7 +1189,7 @@ class KeyMapper(
 
         // Collect all bound keys (defaults + mappings + hardcoded
         // prefixes) and bucket by slot.
-        val allKeys = (defaults.keys + mappings.keys + prefixKeyLabels.keys).toSet()
+        val allKeys = (defaults.keys + defaultMappings.keys + mappings.keys + prefixKeyLabels.keys).toSet()
         val bySlot = mutableMapOf<String, MutableList<String>>()
         for (key in allKeys) {
             bySlot.getOrPut(slotFor(key)) { mutableListOf() }.add(key)
@@ -1210,6 +1248,24 @@ class KeyMapper(
         val BUILTIN_COMMANDS = listOf(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
             "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
+            "fold", "unfold", "toggle-fold",
+        )
+
+        /** Commands that take a motion: run from a key they wait for the next command and take it as theirs (`zf` then `t`). */
+        val OPERATORS = setOf("fold", "unfold", "toggle-fold")
+
+        /**
+         * Keys that stand for other keys out of the box. `i` is in
+         * (children), `o` is out (parents); lower case one
+         * generation, upper case all.
+         */
+        fun defaultKeyMappings(): Map<String, String> = mapOf(
+            "zi" to "zal",
+            "zI" to "zat",
+            "zo" to "zaL",
+            "zO" to "zaT",
+            "zr" to "H",
+            "zm" to "h",
         )
 
         /** Commands driven by moving the mouse ([mouseMoved]). */
@@ -1249,6 +1305,19 @@ class KeyMapper(
             "W" to "unselect-oldest-backward",
             "0" to "bound-screen",
             "1" to "center-screen",
+
+            // View to the target, and folding (see also [defaultKeyMappings])
+            "zz" to "center-screen",
+            "z1" to "center-screen",
+            "z0" to "bound-screen",
+            "zt" to "view-top",
+            "zb" to "view-bottom",
+            "zs" to "view-left",
+            "ze" to "view-right",
+            "zf" to "fold",
+            "zd" to "unfold",
+            "za" to "toggle-fold",
+            "zR" to "unhide-all",
             "-" to "spring-shorter",
             "=" to "spring-longer",
             "<Space>" to "edit-node",

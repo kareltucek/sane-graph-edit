@@ -30,9 +30,10 @@ object GraphTools {
     /**
      * One step along the edges from [root]. Attached nodes ([Attachments])
      * are never stepped onto: they're part of their owner's block, not
-     * places to move the selection to.
+     * places to move the selection to. Hidden nodes are stepped
+     * onto only with [intoHidden] (`:set unhide`, and folding).
      */
-    fun computeGeneration(graph: Graph, root: Set<Node>, forward: Boolean): Set<Node> {
+    fun computeGeneration(graph: Graph, root: Set<Node>, forward: Boolean, intoHidden: Boolean = ViewModes.unhide): Set<Node> {
         val attached = graph.attachmentOwners
         return root
             .flatMap { n ->
@@ -44,17 +45,17 @@ object GraphTools {
             }
             .filter { !root.contains(it) }
             .filter { it !in attached }
-            .filter { ViewModes.unhide || graph.isVisible(it) }
+            .filter { intoHidden || graph.isVisible(it) }
             .toSet()
     }
 
-    fun computeClosure(graph: Graph, root: Set<Node>, forward: Boolean): Set<Node> {
+    fun computeClosure(graph: Graph, root: Set<Node>, forward: Boolean, intoHidden: Boolean = ViewModes.unhide): Set<Node> {
         var currentGen = root
         val closure: MutableSet<Node> = mutableSetOf()
         closure.addAll(root)
 
         while (currentGen.isNotEmpty()) {
-            val nextGen = computeGeneration(graph, currentGen, forward)
+            val nextGen = computeGeneration(graph, currentGen, forward, intoHidden)
                 .filter { !closure.contains(it) }
                 .toSet()
             closure.addAll(nextGen)

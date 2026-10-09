@@ -104,6 +104,13 @@ fun registerEditingCommands() {
     // Filtering
     r.register("hide") { impl.hideSelected(it) }
     r.register("unhide") { impl.unhideOneLevel(it) }
+    r.register("unhide-all") { ZCommands.unhideAll(it) }
+
+    // View to the target (the fold operators take a motion: see KeyMapper)
+    r.register("view-top") { ZCommands.viewToEdge(it, ZCommands.Edge.Top, "view-top") }
+    r.register("view-bottom") { ZCommands.viewToEdge(it, ZCommands.Edge.Bottom, "view-bottom") }
+    r.register("view-left") { ZCommands.viewToEdge(it, ZCommands.Edge.Left, "view-left") }
+    r.register("view-right") { ZCommands.viewToEdge(it, ZCommands.Edge.Right, "view-right") }
 
     // Style
     r.register("paste-format") { impl.pasteFormat(it) }
