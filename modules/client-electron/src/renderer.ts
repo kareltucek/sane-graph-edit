@@ -1,5 +1,5 @@
 import { client, host } from "sane-graph-edit-editor-host";
-import { Cells, GridEditor, StatusPiece } from "./gridEditor";
+import { Cells, GridEditor, Painting, StatusPiece } from "./gridEditor";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 
 // The page: draws what the client core says the view shows and
@@ -19,6 +19,9 @@ interface SceneNode {
     fg: string | null;
     /** The colours are from the picker's palette. */
     palette: boolean;
+    /** What the text is, and for code that names one, its language. */
+    type: "plain" | "code" | "markdown";
+    language: string | null;
     fontSize: number;
     selected: boolean;
 }
@@ -231,6 +234,43 @@ function drawEdge(e: SceneEdge, scale: number) {
     ctx.fill();
 }
 
+/** What neovim calls the kind of text in [n] (its file type); empty for plain text and for a language that cannot be one. */
+function filetypeOf(n: SceneNode): string {
+    const named = n.type === "markdown" ? "markdown" : n.type === "code" ? (n.language ?? "") : "";
+    return /^[A-Za-z0-9_]+$/.test(named) ? named : "";
+}
+
+/** Code as neovim highlights it, by what was painted: asked for once, kept, and drawn in place of the plain text when it is there. */
+const paintings = new Map<string, Painting | null>();
+
+/** Kept paintings are let go of all at once when there are this many: simpler than deciding which are still needed. */
+const MAX_PAINTINGS = 2000;
+
+/**
+ * Neovim's painting of the text of [n], if [n] is code in a
+ * language neovim is to highlight and the painting has arrived;
+ * null otherwise. Asks for it on first use and repaints when it
+ * comes.
+ */
+function paintingOf(n: SceneNode): Painting | null {
+    const filetype = n.type === "code" && useGridEditor ? filetypeOf(n) : "";
+    const text = n.lines.join("\n");
+    const background = n.bg ?? colours().background;
+    const foreground = inkOf(n);
+    const key = [filetype, background, foreground, text].join("\n");
+    if (filetype !== "" && !paintings.has(key)) {
+        if (paintings.size >= MAX_PAINTINGS) paintings.clear();
+        paintings.set(key, null);
+        GridEditor.paint(text, filetype, { background, foreground }).then((painting) => {
+            paintings.set(key, painting);
+            page.repaint();
+        }).catch(() => {
+            // no neovim, no highlighting: the text stays plain
+        });
+    }
+    return filetype === "" ? null : paintings.get(key) ?? null;
+}
+
 /** The colour of the text and outline of [n]. A node with a background of its own and no text colour: the theme's text may not show on it. */
 function inkOf(n: SceneNode): string {
     return n.fg ?? (n.bg === null ? colours().foreground : isLight(n.bg) ? "#000000" : "#ffffff");
@@ -250,7 +290,8 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
     ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
     ctx.stroke();
     // the node being edited has its editor where the text would be, once that shows
-    if (n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown)) {
+    // nor is the text drawn here when neovim's painting of it is (a code node): that goes on top afterwards
+    if (n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown) && paintingOf(n) === null) {
         ctx.fillStyle = ink;
         ctx.font = `${n.fontSize}px ${FONT}`;
         const textLeft = n.x - n.textWidth / 2;
@@ -335,7 +376,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
     view.textEditStarted(id);
     if (useGridEditor) {
         // drawn in the node, so in the node's colours whatever they are
-        const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, {
+        const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), {
             text: (now) => view.textTyped(now),
             exit: () => endEdit(view),
             shown: () => page.repaint(),
@@ -444,6 +485,13 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     const edited = scene.nodes.find((n) => n.id === editing?.id);
     const editor = editing?.editor;
     if (edited !== undefined && editor instanceof NodeEditor) editor.place(textPlace(edited, scene, grid));
+    // In page pixels, like the editor below: the code nodes as neovim painted them.
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    scene.nodes.forEach((n) => {
+        const painting = n.fontSize * scene.scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown) ? paintingOf(n) : null;
+        if (painting !== null) GridEditor.drawPainting(ctx, cellsOf(n, scene, grid), painting);
+    });
+    ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     if (edited !== undefined && editor instanceof GridEditor && editor.shown) {
         // in page pixels, like the places it is given
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

@@ -47,6 +47,15 @@ interface Cell {
     highlight: number;
 }
 
+/** A cell as it is drawn: its text, and what its highlight comes to. */
+export type PaintedCell = { text: string } & Colours & Highlight;
+
+/** Text as neovim shows it, cell by cell: for drawing it without a neovim. [background] is the one cells have unless they say another. */
+export interface Painting {
+    rows: PaintedCell[][];
+    background: string;
+}
+
 /** What the cursor looks like in a mode: a block, a bar at the cell's left, or a line at its bottom, the last two this many percent of the cell. */
 interface CursorStyle {
     shape: "block" | "vertical" | "horizontal";
@@ -74,6 +83,9 @@ const START_TRIES = 200;
 /** How long closing waits for neovim to tell its text. */
 const CLOSE_TIMEOUT_MS = 3000;
 
+/** A painting is taken at neovim's next redraw, or after this long if it sees nothing to redraw. */
+const PAINT_TIMEOUT_MS = 300;
+
 /** How long a neovim that was asked to end has for it. */
 const QUIT_TIMEOUT_MS = 1000;
 
@@ -82,7 +94,8 @@ const REVEAL_TIMEOUT_MS = 300;
 
 // In the node there must be the text and nothing else: no status line, no columns beside the text. The command line and the messages are not on the screen at all:
 // neovim tells them and the page shows them where its own are.
-const BARE = "set laststatus=0 showtabline=0 noruler signcolumn=no nonumber norelativenumber foldcolumn=0 nofoldenable nowrap noswapfile sidescrolloff=0 shortmess+=IF";
+// (cmdheight=0 all the same: without it the last row of the screen is kept for a command line that is never drawn there.)
+const BARE = "set laststatus=0 showtabline=0 cmdheight=0 noruler signcolumn=no nonumber norelativenumber foldcolumn=0 nofoldenable nowrap noswapfile sidescrolloff=0 shortmess+=IF";
 
 /** A stretch of neovim's status line in one colouring; colours are `#rrggbb`, and absent means the page's own. */
 export interface StatusPiece {
@@ -192,6 +205,7 @@ export class GridEditor {
         row: number,
         column: number,
         colours: Colours,
+        filetype: string,
         on: {
             text: (text: string) => void;
             exit: () => void;
@@ -212,9 +226,71 @@ export class GridEditor {
         editor.onLine = on.line;
         editor.onMessage = on.message;
         editor.onStatus = on.status;
-        editor.load(text, row, column, colours);
+        editor.load(text, row, column, colours, filetype);
         GridEditor.warm();
         return editor;
+    }
+
+    // --- text as neovim shows it, for nodes that are not being edited ---
+
+    /** The neovim that paints, one for the page; and what it is to paint, one after the other. */
+    private static painter: GridEditor | null = null;
+    private static painted: Promise<unknown> = Promise.resolve();
+
+    /**
+     * [text] as neovim shows a file of type [filetype] in [colours]:
+     * its syntax highlighting, the user's own. For drawing with
+     * [drawPainting].
+     */
+    static paint(text: string, filetype: string, colours: Colours): Promise<Painting> {
+        const job = GridEditor.painted.then(() => {
+            if (GridEditor.painter === null || GridEditor.painter.exited) GridEditor.painter = new GridEditor();
+            return GridEditor.painter.paintText(text, filetype, colours);
+        });
+        // one that fails does not stop those after it
+        GridEditor.painted = job.catch(() => {});
+        return job;
+    }
+
+    /** How many `flush` events neovim has sent: the screen is as neovim means it at each. */
+    private flushes = 0;
+    private onFlush: () => void = () => {};
+
+    private paintText(text: string, filetype: string, colours: Colours): Promise<Painting> {
+        const lines = text.split("\n");
+        const columns = Math.max(Math.max(1, ...lines.map((l) => [...l].length)), MIN_COLUMNS);
+        const rows = Math.max(lines.length, MIN_ROWS);
+        return this.nvim.then((nvim) => {
+            let before = 0;
+            return nvim.uiTryResize(columns, rows)
+                .then(() => nvim.request("nvim_buf_set_lines", [0, 0, -1, false, lines]))
+                .then(() => {
+                    before = this.flushes;
+                    // nothing of an editor in the picture: no line or column under a cursor, the text from its first character
+                    return nvim.command(
+                        `setlocal filetype=${filetype === "" ? "text" : filetype} nocursorline nocursorcolumn | call cursor(1, 1)` +
+                        ` | call winrestview({'topline': 1, 'leftcol': 0})` +
+                        ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background} | redraw!`,
+                    );
+                })
+                // answers arrive in order with the screen's events: a flush after the command was sent has been counted by now, if there was one
+                .then(() => (this.flushes > before ? Promise.resolve() : this.nextFlush()))
+                .then(() => {
+                    const all = this.painting();
+                    return { rows: all.rows.slice(0, lines.length), background: all.background };
+                });
+        });
+    }
+
+    private nextFlush(): Promise<void> {
+        return new Promise((resolve) => {
+            const done = () => {
+                this.onFlush = () => {};
+                resolve();
+            };
+            this.onFlush = done;
+            setTimeout(done, PAINT_TIMEOUT_MS);
+        });
     }
 
     /** The colours of the waiting neovim's colour scheme; null if it has none that a page could use. */
@@ -295,7 +371,9 @@ export class GridEditor {
     }
 
     /** Give the waiting neovim its text, as if it had been started on it: nothing to undo, the cursor in place. */
-    private load(text: string, row: number, column: number, colours: Colours) {
+    private load(text: string, row: number, column: number, colours: Colours, filetype: string) {
+        // the kind of text decides neovim's highlighting, indenting and the rest of what it does by file type
+        const kind = filetype === "" ? "" : ` | setlocal filetype=${filetype}`;
         this.lines = text.split("\n");
         const lines = [...this.lines];
         this.nvim
@@ -306,7 +384,7 @@ export class GridEditor {
                     // by character, not by byte: the column is one of the text as drawn
                     .then(() => nvim.command(
                         `let &undolevels = g:sge_undolevels | set nomodified | call setcursorcharpos(${row + 1}, ${column + 1})` +
-                        ` | call winrestview({'topline': 1, 'leftcol': 0})` +
+                        ` | call winrestview({'topline': 1, 'leftcol': 0})${kind}` +
                         ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background}`,
                     )))
             .catch(() => {
@@ -419,6 +497,10 @@ export class GridEditor {
                 }
             }
         }
+        if (flushed) {
+            this.flushes++;
+            this.onFlush();
+        }
         if (flushed && !this.closed) {
             if (this.loaded) this.reveal();
             this.onDrawn();
@@ -480,25 +562,34 @@ export class GridEditor {
 
     /** Draw neovim's screen at [at]: the rows and columns of the text and what the node has room for beyond them. */
     draw(ctx: CanvasRenderingContext2D, at: Cells) {
+        GridEditor.drawPainting(ctx, at, this.painting(), () => this.drawCursor(ctx, at));
+    }
+
+    /** The screen as it is now, every cell with what its highlight comes to. */
+    private painting(): Painting {
+        return { rows: this.cells.map((cells) => cells.map((cell) => ({ text: cell.text, ...this.style(cell.highlight) }))), background: this.defaults.background };
+    }
+
+    /** Draw [painting] at [at], inside its clip; [over] draws on top of it within the same clip (the cursor). */
+    static drawPainting(ctx: CanvasRenderingContext2D, at: Cells, painting: Painting, over: () => void = () => {}) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(at.clip.left, at.clip.top, at.clip.width, at.clip.height);
         ctx.clip();
         ctx.textBaseline = "alphabetic";
-        this.cells.forEach((cells, row) => {
+        painting.rows.forEach((cells, row) => {
             const top = at.top + row * at.cellHeight;
             cells.forEach((cell, column) => {
-                const style = this.style(cell.highlight);
                 const left = at.left + column * at.cellWidth;
                 // a little more than the cell: no hairline between two cells of one colour
-                if (style.background !== this.defaults.background) {
-                    ctx.fillStyle = style.background;
+                if (cell.background !== painting.background) {
+                    ctx.fillStyle = cell.background;
                     ctx.fillRect(left, top, at.cellWidth + 0.5, at.cellHeight + 0.5);
                 }
-                this.drawText(ctx, at, cell, style, left, top);
+                GridEditor.drawText(ctx, at, cell, left, top);
             });
         });
-        this.drawCursor(ctx, at);
+        over();
         ctx.restore();
     }
 
@@ -510,16 +601,16 @@ export class GridEditor {
         return h.reverse ? { ...h, foreground: background, background: foreground } : { ...h, foreground, background };
     }
 
-    private drawText(ctx: CanvasRenderingContext2D, at: Cells, cell: Cell, style: Colours & Highlight, left: number, top: number) {
+    private static drawText(ctx: CanvasRenderingContext2D, at: Cells, cell: PaintedCell, left: number, top: number) {
         if (cell.text !== "" && cell.text !== " ") {
-            ctx.font = `${style.italic ? "italic " : ""}${style.bold ? "bold " : ""}${at.font}`;
-            ctx.fillStyle = style.foreground;
+            ctx.font = `${cell.italic ? "italic " : ""}${cell.bold ? "bold " : ""}${at.font}`;
+            ctx.fillStyle = cell.foreground;
             ctx.fillText(cell.text, left, top + at.baseline);
         }
-        if (style.underline || style.undercurl || style.strikethrough) {
-            ctx.fillStyle = style.special ?? style.foreground;
+        if (cell.underline || cell.undercurl || cell.strikethrough) {
+            ctx.fillStyle = cell.special ?? cell.foreground;
             const thickness = Math.max(1, at.cellHeight / 16);
-            ctx.fillRect(left, top + (style.strikethrough ? at.cellHeight / 2 : at.baseline + thickness), at.cellWidth, thickness);
+            ctx.fillRect(left, top + (cell.strikethrough ? at.cellHeight / 2 : at.baseline + thickness), at.cellWidth, thickness);
         }
     }
 
@@ -536,7 +627,7 @@ export class GridEditor {
             else if (this.cursorStyle.shape === "horizontal") ctx.fillRect(left, top + at.cellHeight * (1 - share), at.cellWidth, at.cellHeight * share);
             else {
                 ctx.fillRect(left, top, at.cellWidth, at.cellHeight);
-                this.drawText(ctx, at, cell, { foreground: style.background, background: style.foreground }, left, top);
+                GridEditor.drawText(ctx, at, { text: cell.text, foreground: style.background, background: style.foreground }, left, top);
             }
         }
     }

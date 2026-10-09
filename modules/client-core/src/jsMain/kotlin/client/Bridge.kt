@@ -181,7 +181,8 @@ class JsView internal constructor(
      * What to draw, sizes brought up to date:
      * `{scale, offsetX, offsetY, nodes: [{id, x, y, width, height, textWidth, textHeight, lines, shape, bg, fg, palette, fontSize, selected}],
      * edges: [{x1, y1, x2, y2}], selectionBox: {x1, y1, x2, y2} or null}`. Node, edge and box coordinates are in workspace units, `screen = workspace * scale + offset`;
-     * a node's x, y is its centre; colours are `#rrggbb` or null, as to be shown ([dark]); `palette` says they are from the picker's palette.
+     * a node's x, y is its centre; colours are `#rrggbb` or null, as to be shown ([dark]); `palette` says they are from the picker's palette;
+     * every node also has `type` (`plain`, `code` or `markdown`) and, for code that names one, `language`.
      */
     fun scene(): dynamic {
         place()
@@ -207,6 +208,8 @@ class JsView internal constructor(
             j.bg = bg?.let(::css)
             j.fg = fg?.let(::css)
             j.palette = ColorStyle.PickerSet.isOurs(n.bg, n.fg)
+            j.type = n.type.kind.id
+            j.language = n.type.language
             j.fontSize = n.fontSize
             j.selected = n.selected
             j
