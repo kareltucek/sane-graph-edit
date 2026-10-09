@@ -4,6 +4,7 @@ import graph_tools.DynamicPlacement
 import graph_tools.Node
 import graph_tools.NodeShape
 import graph_tools.NodeText
+import graph_tools.NodeType
 import graph_tools.TextMeasurer
 import utils.Rgb
 import utils.Vector2
@@ -22,6 +23,8 @@ data class SceneNode(
     val fontSize: Double,
     val monospace: Boolean,
     val selected: Boolean,
+    /** What the text is: decides how it is shown while it is not edited. */
+    val type: NodeType = NodeType.Plain,
 )
 
 /** An edge as a renderer draws it: a line with its head at [dst]. */
@@ -77,4 +80,5 @@ private fun sceneNode(n: Node, selected: Boolean): SceneNode =
         fontSize = NodeText.fontSize(n),
         monospace = NodeText.isMonospace(n),
         selected = selected,
+        type = NodeType.of(n),
     )

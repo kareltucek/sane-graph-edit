@@ -18,6 +18,8 @@ import graph_tools.RemoveEdgesCommand
 import graph_tools.RemoveNodesCommand
 import graph_tools.RevealCommand
 import graph_tools.NodeShape
+import graph_tools.NodeType
+import graph_tools.SetNodeTypeCommand
 import graph_tools.SetShapeCommand
 import graph_tools.SetSizeCommand
 import graph_tools.StyleNodesCommand
@@ -74,6 +76,22 @@ object Actions {
         if (targets.isNotEmpty()) {
             g.commit(SetSizeCommand(g, targets.associateWith { it.attributes.nodeScale }, delta = steps, absolute = null))
             graphView.refreshStatus()
+            graphView.repaint()
+        }
+    }
+
+    /**
+     * Make the selected nodes (or, with none selected, the last
+     * active one) nodes of [type]: plain text, code in a language,
+     * or markdown. One undo step; a message if there is no node.
+     */
+    fun typeSelection(graphView: EditorView, type: NodeType) {
+        val g = graphView.g
+        val targets = g.selectedNodes.toList().ifEmpty { listOfNotNull(g.lastActiveNode?.takeIf { it in g.nodes }) }
+        if (targets.isEmpty()) {
+            graphView.shell.message("content-type: no node is selected")
+        } else {
+            g.commit(SetNodeTypeCommand(g, targets.associateWith { it.attributes.other[NodeType.ATTRIBUTE] }, type))
             graphView.repaint()
         }
     }

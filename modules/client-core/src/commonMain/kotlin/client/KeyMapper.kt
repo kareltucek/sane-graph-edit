@@ -822,6 +822,20 @@ class KeyMapper(
                 }
             }
             "e!" -> gv.content.reload(force = true)
+            "content-type" -> {
+                val type = graph_tools.NodeType.parse(args)
+                when {
+                    // without an argument: say what the node is
+                    args.isNullOrBlank() -> gv.shell.message(
+                        (gv.g.selectedNodes.toList().ifEmpty { listOfNotNull(gv.g.lastActiveNode) })
+                            .map { graph_tools.NodeType.of(it) }.distinct()
+                            .joinToString(", ") { it.attribute ?: graph_tools.NodeType.Kind.Plain.id }
+                            .ifEmpty { "content-type: no node is selected" },
+                    )
+                    type == null -> gv.shell.message("content-type: `${args.trim()}` is not one (plain, markdown, code, code-<language>)")
+                    else -> Actions.typeSelection(gv, type)
+                }
+            }
             "fold", "unfold", "toggle-fold" -> {
                 val how = when (cmd) {
                     "fold" -> ZCommands.Fold.Fold
@@ -1249,7 +1263,7 @@ class KeyMapper(
         val BUILTIN_COMMANDS = listOf(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
             "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
-            "fold", "unfold", "toggle-fold",
+            "fold", "unfold", "toggle-fold", "content-type",
         )
 
         /** Commands that take a motion: run from a key they wait for the next command and take it as theirs (`zf` then `t`). */
