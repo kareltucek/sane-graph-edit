@@ -487,7 +487,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     if (useGridEditor) GridEditor.warm();
     else NodeEditor.warm(document.body, FONT);
     window.addEventListener("beforeunload", () => {
-        GridEditor.discardSpare();
+        GridEditor.endAll();
         NodeEditor.discardSpare();
     });
     (useGridEditor ? GridEditor.colours() : NodeEditor.colours()).then((theirs) => {

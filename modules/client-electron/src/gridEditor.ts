@@ -229,8 +229,17 @@ export class GridEditor {
 
     /** The window goes away: so does the waiting neovim. */
     static discardSpare() {
-        GridEditor.spare?.discard();
+        GridEditor.spare?.discard(true);
         GridEditor.spare = null;
+    }
+
+    /** Every editor whose neovim still runs: the waiting one, the one in use, and those that are closing. */
+    private static readonly running = new Set<GridEditor>();
+
+    /** The window goes away: every neovim of this page ends now. */
+    static endAll() {
+        GridEditor.spare = null;
+        GridEditor.running.forEach((editor) => editor.discard(true));
     }
 
     private constructor() {
@@ -242,9 +251,12 @@ export class GridEditor {
         const { spawn }: typeof import("child_process") = require("child_process");
         const { attach }: typeof import("neovim") = require("neovim");
         // embedded: its screen is what it tells over its standard streams, and it starts once somebody is there to be told
-        this.process = spawn(NVIM, ["--embed", "-c", BARE, file], { cwd: this.directory, env: process.env });
+        // a process group of its own: neovim may be several processes (packed as an AppImage it is), and they are ended together
+        this.process = spawn(NVIM, ["--embed", "-c", BARE, file], { cwd: this.directory, env: process.env, detached: true });
+        GridEditor.running.add(this);
         this.process.on("exit", () => {
             this.exited = true;
+            GridEditor.running.delete(this);
             if (!this.closed) this.onExit();
         });
         this.process.on("error", () => {
@@ -573,13 +585,23 @@ export class GridEditor {
         });
     }
 
-    private discard() {
+    /** End neovim. With [now] (the window is going away, nothing later will run) at once; otherwise it is asked first and given a moment. */
+    private discard(now = false) {
         this.closed = true;
-        // asked to end, which lets it and what it runs in (an AppImage) tidy up; killed if it has not ended soon after
-        this.nvim.then((nvim) => nvim.quit()).catch(() => this.process.kill());
-        setTimeout(() => {
-            if (!this.exited) this.process.kill();
-        }, QUIT_TIMEOUT_MS);
+        const end = () => {
+            try {
+                // the whole group; SIGTERM lets an AppImage take its mount away
+                if (!this.exited && this.process.pid !== undefined) process.kill(-this.process.pid, "SIGTERM");
+            } catch {
+                // gone already
+            }
+        };
+        if (now) {
+            end();
+        } else {
+            this.nvim.then((nvim) => nvim.quit()).catch(end);
+            setTimeout(end, QUIT_TIMEOUT_MS);
+        }
         fs.rmSync(this.directory, { recursive: true, force: true });
     }
 }
