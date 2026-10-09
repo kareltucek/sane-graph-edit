@@ -83,6 +83,16 @@ compiled to WebAssembly — and comes back as an SVG, which the page
 only ever uses as an image. A document's text never becomes markup
 of the page, which has Node.
 
+Only what is in the view is drawn. What a node shows inside its
+outline (text, painting or picture) is kept as a bitmap
+(`bitmaps.ts`), made at the scale of a view that is not zoomed. A
+view zoomed out, or not zoomed, draws nodes from these; one zoomed
+in closer draws the few nodes it then shows as they are, so they
+stay sharp. The bitmaps together are held to 256 MB, the ones used
+longest ago going first; when even those of one view do not fit, the
+rest of its nodes are drawn as they are. `SGE_DRAW_TIMES=<file>`
+notes how long frames take, for tests.
+
 `:model`, `:editor-core`, `:client-core` and `:editor-host` are
 Kotlin Multiplatform subprojects with two targets, the JVM and
 JavaScript for Node.js; `:client-swing` is JVM only. The root project

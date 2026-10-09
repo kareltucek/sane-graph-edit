@@ -16,6 +16,9 @@ import type { Colours } from "./nodeEditor";
 // gives it the text.
 
 /** Where the cells go on the canvas, in page pixels, and the font they are drawn in. */
+/** What is drawn on: the page's canvas, or one that is kept as a bitmap. */
+export type Canvas2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
 export interface Cells {
     /** The corner of the cell in row 0, column 0. */
     left: number;
@@ -571,7 +574,7 @@ export class GridEditor {
     }
 
     /** Draw [painting] at [at], inside its clip; [over] draws on top of it within the same clip (the cursor). */
-    static drawPainting(ctx: CanvasRenderingContext2D, at: Cells, painting: Painting, over: () => void = () => {}) {
+    static drawPainting(ctx: Canvas2D, at: Cells, painting: Painting, over: () => void = () => {}) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(at.clip.left, at.clip.top, at.clip.width, at.clip.height);
@@ -601,7 +604,7 @@ export class GridEditor {
         return h.reverse ? { ...h, foreground: background, background: foreground } : { ...h, foreground, background };
     }
 
-    private static drawText(ctx: CanvasRenderingContext2D, at: Cells, cell: PaintedCell, left: number, top: number) {
+    private static drawText(ctx: Canvas2D, at: Cells, cell: PaintedCell, left: number, top: number) {
         if (cell.text !== "" && cell.text !== " ") {
             ctx.font = `${cell.italic ? "italic " : ""}${cell.bold ? "bold " : ""}${at.font}`;
             ctx.fillStyle = cell.foreground;

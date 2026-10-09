@@ -1,5 +1,6 @@
 import { client, host } from "sane-graph-edit-editor-host";
-import { Cells, GridEditor, Painting, StatusPiece } from "./gridEditor";
+import { Bitmaps, Recent } from "./bitmaps";
+import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor";
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 
@@ -242,10 +243,7 @@ function filetypeOf(n: SceneNode): string {
 }
 
 /** Code as neovim highlights it, by what was painted: asked for once, kept, and drawn in place of the plain text when it is there. */
-const paintings = new Map<string, Painting | null>();
-
-/** Kept paintings are let go of all at once when there are this many: simpler than deciding which are still needed. */
-const MAX_PAINTINGS = 2000;
+const paintings = new Recent<Painting | null>(10000);
 
 /**
  * Neovim's painting of the text of [n], if [n] is code in a
@@ -260,7 +258,6 @@ function paintingOf(n: SceneNode): Painting | null {
     const foreground = inkOf(n);
     const key = [filetype, background, foreground, text].join("\n");
     if (filetype !== "" && !paintings.has(key)) {
-        if (paintings.size >= MAX_PAINTINGS) paintings.clear();
         paintings.set(key, null);
         GridEditor.paint(text, filetype, { background, foreground }).then((painting) => {
             paintings.set(key, painting);
@@ -283,11 +280,26 @@ function pictureOf(n: SceneNode): Picture | null {
 }
 
 /**
- * Draw [picture] in the node [n]: at the size of the node's font,
- * where its text would start; smaller if it would not fit into the
- * node, and then in the middle of it.
+ * What a node shows inside its outline: a rectangle in the graph's
+ * units, and [draw], which draws it there. Two with the same [key]
+ * and of the same size look the same, so that a drawing of one can
+ * be kept and shown for the other.
  */
-function drawPicture(n: SceneNode, picture: Picture) {
+interface Content {
+    key: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    draw: (to: Canvas2D) => void;
+}
+
+/**
+ * [picture] in the node [n]: at the size of the node's font, where
+ * its text would start; smaller if it would not fit into the node,
+ * and then in the middle of it.
+ */
+function pictureContent(n: SceneNode, picture: Picture): Content {
     const natural = n.fontSize / REFERENCE_FONT_PX;
     const inset = n.fontSize * 0.25;
     const fit = Math.min(1, (n.width - 2 * inset) / (picture.width * natural), (n.height - 2 * inset) / (picture.height * natural));
@@ -296,15 +308,85 @@ function drawPicture(n: SceneNode, picture: Picture) {
     const fitsText = width <= n.textWidth + 0.5 && height <= n.textHeight + 0.5;
     const left = fitsText ? n.x - n.textWidth / 2 : n.x - width / 2;
     const top = fitsText ? n.y - n.textHeight / 2 : n.y - height / 2;
-    ctx.drawImage(picture.image, left, top, width, height);
+    return { key: `picture ${nameOf(picture)}`, left, top, width, height, draw: (to) => to.drawImage(picture.image, left, top, width, height) };
 }
+
+/** The text of [n] in its cells: as neovim painted it if [painting] is given, plain otherwise. A little room around it for what reaches out of a cell. */
+function textContent(n: SceneNode, grid: client.GridMetrics, painting: Painting | null): Content {
+    const room = n.fontSize * 0.25;
+    const textLeft = n.x - n.textWidth / 2;
+    const textTop = n.y - n.textHeight / 2;
+    const box = { left: textLeft - room, top: textTop - room, width: n.textWidth + 2 * room, height: n.textHeight + 2 * room };
+    const cells: Cells = {
+        left: textLeft,
+        top: textTop,
+        cellWidth: grid.advance * n.fontSize,
+        cellHeight: grid.lineHeight * n.fontSize,
+        font: `${n.fontSize}px ${FONT}`,
+        baseline: grid.ascent * n.fontSize,
+        clip: box,
+    };
+    const ink = inkOf(n);
+    return painting !== null
+        ? { key: `painting ${nameOf(painting)} ${n.fontSize}`, ...box, draw: (to) => GridEditor.drawPainting(to, cells, painting) }
+        : {
+            key: ["text", n.fontSize, ink, ...n.lines].join("\n"),
+            ...box,
+            draw: (to) => {
+                to.fillStyle = ink;
+                to.font = cells.font;
+                n.lines.forEach((line, i) => to.fillText(line, textLeft, textTop + cells.baseline + i * cells.cellHeight));
+            },
+        };
+}
+
+/** A name for each painting and picture, for the key of a drawing made from it. */
+const names = new WeakMap<object, number>();
+let lastName = 0;
+
+function nameOf(thing: object): number {
+    if (!names.has(thing)) names.set(thing, ++lastName);
+    return names.get(thing)!;
+}
+
+/** Drawings of what nodes show, kept for a view that is zoomed out. */
+const bitmaps = new Bitmaps();
+
+/**
+ * Draw [content] in a view at [scale] on a screen of [dpr] pixels
+ * to one of the page's. Zoomed out, or not zoomed at all: from the
+ * kept drawing of it, which is made if there is none. Closer than
+ * the kept drawing is made for: as it is.
+ */
+function drawContent(content: Content, scene: Scene, dpr: number) {
+    const needed = scene.scale * dpr;
+    const kept = bitmaps.scaleOf(content.width, content.height, dpr);
+    const bitmap = needed <= kept * SAME_SCALE
+        ? bitmaps.get(`${content.key}\n${content.width} ${content.height}`, content.width, content.height, kept, (to) => {
+            to.translate(-content.left, -content.top);
+            content.draw(to);
+        })
+        : null;
+    if (bitmap === null) content.draw(ctx);
+    else if (needed >= kept / SAME_SCALE) {
+        // pixel for pixel, at whole pixels: nothing is blurred
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(bitmap.image, Math.round((content.left * scene.scale + scene.offsetX) * dpr), Math.round((content.top * scene.scale + scene.offsetY) * dpr));
+        ctx.restore();
+    } else ctx.drawImage(bitmap.image, content.left, content.top, bitmap.image.width / kept, bitmap.image.height / kept);
+}
+
+/** Two scales no further apart than this are the same one: zooming in and back out does not come to quite the same number. */
+const SAME_SCALE = 1.0001;
 
 /** The colour of the text and outline of [n]. A node with a background of its own and no text colour: the theme's text may not show on it. */
 function inkOf(n: SceneNode): string {
     return n.fg ?? (n.bg === null ? colours().foreground : isLight(n.bg) ? "#000000" : "#ffffff");
 }
 
-function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
+function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number) {
+    const scale = scene.scale;
     const left = n.x - n.width / 2;
     const top = n.y - n.height / 2;
     ctx.beginPath();
@@ -319,17 +401,20 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
     ctx.stroke();
     // the node being edited has its editor where the text would be, once that shows
     const shown = n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown);
-    const picture = shown ? pictureOf(n) : null;
-    // a markdown node is its picture, once that is made
-    if (picture !== null) drawPicture(n, picture);
-    // nor is the text drawn here when neovim's painting of it is (a code node): that goes on top afterwards
-    else if (shown && paintingOf(n) === null) {
-        ctx.fillStyle = ink;
-        ctx.font = `${n.fontSize}px ${FONT}`;
-        const textLeft = n.x - n.textWidth / 2;
-        const textTop = n.y - n.textHeight / 2;
-        n.lines.forEach((line, i) => ctx.fillText(line, textLeft, textTop + (grid.ascent + i * grid.lineHeight) * n.fontSize));
+    if (shown) {
+        // a markdown node is its picture, once that is made; a code node what neovim painted, once that is
+        const picture = pictureOf(n);
+        drawContent(picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n)), scene, dpr);
     }
+}
+
+/** Whether the rectangle between two corners, given in the graph's units, and widened by [margin], is at least partly in the view of [width] by [height]. */
+function inView(scene: Scene, width: number, height: number, x1: number, y1: number, x2: number, y2: number, margin: number): boolean {
+    const left = -scene.offsetX / scene.scale - margin;
+    const top = -scene.offsetY / scene.scale - margin;
+    const right = (width - scene.offsetX) / scene.scale + margin;
+    const bottom = (height - scene.offsetY) / scene.scale + margin;
+    return Math.max(x1, x2) >= left && Math.min(x1, x2) <= right && Math.max(y1, y2) >= top && Math.min(y1, y2) <= bottom;
 }
 
 /** The node whose text is being edited, and its editor. */
@@ -511,19 +596,19 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     ctx.strokeStyle = colours().foreground;
     ctx.fillStyle = colours().foreground;
     ctx.lineWidth = 1;
-    scene.edges.forEach((e) => drawEdge(e, scene.scale));
-    scene.nodes.forEach((n) => drawNode(n, grid, scene.scale));
+    // a kept drawing shown smaller is averaged, not sampled
+    ctx.imageSmoothingQuality = "high";
+    bitmaps.nextFrame();
+    // only what is in the view; a selected node's outline is the widest thing drawn around one
+    const outline = Math.max(2, 2.2 / scene.scale);
+    scene.edges.filter((e) => inView(scene, width, height, e.x1, e.y1, e.x2, e.y2, ARROWHEAD_RADIUS + 1)).forEach((e) => drawEdge(e, scene.scale));
+    scene.nodes
+        .filter((n) => inView(scene, width, height, n.x - n.width / 2, n.y - n.height / 2, n.x + n.width / 2, n.y + n.height / 2, outline))
+        .forEach((n) => drawNode(n, grid, scene, dpr));
     lastScene = scene;
     const edited = scene.nodes.find((n) => n.id === editing?.id);
     const editor = editing?.editor;
     if (edited !== undefined && editor instanceof NodeEditor) editor.place(textPlace(edited, scene, grid));
-    // In page pixels, like the editor below: the code nodes as neovim painted them.
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    scene.nodes.forEach((n) => {
-        const painting = n.fontSize * scene.scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown) ? paintingOf(n) : null;
-        if (painting !== null) GridEditor.drawPainting(ctx, cellsOf(n, scene, grid), painting);
-    });
-    ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     if (edited !== undefined && editor instanceof GridEditor && editor.shown) {
         // in page pixels, like the places it is given
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -547,9 +632,20 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         const view = app.current();
         if (view) action(view);
     };
+    // For tests: each drawing is followed by a few more, and how long the last of them took from one frame to the next is noted.
+    // (Not the time spent in here: the canvas only notes what to draw, and is drawn afterwards.)
+    let again = 0;
+    let before = 0;
     const paint = () => {
         scheduled = false;
         current((view) => draw(view, grid));
+        if (DRAW_TIMES !== undefined) {
+            const now = performance.now();
+            if (again === 0) again = TIMED_FRAMES;
+            else if (--again === 0) require("fs").appendFileSync(DRAW_TIMES, `${(now - before).toFixed(1)} ms at scale ${lastScene?.scale.toFixed(3)}\n`);
+            before = now;
+            if (again > 0) repaint();
+        }
     };
     const repaint = () => {
         if (!scheduled) {
@@ -703,6 +799,10 @@ async function replay(events: Played[], grid: client.GridMetrics) {
         else canvas.dispatchEvent(new PointerEvent(p.type, common));
     }
 }
+
+/** For tests (`SGE_DRAW_TIMES=<file>`): how long each drawing took is added to the file. */
+const DRAW_TIMES = process.env.SGE_DRAW_TIMES;
+const TIMED_FRAMES = 6;
 
 /** For tests: after the first drawing, so that positions in the window mean what the test saw. */
 const PLAY_DELAY_MS = 800;

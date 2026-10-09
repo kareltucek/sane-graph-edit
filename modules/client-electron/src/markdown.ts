@@ -4,6 +4,8 @@
 // that is sandboxed, and comes back as an SVG. Here that SVG is
 // only ever an image, in which nothing can run.
 
+import { Recent } from "./bitmaps";
+
 /** A formatted text, ready to draw; [width] and [height] are its size in pixels at [REFERENCE_FONT_PX]. */
 export interface Picture {
     image: HTMLImageElement;
@@ -14,8 +16,8 @@ export interface Picture {
 /** The font size the pictures are made at; they are scaled to a node's own when drawn. */
 export const REFERENCE_FONT_PX = 16;
 
-/** Kept pictures are let go of all at once when there are this many: simpler than deciding which are still needed. */
-const MAX_PICTURES = 500;
+/** How many pictures are kept: more than a view can show at a size at which they can be read. */
+const MAX_PICTURES = 5000;
 
 interface Answer {
     id?: number;
@@ -30,7 +32,7 @@ export class MarkdownPictures {
     private readonly frame = document.createElement("iframe");
     private readonly ready: Promise<void>;
     private readonly waiting = new Map<number, (answer: Answer) => void>();
-    private readonly pictures = new Map<string, Picture | null>();
+    private readonly pictures = new Recent<Picture | null>(MAX_PICTURES);
     private nextId = 0;
 
     /** [onArrived] is told when a picture that was asked for is there to be drawn. */
@@ -69,7 +71,6 @@ export class MarkdownPictures {
     get(markdown: string, font: string, foreground: string, dark: boolean, maxWidth: number): Picture | null {
         const key = [font, foreground, dark, maxWidth, markdown].join("\n");
         if (!this.pictures.has(key)) {
-            if (this.pictures.size >= MAX_PICTURES) this.pictures.clear();
             this.pictures.set(key, null);
             const id = this.nextId++;
             this.ready.then(() => {
