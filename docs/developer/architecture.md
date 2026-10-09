@@ -17,19 +17,22 @@ zoom with the wheel, and you save as [Graphviz
 DOT](https://graphviz.org/doc/info/lang.html). That's the whole
 product.
 
-Under the hood there are five Gradle subprojects:
+Under the hood there are five Gradle subprojects, each in a
+directory of its name under `modules/`:
 
 | Subproject     | Role                                               |
 |----------------|----------------------------------------------------|
 | `:model`       | Data model (`graph_tools`: `Graph`, `Node`, `Edge`, commands, layout), DOT (`parser_dot`), SVG (`export`), and what clients and the editor exchange (`sync`). No AWT. |
 | `:editor-core` | The authoritative side of a session: documents, order of changes, undo (`editor`). Pure logic, no threads or IO. |
-| `:client`      | A client of a session, without a GUI: replicas of its open documents, and everything about editing that is per user — commands, gestures, key mapping, the `:` command line, what a view shows (`client`). No AWT. |
+| `:client-core` | A client of a session, without a GUI: replicas of its open documents, and everything about editing that is per user — commands, gestures, key mapping, the `:` command line, what a view shows (`client`). No AWT. |
 | `:editor-host` | Runs an editor on the JVM: files, in-process and socket connections (`host`). |
-| root           | The Swing renderer and application: widgets, AWT event translation, tabs, dialogs (`ui`), painting (`graph_tools.Plotter`). |
+| `:client-swing` | The Swing renderer and application: widgets, AWT event translation, tabs, dialogs (`ui`), painting (`graph_tools.Plotter`). |
 
-`:model`, `:editor-core` and `:client` are Kotlin Multiplatform
+`:model`, `:editor-core` and `:client-core` are Kotlin Multiplatform
 subprojects with two targets, the JVM and JavaScript for Node.js;
-`:editor-host` and the root project are JVM only. Their code is in
+`:editor-host` and `:client-swing` are JVM only. The root project
+holds no code; the jar and the packages are still built into its
+`build/`. Their code is in
 `src/commonMain`; what differs per platform is behind three
 `expect` objects with a JVM and a JavaScript implementation each:
 
@@ -40,9 +43,9 @@ subprojects with two targets, the JVM and JavaScript for Node.js;
   JVM code passes its paths to the client unchanged.
 - `client.AppState`: what is remembered between runs.
 
-JVM only, in `client/src/jvmMain`: the Unix-socket connection, the
+JVM only, in `modules/client-core/src/jvmMain`: the Unix-socket connection, the
 session and preferences files, XDG paths. JavaScript has
-`client.WebSocketConnection` (`client/src/jsMain`) as its transport
+`client.WebSocketConnection` (`modules/client-core/src/jsMain`) as its transport
 and needs its own storage.
 
 Tests in `commonTest` run on both targets (`./gradlew allTests`;
@@ -268,7 +271,7 @@ flowchart LR
 
 The two listeners only translate AWT events (positions, key
 notation); everything they feed is toolkit-free and lives in
-`:client` — see [Client and renderer](#client-and-renderer).
+`:client-core` — see [Client and renderer](#client-and-renderer).
 
 ### `GraphMouseController` states
 
@@ -547,10 +550,10 @@ then)` built on it. The rest of the client (`ViewContent`'s file
 handling, `EditorClient.create`) still uses `call` and so runs on
 the JVM only for now.
 
-**Testing across the two runtimes.** `client/src/jsTest` runs the
+**Testing across the two runtimes.** `modules/client-core/src/jsTest` runs the
 Kotlin/JS client on Node against a real editor: each test starts
 `host.TestEditor` (in the tests of `:editor-host`) as a JVM process;
-`client/build.gradle.kts` hands it the Java binary and classpath.
+the build script of `:client-core` hands it the Java binary and classpath.
 `WebSocketServerTest` checks the server against the JDK's client.
 
 **Without a session.** `ui.Editor.client` is null in unit tests; a
@@ -568,12 +571,12 @@ above and is handled here.
 
 ```mermaid
 flowchart LR
-    subgraph R["renderer (root project, Swing)"]
+    subgraph R[":client-swing (renderer, Swing)"]
         Listeners[mouse / key listeners]
         Canvas[GraphCanvas + Plotter]
         Widgets[NodeEditor, StylePicker,<br/>CommandBar, StatusBar]
     end
-    subgraph C[":client"]
+    subgraph C[":client-core"]
         View[EditorView<br/>graph, ViewTransform, cursor]
         Gest[GestureController]
         Keys[KeyMapper]
@@ -718,7 +721,7 @@ Items currently missing and planned under `tasks/`:
 
 - **SVG export** — no export at all. See `tasks/svg-export.md`.
 - **Broader test coverage** — we have unit tests for history and
-  the clipboard (`src/test/kotlin/`), but the renderer, the input
+  the clipboard (`modules/client-swing/src/test/kotlin/`), but the renderer, the input
   layer, and the DOT parser still rely on manual testing.
 
 ## Gotchas and legacy quirks

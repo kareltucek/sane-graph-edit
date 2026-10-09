@@ -1,6 +1,7 @@
 rootProject.name = "sane-graph-edit"
 
-include(":model")
-include(":editor-core")
-include(":client")
-include(":editor-host")
+// model <- editor-core, client-core <- editor-host <- client-swing (the application)
+listOf("model", "editor-core", "editor-host", "client-core", "client-swing").forEach {
+    include(":$it")
+    project(":$it").projectDir = file("modules/$it")
+}

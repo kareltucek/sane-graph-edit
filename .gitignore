@@ -1,6 +1,7 @@
 out/
 build/
 .gradle/
+.kotlin/
 
 # IntelliJ regenerates these from the Gradle model on import — keep them out of VCS
 *.iml

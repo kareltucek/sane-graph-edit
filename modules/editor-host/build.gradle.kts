@@ -16,7 +16,7 @@ kotlin {
 
 dependencies {
     api(project(":editor-core"))
-    api(project(":client"))
+    api(project(":client-core"))
     testImplementation(kotlin("test"))
 }
 

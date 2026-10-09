@@ -1,0 +1,206 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+
+// The Swing application: windows, tabs, painting. Everything a
+// client needs besides drawing is in :client-core.
+plugins {
+    kotlin("jvm")
+    application
+}
+
+// The jar and the packages land in the repository's build/, where
+// the Makefile and the documentation expect them.
+val distributionBuild = rootProject.layout.buildDirectory
+
+kotlin {
+    jvmToolchain(21)
+    compilerOptions {
+        // Explicit so bumps to the Kotlin plugin (which may ship a
+        // newer default) don't silently change language semantics.
+        languageVersion.set(KotlinVersion.KOTLIN_2_0)
+        apiVersion.set(KotlinVersion.KOTLIN_2_0)
+    }
+}
+
+application {
+    // ui.MainKt is the entry point (ui package, top-level `fun main`).
+    mainClass.set("ui.MainKt")
+}
+
+dependencies {
+    implementation(project(":editor-host"))
+    testImplementation(kotlin("test"))
+}
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+// The same tests with every view attached to an editor session
+// instead of editing a graph of its own.
+val sessionTest = tasks.register<Test>("sessionTest") {
+    group = "verification"
+    description = "Runs the tests with views going through an editor session."
+    testClassesDirs = sourceSets.test.get().output.classesDirs
+    classpath = sourceSets.test.get().runtimeClasspath
+    useJUnitPlatform()
+    systemProperty("sane-graph-edit.session", "true")
+}
+
+tasks.check {
+    dependsOn(sessionTest)
+}
+
+// Produce a runnable fat jar for distribution.
+tasks.register<Jar>("fatJar") {
+    group = "build"
+    description = "Assembles a runnable jar with all runtime dependencies included."
+    archiveBaseName.set(rootProject.name)
+    archiveClassifier.set("all")
+    destinationDirectory.set(distributionBuild.dir("libs"))
+    manifest {
+        attributes["Main-Class"] = application.mainClass.get()
+    }
+    from(sourceSets.main.get().output)
+    dependsOn(configurations.runtimeClasspath)
+    from({
+        configurations.runtimeClasspath.get()
+            .filter { it.name.endsWith(".jar") }
+            .map { zipTree(it) }
+    })
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// ---------- jpackage: native app-image or installer ----------
+//
+// Usage:
+//   ./gradlew jpackage              -- app-image (directory with launcher + bundled JRE)
+//   ./gradlew jpackage -Ptype=deb   -- Debian .deb package
+//   ./gradlew jpackage -Ptype=rpm   -- RPM package
+//
+// Output lands in build/dist/.
+// Requires JDK 21+ (ships jpackage) and, for deb/rpm, the
+// corresponding packaging tools (dpkg-deb / rpmbuild).
+tasks.register<Exec>("jpackage") {
+    group = "distribution"
+    description = "Builds a native app-image (or installer) via jpackage."
+    dependsOn("fatJar")
+
+    val fatJarFile = tasks.named<Jar>("fatJar").get().archiveFile.get().asFile
+    val outputDir = distributionBuild.dir("dist").get().asFile
+    val pkgType = project.findProperty("type")?.toString() ?: "app-image"
+
+    // Resolve the jpackage binary from the same toolchain Gradle
+    // uses for compilation, so we don't accidentally pick up a
+    // system JDK that's too old.
+    val javaHome = javaToolchains
+        .launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
+        .get()
+        .metadata
+        .installationPath
+        .asFile
+    val jpackageBin = javaHome.resolve("bin/jpackage")
+
+    doFirst {
+        // jpackage refuses to overwrite an existing output directory,
+        // so wipe it before each run.
+        val existing = outputDir.resolve("sane-graph-edit")
+        if (existing.exists()) existing.deleteRecursively()
+        outputDir.mkdirs()
+    }
+
+    executable = jpackageBin.absolutePath
+    args(
+        "--input", fatJarFile.parentFile.absolutePath,
+        "--main-jar", fatJarFile.name,
+        "--main-class", application.mainClass.get(),
+        "--name", "sane-graph-edit",
+        "--app-version", project.version.toString().removeSuffix("-SNAPSHOT"),
+        "--type", pkgType,
+        "--dest", outputDir.absolutePath,
+        // Swing needs a few JVM flags on newer JDKs to avoid
+        // warnings; pass them through to the native launcher.
+        "--java-options", "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+    )
+}
+
+// ---------- AppImage: single self-contained .AppImage file ----------
+//
+// Usage:
+//   ./gradlew appimage
+//
+// Requires appimagetool on $PATH (or at ~/.local/bin/appimagetool).
+// Install:
+//   wget -O ~/.local/bin/appimagetool \
+//     https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+//   chmod +x ~/.local/bin/appimagetool
+//
+// Output: build/dist/sane-graph-edit-<version>-x86_64.AppImage
+tasks.register<Exec>("appimage") {
+    group = "distribution"
+    description = "Builds a self-contained .AppImage via appimagetool."
+    dependsOn("jpackage")
+
+    val jpackageOut = distributionBuild.dir("dist/sane-graph-edit").get().asFile
+    val appDir = distributionBuild.dir("appimage-staging").get().asFile
+    val outputDir = distributionBuild.dir("dist").get().asFile
+    val ver = project.version.toString().removeSuffix("-SNAPSHOT")
+    val packagingDir = rootProject.file("packaging")
+
+    doFirst {
+        // Build the AppDir structure expected by appimagetool:
+        //   AppDir/
+        //     AppRun              (entry-point script)
+        //     sane-graph-edit.desktop
+        //     sane-graph-edit.png (icon)
+        //     bin/, lib/          (from jpackage output)
+        if (appDir.exists()) appDir.deleteRecursively()
+        appDir.mkdirs()
+
+        // Copy the full jpackage tree (launcher + JRE + jars).
+        // Kotlin's copyRecursively does NOT preserve POSIX permissions,
+        // so we restore +x on executables and shared libs below —
+        // without this the squashfs mount is read-only and the
+        // native launcher fails with "Permission denied".
+        jpackageOut.copyRecursively(appDir, overwrite = true)
+
+        // Restore execute bits that copyRecursively dropped.
+        appDir.resolve("bin/sane-graph-edit").setExecutable(true)
+        appDir.walk()
+            .filter { it.extension == "so" || it.name in listOf("jspawnhelper", "jexec") }
+            .forEach { it.setExecutable(true) }
+
+        // Layer the AppImage metadata on top
+        packagingDir.resolve("AppRun").copyTo(appDir.resolve("AppRun"), overwrite = true)
+        appDir.resolve("AppRun").setExecutable(true)
+        packagingDir.resolve("sane-graph-edit.desktop")
+            .copyTo(appDir.resolve("sane-graph-edit.desktop"), overwrite = true)
+        // Use the icon jpackage generated, or fall back to a placeholder
+        val icon = jpackageOut.resolve("lib/sane-graph-edit.png")
+        if (icon.exists()) {
+            icon.copyTo(appDir.resolve("sane-graph-edit.png"), overwrite = true)
+        }
+    }
+
+    // Find appimagetool — check PATH and the common ~/.local/bin location
+    val home = System.getProperty("user.home")
+    val appimagetool = listOf("/usr/bin/appimagetool", "/usr/local/bin/appimagetool", "$home/.local/bin/appimagetool")
+        .firstOrNull { File(it).exists() }
+        ?: "appimagetool"  // fall back to PATH lookup
+
+    val appImageFile = outputDir.resolve("sane-graph-edit-$ver-x86_64.AppImage")
+    val shortcutFile = rootProject.file("sane-graph-edit.AppImage")
+
+    executable = appimagetool
+    args(appDir.absolutePath, appImageFile.absolutePath)
+
+    // appimagetool needs ARCH set for the filename convention
+    environment("ARCH", "x86_64")
+
+    doLast {
+        // Copy to the repo root under a stable name so it's easy to
+        // find without remembering the version string.
+        appImageFile.copyTo(shortcutFile, overwrite = true)
+        shortcutFile.setExecutable(true)
+        println("AppImage ready: ${shortcutFile.absolutePath}")
+    }
+}
