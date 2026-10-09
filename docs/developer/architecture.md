@@ -55,11 +55,20 @@ npm start -- [<file or directory>]
 
 Its files: `main.ts` (the Electron process: arguments, the window),
 `renderer.ts` (the page: canvas drawing, DOM events passed to the
-bridge), `nodeEditor.ts` (a node's text editor: neovim in an
-`xterm.js` terminal laid over the node and stretched to the node's
-character cells; the text is followed over neovim's RPC socket).
-For tests the page can replay input (`--play <json>`) and save its
-canvas (`--capture <png>`).
+bridge), and two text editors for a node, both neovim with the text
+followed over its RPC. `gridEditor.ts` is the one in use: neovim
+embedded, without a terminal; it tells what is in every cell of its
+screen (its UI protocol) and the page draws the cells on the canvas
+with the font and at the places the node's text is drawn with. Its
+command line, mode and messages are not on that screen: neovim
+tells them, and its status line is asked for, and the page shows
+them in strips above its own status line. `nodeEditor.ts` is the
+older one, chosen with `set node-editor=terminal` in the init file:
+neovim in an `xterm.js` terminal laid over the node and stretched
+to the node's character cells. For tests the page can replay input
+(`--play <json>`), save its canvas (`--capture <png>`), and draw
+off the screen and save pictures of the whole window
+(`--shots <dir>`).
 
 `:model`, `:editor-core`, `:client-core` and `:editor-host` are
 Kotlin Multiplatform subprojects with two targets, the JVM and

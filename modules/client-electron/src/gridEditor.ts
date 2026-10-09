@@ -1,0 +1,590 @@
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import type { ChildProcess } from "child_process";
+import type { NeovimClient } from "neovim";
+import type { Colours } from "./nodeEditor";
+
+// The text editor of a node: neovim without a terminal. Neovim
+// tells what is in every cell of its screen (its UI protocol) and
+// the page draws the cells itself, with the font and at the places
+// the node's text is drawn with: nothing moves when editing starts,
+// and nothing is stretched.
+//
+// Neovim with a user's plugins may take seconds to start, so one
+// is always kept started and waiting; an edit takes that one and
+// gives it the text.
+
+/** Where the cells go on the canvas, in page pixels, and the font they are drawn in. */
+export interface Cells {
+    /** The corner of the cell in row 0, column 0. */
+    left: number;
+    top: number;
+    cellWidth: number;
+    cellHeight: number;
+    /** A CSS font, e.g. `12px monospace`, and how far below a cell's top its baseline is. */
+    font: string;
+    baseline: number;
+    /** What may be drawn on: the inside of the node. */
+    clip: { left: number; top: number; width: number; height: number };
+}
+
+/** How neovim wants a kind of text drawn; colours are `#rrggbb`, and absent means the default one. */
+interface Highlight {
+    foreground?: string;
+    background?: string;
+    special?: string;
+    reverse?: boolean;
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    undercurl?: boolean;
+    strikethrough?: boolean;
+}
+
+interface Cell {
+    text: string;
+    highlight: number;
+}
+
+/** What the cursor looks like in a mode: a block, a bar at the cell's left, or a line at its bottom, the last two this many percent of the cell. */
+interface CursorStyle {
+    shape: "block" | "vertical" | "horizontal";
+    percentage: number;
+}
+
+/**
+ * Room beyond the text, so that neovim need not scroll before its
+ * screen has grown: the cursor behind the last character plus the
+ * character typed next, and the line a new line opens.
+ */
+const SPARE_COLUMNS = 2;
+const SPARE_ROWS = 1;
+
+/** Neovim draws at least this much whatever size it is given. */
+const MIN_COLUMNS = 12;
+const MIN_ROWS = 3;
+
+const NVIM = process.env.SGE_NVIM || "nvim";
+
+/** How often and for how long to ask a starting neovim whether it is through with the user's init files. */
+const START_RETRY_MS = 50;
+const START_TRIES = 200;
+
+/** How long closing waits for neovim to tell its text. */
+const CLOSE_TIMEOUT_MS = 3000;
+
+/** How long a neovim that was asked to end has for it. */
+const QUIT_TIMEOUT_MS = 1000;
+
+/** The editor shows once neovim has drawn the text, or after this long if it draws nothing. */
+const REVEAL_TIMEOUT_MS = 300;
+
+// In the node there must be the text and nothing else: no status line, no columns beside the text. The command line and the messages are not on the screen at all:
+// neovim tells them and the page shows them where its own are.
+const BARE = "set laststatus=0 showtabline=0 noruler signcolumn=no nonumber norelativenumber foldcolumn=0 nofoldenable nowrap noswapfile sidescrolloff=0 shortmess+=IF";
+
+/** A stretch of neovim's status line in one colouring; colours are `#rrggbb`, and absent means the page's own. */
+export interface StatusPiece {
+    text: string;
+    foreground?: string;
+    background?: string;
+}
+
+/** The status line is asked for this long after the screen changed, once for all changes in between. */
+const STATUS_DELAY_MS = 60;
+
+// The user's status line (or neovim's usual one when none is set), evaluated for a width of `...` characters, as a list of {text, foreground, background}.
+const STATUS_LINE = `
+local width = ...
+local line = vim.o.statusline
+if line == '' then line = '%<%f %h%w%m%r%=%-14.(%l,%c%V%) %P' end
+local ok, evaluated = pcall(vim.api.nvim_eval_statusline, line, { maxwidth = width, highlights = true })
+if not ok then return {} end
+local colour = function(value) return value and string.format('#%06x', value) or nil end
+local pieces = {}
+local marks = evaluated.highlights or {}
+for i, mark in ipairs(marks) do
+  local to = marks[i + 1] and marks[i + 1].start or #evaluated.str
+  local text = evaluated.str:sub(mark.start + 1, to)
+  if text ~= '' then
+    local hl = vim.api.nvim_get_hl(0, { name = mark.group, link = false })
+    local fg, bg = hl.fg, hl.bg
+    if hl.reverse then fg, bg = bg, fg end
+    table.insert(pieces, { text = text, foreground = colour(fg), background = colour(bg) })
+  end
+end
+if #marks == 0 then table.insert(pieces, { text = evaluated.str }) end
+return pieces
+`;
+
+const hex = (colour: number) => "#" + colour.toString(16).padStart(6, "0");
+
+/** Keys as a DOM event names them, as neovim's `nvim_input` wants them. */
+const SPECIAL_KEYS: { [key: string]: string } = {
+    Escape: "Esc", Enter: "CR", Backspace: "BS", Tab: "Tab", Delete: "Del", Insert: "Insert", " ": "Space", "<": "lt", "\\": "Bslash", "|": "Bar",
+    ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right", Home: "Home", End: "End", PageUp: "PageUp", PageDown: "PageDown",
+    F1: "F1", F2: "F2", F3: "F3", F4: "F4", F5: "F5", F6: "F6", F7: "F7", F8: "F8", F9: "F9", F10: "F10", F11: "F11", F12: "F12",
+};
+
+/** A key press in neovim's notation; null for a key that is nothing by itself (a modifier, a dead key). */
+export function keyNotation(e: { key: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean }): string | null {
+    const special = SPECIAL_KEYS[e.key];
+    const printable = e.key.length === 1 || [...e.key].length === 1;
+    const name = special ?? (printable ? e.key : null);
+    // a shifted character is that character already; Shift is only said for keys with a name
+    const modifiers = (e.ctrlKey ? "C-" : "") + (e.altKey ? "M-" : "") + (e.metaKey ? "D-" : "") + (e.shiftKey && special !== undefined && e.key !== "<" && e.key !== "|" ? "S-" : "");
+    return name === null ? null : modifiers !== "" || special !== undefined ? `<${modifiers}${name}>` : name;
+}
+
+export class GridEditor {
+    /** Started and waiting for the next edit. */
+    private static spare: GridEditor | null = null;
+
+    private readonly process: ChildProcess;
+    private readonly directory = fs.mkdtempSync(path.join(os.tmpdir(), "sge-node-"));
+    private readonly nvim: Promise<NeovimClient>;
+    private lines: string[] = [""];
+    /** Typed before neovim had the text. */
+    private typed: string[] = [];
+    private loaded = false;
+    private exited = false;
+    private closed = false;
+    private onText: (text: string) => void = () => {};
+    private onExit: () => void = () => {};
+    private onShown: () => void = () => {};
+    private onDrawn: () => void = () => {};
+    private onLine: (text: string | null) => void = () => {};
+    private onMessage: (text: string) => void = () => {};
+    private onStatus: (pieces: StatusPiece[]) => void = () => {};
+
+    // --- neovim's screen as it has told it ---
+    private columns = MIN_COLUMNS;
+    private rows = MIN_ROWS;
+    private cells: Cell[][] = [];
+    private highlights = new Map<number, Highlight>();
+    private defaults: Colours = { foreground: "#ffffff", background: "#000000" };
+    private cursor = { row: 0, column: 0 };
+    private cursorStyles: CursorStyle[] = [];
+    private cursorStyle: CursorStyle = { shape: "block", percentage: 100 };
+    /** The command line being typed (`:`, `/`), and the mode as neovim words it (`-- INSERT --`); the first shows if there is one. */
+    private commandLine: string | null = null;
+    private modeText = "";
+
+    /** True once the editor is to be seen: until then the node's text is still the renderer's to draw. */
+    shown = false;
+
+    /** Have a neovim started for the next edit. */
+    static warm() {
+        if (GridEditor.spare === null || GridEditor.spare.exited) GridEditor.spare = new GridEditor();
+    }
+
+    /**
+     * Neovim on [text] with the cursor at [row], [column] (from 0), plain text in [colours].
+     * [onText] is told the text whenever it changes; [onExit] when neovim ends by itself (`:q`);
+     * [onShown] when the editor takes the text's place on the screen; [onDrawn] whenever what it shows changed;
+     * [onLine] the one line to show below the graph while editing (the command line being typed, or the mode), or null for none;
+     * [onMessage] what neovim has to say (an error, the output of a command);
+     * [onStatus] neovim's status line, in pieces with their colours.
+     */
+    static open(
+        text: string,
+        row: number,
+        column: number,
+        colours: Colours,
+        on: {
+            text: (text: string) => void;
+            exit: () => void;
+            shown: () => void;
+            drawn: () => void;
+            line: (text: string | null) => void;
+            message: (text: string) => void;
+            status: (pieces: StatusPiece[]) => void;
+        },
+    ): GridEditor {
+        GridEditor.warm();
+        const editor = GridEditor.spare!;
+        GridEditor.spare = null;
+        editor.onText = on.text;
+        editor.onExit = on.exit;
+        editor.onShown = on.shown;
+        editor.onDrawn = on.drawn;
+        editor.onLine = on.line;
+        editor.onMessage = on.message;
+        editor.onStatus = on.status;
+        editor.load(text, row, column, colours);
+        GridEditor.warm();
+        return editor;
+    }
+
+    /** The colours of the waiting neovim's colour scheme; null if it has none that a page could use. */
+    static colours(): Promise<Colours | null> {
+        const nvim = GridEditor.spare?.nvim ?? Promise.reject(new Error("no neovim"));
+        return nvim
+            .then((it) => it.request("nvim_get_hl", [0, { name: "Normal" }]))
+            .then((normal: { fg?: number; bg?: number }) =>
+                normal.fg !== undefined && normal.bg !== undefined ? { foreground: hex(normal.fg), background: hex(normal.bg) } : null)
+            .catch(() => null);
+    }
+
+    /** The window goes away: so does the waiting neovim. */
+    static discardSpare() {
+        GridEditor.spare?.discard();
+        GridEditor.spare = null;
+    }
+
+    private constructor() {
+        const file = path.join(this.directory, "node.txt");
+        fs.writeFileSync(file, "");
+        this.clear();
+
+        // loaded here, not bundled: neovim's client expects to be a Node module
+        const { spawn }: typeof import("child_process") = require("child_process");
+        const { attach }: typeof import("neovim") = require("neovim");
+        // embedded: its screen is what it tells over its standard streams, and it starts once somebody is there to be told
+        this.process = spawn(NVIM, ["--embed", "-c", BARE, file], { cwd: this.directory, env: process.env });
+        this.process.on("exit", () => {
+            this.exited = true;
+            if (!this.closed) this.onExit();
+        });
+        this.process.on("error", () => {
+            this.exited = true;
+        });
+        const client = attach({ proc: this.process });
+        client.on("notification", (method: string, events: unknown[][]) => {
+            if (method === "redraw") this.redraw(events);
+        });
+        this.nvim = client
+            .uiAttach(this.columns, this.rows, { rgb: true, ext_linegrid: true, ext_cmdline: true, ext_messages: true } as never)
+            .then(() => this.started(client, START_TRIES));
+        // a neovim that never comes is found out when it is used
+        this.nvim.catch(() => {});
+    }
+
+    /** The text as far as neovim has told. */
+    get text(): string {
+        return this.lines.join("\n");
+    }
+
+    private get wantedColumns(): number {
+        return Math.max(Math.max(1, ...this.lines.map((l) => [...l].length)) + SPARE_COLUMNS, MIN_COLUMNS);
+    }
+
+    private get wantedRows(): number {
+        return Math.max(this.lines.length + SPARE_ROWS, MIN_ROWS);
+    }
+
+    /** Neovim answers while it still reads the user's init files; it is of use once it is through with them. */
+    private started(nvim: NeovimClient, triesLeft: number): Promise<NeovimClient> {
+        return nvim.eval("v:vim_did_enter").then((entered) =>
+            entered === 1 || triesLeft === 0
+                ? nvim
+                : new Promise((resolve) => setTimeout(resolve, START_RETRY_MS)).then(() => this.started(nvim, triesLeft - 1)));
+    }
+
+    /** Give the waiting neovim its text, as if it had been started on it: nothing to undo, the cursor in place. */
+    private load(text: string, row: number, column: number, colours: Colours) {
+        this.lines = text.split("\n");
+        const lines = [...this.lines];
+        this.nvim
+            .then((nvim) =>
+                nvim.command("let g:sge_undolevels = &undolevels | set undolevels=-1")
+                    .then(() => nvim.uiTryResize(this.wantedColumns, this.wantedRows))
+                    .then(() => nvim.request("nvim_buf_set_lines", [0, 0, -1, false, lines]))
+                    // by character, not by byte: the column is one of the text as drawn
+                    .then(() => nvim.command(
+                        `let &undolevels = g:sge_undolevels | set nomodified | call setcursorcharpos(${row + 1}, ${column + 1})` +
+                        ` | call winrestview({'topline': 1, 'leftcol': 0})` +
+                        ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background}`,
+                    )))
+            .catch(() => {
+                // no neovim: the editor shows nothing, and closes with the text unchanged
+            })
+            .then(() => {
+                if (!this.closed) {
+                    this.loaded = true;
+                    this.typed.forEach((keys) => this.send(keys));
+                    this.typed = [];
+                    this.follow();
+                    setTimeout(() => this.reveal(), REVEAL_TIMEOUT_MS);
+                }
+            });
+    }
+
+    private reveal() {
+        if (!this.shown && !this.closed) {
+            this.shown = true;
+            this.onShown();
+        }
+    }
+
+    /** Take over the buffer's changes as they happen. */
+    private follow() {
+        this.nvim.then((nvim) => nvim.buffer).then((buffer) => {
+            buffer.listen("lines", (_buffer: unknown, _tick: number, first: number, last: number, replacement: string[]) => {
+                this.lines.splice(first, last - first, ...replacement);
+                if (this.lines.length === 0) this.lines = [""];
+                this.changed();
+            });
+            // what was typed before this point caused no event
+            return buffer.lines;
+        }).then((lines) => {
+            this.lines = lines.length > 0 ? lines : [""];
+            this.changed();
+        }).catch(() => {
+            // neovim went away meanwhile; the text stays as it was last told
+        });
+    }
+
+    private changed() {
+        if (!this.closed) {
+            this.fit();
+            this.onText(this.text);
+        }
+    }
+
+    /** As many rows and columns as the text has now, or as few as neovim can do with. */
+    private fit() {
+        if (this.columns !== this.wantedColumns || this.rows !== this.wantedRows) {
+            this.nvim
+                .then((nvim) => nvim.uiTryResize(this.wantedColumns, this.wantedRows).then(() => nvim.call("winrestview", [{ topline: 1, leftcol: 0 }])))
+                .catch(() => {});
+        }
+    }
+
+    // --- what neovim says is on its screen ---
+
+    private clear() {
+        this.cells = Array.from({ length: this.rows }, () => Array.from({ length: this.columns }, () => ({ text: " ", highlight: 0 })));
+    }
+
+    /** One `redraw` notification: batches of events of one kind, `[name, arguments, arguments, …]`. */
+    private redraw(batches: unknown[][]) {
+        let flushed = false;
+        for (const [name, ...calls] of batches as [string, ...unknown[][]][]) {
+            for (const a of calls as any[][]) {
+                if (name === "grid_resize") {
+                    this.columns = a[1];
+                    this.rows = a[2];
+                    this.clear();
+                } else if (name === "grid_clear") {
+                    this.clear();
+                } else if (name === "default_colors_set") {
+                    // -1: neovim has none of its own
+                    if (a[0] >= 0) this.defaults.foreground = hex(a[0]);
+                    if (a[1] >= 0) this.defaults.background = hex(a[1]);
+                } else if (name === "hl_attr_define") {
+                    const attributes = a[1] as { [key: string]: number | boolean };
+                    const colour = (key: string) => (typeof attributes[key] === "number" ? hex(attributes[key] as number) : undefined);
+                    this.highlights.set(a[0], { ...attributes, foreground: colour("foreground"), background: colour("background"), special: colour("special") } as Highlight);
+                } else if (name === "grid_line") {
+                    this.line(a[1], a[2], a[3]);
+                } else if (name === "grid_scroll") {
+                    this.scroll(a[1], a[2], a[3], a[4], a[5]);
+                } else if (name === "grid_cursor_goto") {
+                    this.cursor = { row: a[1], column: a[2] };
+                } else if (name === "mode_info_set") {
+                    this.cursorStyles = (a[1] as { cursor_shape?: CursorStyle["shape"]; cell_percentage?: number }[])
+                        .map((mode) => ({ shape: mode.cursor_shape ?? "block", percentage: mode.cell_percentage || 100 }));
+                } else if (name === "mode_change") {
+                    this.cursorStyle = this.cursorStyles[a[1]] ?? { shape: "block", percentage: 100 };
+                } else if (name === "cmdline_show") {
+                    // content in pieces, the character it began with (`:`), a prompt, the indent
+                    this.commandLine = (a[2] as string) + (a[3] as string) + " ".repeat(a[4] as number) + (a[0] as [unknown, string][]).map((piece) => piece[1]).join("");
+                    this.tellLine();
+                } else if (name === "cmdline_hide") {
+                    this.commandLine = null;
+                    this.tellLine();
+                } else if (name === "msg_showmode") {
+                    this.modeText = (a[0] as [unknown, string][]).map((piece) => piece[1]).join("");
+                    this.tellLine();
+                } else if (name === "msg_show") {
+                    const text = (a[1] as [unknown, string][]).map((piece) => piece[1]).join("");
+                    // what was only typed back at the user (a search hit bottom, a file written) is not worth a pane
+                    if (text.trim() !== "" && a[0] !== "search_count" && a[0] !== "") this.onMessage(text);
+                } else if (name === "flush") {
+                    flushed = true;
+                }
+            }
+        }
+        if (flushed && !this.closed) {
+            if (this.loaded) this.reveal();
+            this.onDrawn();
+            this.tellStatus();
+        }
+    }
+
+    private tellLine() {
+        const text = this.commandLine ?? this.modeText;
+        if (!this.closed) this.onLine(text === "" ? null : text);
+    }
+
+    /** How many characters the page's strip for the status line holds; the page says. */
+    statusColumns = 120;
+
+    private statusAsked = false;
+
+    /**
+     * Neovim's status line is not on its screen here (the screen is
+     * the node's text): it is asked for, in pieces with their
+     * colours, soon after the screen changed.
+     */
+    private tellStatus() {
+        if (!this.statusAsked && this.loaded && !this.closed) {
+            this.statusAsked = true;
+            setTimeout(() => {
+                this.statusAsked = false;
+                this.nvim
+                    .then((nvim) => nvim.lua(STATUS_LINE, [this.statusColumns]))
+                    .then((pieces) => {
+                        if (!this.closed) this.onStatus(pieces as StatusPiece[]);
+                    })
+                    .catch(() => {});
+            }, STATUS_DELAY_MS);
+        }
+    }
+
+    /** Cells of [row] from [column] on: `[text, highlight?, repeat?]`; a highlight stays until the next one is named. */
+    private line(row: number, column: number, cells: [string, number?, number?][]) {
+        const target = this.cells[row];
+        let at = column;
+        let highlight = 0;
+        for (const [text, named, repeat] of cells) {
+            if (named !== undefined) highlight = named;
+            for (let i = 0; i < (repeat ?? 1) && target !== undefined && at < target.length; i++) target[at++] = { text, highlight };
+        }
+    }
+
+    /** Rows [top], [bottom]) columns [left], [right]) move up by [rows] (down when negative); what they uncover is drawn afterwards. */
+    private scroll(top: number, bottom: number, left: number, right: number, rows: number) {
+        // each row takes what was [rows] below it, in the order that reads a row before it is overwritten
+        const targets = rows > 0 ? range(top, bottom - rows) : range(top - rows, bottom).reverse();
+        for (const row of targets) {
+            for (let column = left; column < right; column++) this.cells[row][column] = this.cells[row + rows][column];
+        }
+    }
+
+    // --- drawing: the page calls this after it has drawn the graph ---
+
+    /** Draw neovim's screen at [at]: the rows and columns of the text and what the node has room for beyond them. */
+    draw(ctx: CanvasRenderingContext2D, at: Cells) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(at.clip.left, at.clip.top, at.clip.width, at.clip.height);
+        ctx.clip();
+        ctx.textBaseline = "alphabetic";
+        this.cells.forEach((cells, row) => {
+            const top = at.top + row * at.cellHeight;
+            cells.forEach((cell, column) => {
+                const style = this.style(cell.highlight);
+                const left = at.left + column * at.cellWidth;
+                // a little more than the cell: no hairline between two cells of one colour
+                if (style.background !== this.defaults.background) {
+                    ctx.fillStyle = style.background;
+                    ctx.fillRect(left, top, at.cellWidth + 0.5, at.cellHeight + 0.5);
+                }
+                this.drawText(ctx, at, cell, style, left, top);
+            });
+        });
+        this.drawCursor(ctx, at);
+        ctx.restore();
+    }
+
+    /** The colours a highlight comes to, the default ones where it names none, exchanged where it says so. */
+    private style(id: number): Colours & Highlight {
+        const h = this.highlights.get(id) ?? {};
+        const foreground = h.foreground ?? this.defaults.foreground;
+        const background = h.background ?? this.defaults.background;
+        return h.reverse ? { ...h, foreground: background, background: foreground } : { ...h, foreground, background };
+    }
+
+    private drawText(ctx: CanvasRenderingContext2D, at: Cells, cell: Cell, style: Colours & Highlight, left: number, top: number) {
+        if (cell.text !== "" && cell.text !== " ") {
+            ctx.font = `${style.italic ? "italic " : ""}${style.bold ? "bold " : ""}${at.font}`;
+            ctx.fillStyle = style.foreground;
+            ctx.fillText(cell.text, left, top + at.baseline);
+        }
+        if (style.underline || style.undercurl || style.strikethrough) {
+            ctx.fillStyle = style.special ?? style.foreground;
+            const thickness = Math.max(1, at.cellHeight / 16);
+            ctx.fillRect(left, top + (style.strikethrough ? at.cellHeight / 2 : at.baseline + thickness), at.cellWidth, thickness);
+        }
+    }
+
+    private drawCursor(ctx: CanvasRenderingContext2D, at: Cells) {
+        const cell = this.cells[this.cursor.row]?.[this.cursor.column];
+        // while a command line is typed the cursor is there, not in the text
+        if (cell !== undefined && this.commandLine === null) {
+            const style = this.style(cell.highlight);
+            const left = at.left + this.cursor.column * at.cellWidth;
+            const top = at.top + this.cursor.row * at.cellHeight;
+            const share = this.cursorStyle.percentage / 100;
+            ctx.fillStyle = style.foreground;
+            if (this.cursorStyle.shape === "vertical") ctx.fillRect(left, top, Math.max(1, at.cellWidth * share), at.cellHeight);
+            else if (this.cursorStyle.shape === "horizontal") ctx.fillRect(left, top + at.cellHeight * (1 - share), at.cellWidth, at.cellHeight * share);
+            else {
+                ctx.fillRect(left, top, at.cellWidth, at.cellHeight);
+                this.drawText(ctx, at, cell, { foreground: style.background, background: style.foreground }, left, top);
+            }
+        }
+    }
+
+    // --- input ---
+
+    private send(keys: string) {
+        this.nvim.then((nvim) => nvim.input(keys)).catch(() => {});
+    }
+
+    /** As if the user had typed [keys], in neovim's notation (`<Esc>`, `<C-w>`, a plain character). */
+    type(keys: string) {
+        if (this.loaded) this.send(keys);
+        else this.typed.push(keys);
+    }
+
+    /** A key went down. True if it is neovim's now. */
+    key(e: KeyboardEvent): boolean {
+        const notation = keyNotation(e);
+        if (notation !== null) this.type(notation);
+        return notation !== null;
+    }
+
+    /** A mouse button went down, moved or came up over the cell in [row], [column]: `press`, `drag` or `release`. */
+    mouse(action: "press" | "drag" | "release", row: number, column: number) {
+        this.nvim.then((nvim) => nvim.inputMouse("left", action, "", 0, row, column)).catch(() => {});
+    }
+
+    /**
+     * Close the editor and tell the text it held. Neovim is asked
+     * once more: the user may have typed faster than the changes
+     * were told. If it does not answer, the text as last told stands.
+     */
+    close(): Promise<string> {
+        if (this.closed) return Promise.resolve(this.text);
+        this.closed = true;
+        this.onLine(null);
+        // a neovim that had not got the text yet has nothing to tell
+        const asked = !this.loaded ? Promise.resolve() : this.nvim.then((nvim) => nvim.buffer).then((buffer) => buffer.lines).then((lines) => {
+            this.lines = lines.length > 0 ? lines : [""];
+        });
+        const waited = new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS));
+        return Promise.race([asked, waited]).catch(() => {}).then(() => {
+            this.discard();
+            return this.text;
+        });
+    }
+
+    private discard() {
+        this.closed = true;
+        // asked to end, which lets it and what it runs in (an AppImage) tidy up; killed if it has not ended soon after
+        this.nvim.then((nvim) => nvim.quit()).catch(() => this.process.kill());
+        setTimeout(() => {
+            if (!this.exited) this.process.kill();
+        }, QUIT_TIMEOUT_MS);
+        fs.rmSync(this.directory, { recursive: true, force: true });
+    }
+}
+
+/** The whole numbers from [from] up to but not including [to]. */
+function range(from: number, to: number): number[] {
+    return Array.from({ length: Math.max(0, to - from) }, (_, i) => from + i);
+}

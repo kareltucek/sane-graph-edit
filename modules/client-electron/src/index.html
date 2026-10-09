@@ -14,6 +14,8 @@
     .tab.current { background: var(--bg, #fff); opacity: 1; }
     #bottom { position: relative; }
     #status { padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
+    #editor-status { display: none; padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
+    #editor-line { display: none; padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
     #line {
       position: absolute; left: 0; right: 0; bottom: 0; top: 0; box-sizing: border-box; width: 100%; padding: 2px 6px; display: none;
       font: inherit; color: inherit; background: var(--bg, #fff); border: none; border-top: 1px solid var(--fg, #000); outline: none;
@@ -38,6 +40,8 @@
   <canvas id="graph"></canvas>
   <div id="bottom">
     <pre id="pane"></pre>
+    <div id="editor-status"></div>
+    <div id="editor-line"></div>
     <div id="status">&nbsp;</div>
     <input id="line" spellcheck="false" autocomplete="off">
   </div>

@@ -8,7 +8,7 @@ import utils.Rgb
 import utils.Vector2
 
 /** `set <name>=<value>` of these is the page's to act on. */
-private val PAGE_SETTINGS = listOf("nvim-theme")
+private val PAGE_SETTINGS = listOf("nvim-theme", "node-editor")
 
 /** The key mapping of a JavaScript renderer: the editing and tab commands, and the user's init file like the Swing application's. */
 private fun keyMapper(page: dynamic): KeyMapper {
