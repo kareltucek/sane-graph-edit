@@ -5,13 +5,30 @@
   <title>Sane Graph Edit</title>
   <link rel="stylesheet" href="xterm.css">
   <style>
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #eee; }
-    canvas { display: block; width: 100vw; height: 100vh; }
-    #message { position: fixed; left: 0; right: 0; bottom: 0; padding: 4px 8px; font: 12px monospace; background: #eee; display: none; }
+    /* --fg, --bg and --canvas are set by the page's script: the colours of the graph */
+    html, body { margin: 0; height: 100%; overflow: hidden; background: var(--canvas, #eee); }
+    body { display: flex; flex-direction: column; font: 12px monospace; color: var(--fg, #000); }
+    canvas { display: block; flex: 1; min-height: 0; width: 100%; }
+    #bottom { position: relative; }
+    #status { padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
+    #line {
+      position: absolute; left: 0; right: 0; bottom: 0; top: 0; box-sizing: border-box; width: 100%; padding: 2px 6px; display: none;
+      font: inherit; color: inherit; background: var(--bg, #fff); border: none; border-top: 1px solid var(--fg, #000); outline: none;
+    }
+    #pane {
+      position: absolute; left: 0; right: 0; bottom: 100%; max-height: 40vh; overflow: auto; margin: 0; padding: 4px 6px; display: none;
+      font: inherit; white-space: pre; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000);
+    }
+    #message { position: fixed; left: 0; right: 0; bottom: 0; padding: 4px 8px; background: #eee; color: #000; display: none; }
   </style>
 </head>
 <body>
   <canvas id="graph"></canvas>
+  <div id="bottom">
+    <pre id="pane"></pre>
+    <div id="status">&nbsp;</div>
+    <input id="line" spellcheck="false" autocomplete="off">
+  </div>
   <div id="message"></div>
   <script src="renderer.js"></script>
 </body>

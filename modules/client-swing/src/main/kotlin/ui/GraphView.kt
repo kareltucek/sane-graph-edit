@@ -201,74 +201,7 @@ class GraphView(
      * [statusBar] is null (headless, tests).
      */
     override fun refreshStatus() {
-        val bar = statusBar ?: return
-        val c = mouseListener.controller
-        val gestureName = when (c.state) {
-            GestureController.States.Scaling -> "SCALE"
-            GestureController.States.MovingNodes -> "GRAB"
-            GestureController.States.Rotating -> "ROTATE"
-            else -> null
-        }
-        // Axis-lock suffix names the *active* (unlocked) axis —
-        // the one the gesture is constrained to. Matches the
-        // key the user pressed: `x` → "(X)", `y` → "(Y)".
-        val lockSuffix = when {
-            gestureName == null -> ""
-            c.lockY && !c.lockX -> " (X)"   // Y frozen → X is free
-            c.lockX && !c.lockY -> " (Y)"   // X frozen → Y is free
-            else -> ""
-        }
-        val gesture = gestureName?.let { "-- TRANSFORM: $it$lockSuffix --" } ?: ""
-        val stylePickerText = if (stylePicker.isVisible) styleScaleLabel() else ""
-        val recording = keyMapper?.isRecording == true
-        val recText = if (recording) "recording" else ""
-        val modes = listOfNotNull(
-            "[unhide]".takeIf { graph_tools.ViewModes.unhide },
-            "[show-parents]".takeIf { graph_tools.ViewModes.showParents },
-            "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
-            "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
-            "[discard]".takeIf { graph_tools.ViewModes.discard },
-            // somebody else is attached to this document too
-            "[shared]".takeIf { (content.document?.info?.clients ?: 0) > 1 },
-        ).joinToString(" ")
-        val parts = listOf(modes, gesture, stylePickerText, recText, linkStatus()).filter { it.isNotEmpty() }
-        bar.setLabel(parts.joinToString("    "))
-    }
-
-    /**
-     * Links of the single selected node as the keys that follow
-     * them (`links: gd gf`); a link whose `g<letter>` is mapped to
-     * something else is shown by name (`link-t (gt taken)`).
-     */
-    private fun linkStatus(): String {
-        val letters = g.selectedNodes.singleOrNull()?.let { FileLink.letters(it) }.orEmpty()
-        val keys = letters.map { l ->
-            if (keyMapper?.followsLink(l) != false) "g$l" else "${FileLink.attributeName(l)} (g$l taken)"
-        }
-        return if (keys.isEmpty()) "" else "links: ${keys.joinToString(" ")}"
-    }
-
-    /**
-     * Describe the current selection's node-scale values for the
-     * status bar while the style picker is open. The scale is
-     * logarithmic (font × 1.3^scale), so null means "default" (0).
-     * With mixed scales across multiple
-     * selected nodes, renders a range; single selection shows
-     * just that node's value.
-     */
-    private fun styleScaleLabel(): String {
-        val sel = g.selectedNodes
-        if (sel.isEmpty()) return "node scale: (no selection)"
-        val scales = sel.map { it.attributes.nodeScale ?: 0.0 }
-        val minV = scales.min()
-        val maxV = scales.max()
-        val label = if (minV == maxV) {
-            "%.2f".format(minV)
-        } else {
-            "%.2f–%.2f".format(minV, maxV)
-        }
-        val suffix = if (sel.size > 1) " (${sel.size} nodes)" else ""
-        return "node scale: $label$suffix"
+        statusBar?.setLabel(StatusLine.text(model, keyMapper, stylePicker.isVisible))
     }
 
     fun placeMeAt(me: JComponent, ul: Vector2, br: Vector2) {

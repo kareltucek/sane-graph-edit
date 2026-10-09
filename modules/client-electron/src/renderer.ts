@@ -82,6 +82,40 @@ function say(text: string) {
     message.style.display = "block";
 }
 
+// Below the graph: the status line, the `:` line that opens over it, and above them the pane for messages of several lines.
+// What they say and when they show is the client core's business.
+const statusLine = document.getElementById("status") as HTMLDivElement;
+const lineInput = document.getElementById("line") as HTMLInputElement;
+const pane = document.getElementById("pane") as HTMLPreElement;
+
+const lineOpen = () => lineInput.style.display === "block";
+const paneOpen = () => pane.style.display === "block";
+
+function showLine(text: string) {
+    lineInput.value = text;
+    lineInput.style.display = "block";
+    lineInput.focus();
+    lineInput.setSelectionRange(text.length, text.length);
+}
+
+function hideLine() {
+    lineInput.style.display = "none";
+    lineInput.blur();
+}
+
+function showMessage(text: string) {
+    pane.textContent = text;
+    pane.style.display = "block";
+    pane.scrollTop = 0;
+}
+
+function hideMessage() {
+    pane.style.display = "none";
+}
+
+/** Keys that put a message away and do nothing else; any other key puts it away and means what it always does. */
+const DISMISSING_KEYS = ["Escape", "Enter", "q"];
+
 /**
  * Where the baseline is in a cell of the node's editor, as a
  * fraction of the cell's height: measured on a row built like the
@@ -229,6 +263,11 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = canvasColour(colours().background);
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // the lines below the graph are in its colours
+    const style = document.documentElement.style;
+    style.setProperty("--fg", colours().foreground);
+    style.setProperty("--bg", colours().background);
+    style.setProperty("--canvas", canvasColour(colours().background));
     ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     ctx.strokeStyle = colours().foreground;
     ctx.fillStyle = colours().foreground;
@@ -299,8 +338,19 @@ function start(view: client.JsView, grid: client.GridMetrics) {
     canvas.addEventListener("pointerup", (e) => view.pointerUp(x(e), y(e), e.button, e.ctrlKey));
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("keydown", (e) => {
-        // while a node is edited the keys are neovim's
-        if (editing === null && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
+        const dismissed = paneOpen() && !lineOpen() && editing === null;
+        if (dismissed) hideMessage();
+        if (dismissed && DISMISSING_KEYS.includes(e.key)) e.preventDefault();
+        // while a node is edited the keys are neovim's, and while the line is open they are the line's
+        else if (editing === null && !lineOpen() && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
+    });
+    lineInput.addEventListener("input", () => view.lineTyped(lineInput.value));
+    lineInput.addEventListener("keydown", (e) => {
+        if (view.lineKey(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
+    });
+    // the line keeps the keys for as long as it is open
+    lineInput.addEventListener("blur", () => {
+        if (lineOpen()) lineInput.focus();
     });
     document.title = `${view.file} — Sane Graph Edit`;
     repaint();
@@ -347,8 +397,13 @@ async function replay(events: Played[]) {
         const clientY = fromY + (p.y ?? 0);
         const common = { clientX, clientY, button: p.button, buttons: p.buttons, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true };
         if (p.type === "wait") await new Promise((resolve) => setTimeout(resolve, p.ms));
-        else if (p.type === "type") editing?.editor.type(p.key ?? "");
-        else if (p.type === "keydown") window.dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift }));
+        else if (p.type === "type" && lineOpen()) {
+            lineInput.value += p.key ?? "";
+            lineInput.dispatchEvent(new Event("input"));
+        } else if (p.type === "type") editing?.editor.type(p.key ?? "");
+        else if (p.type === "keydown") {
+            (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: false }));
+        }
         else if (p.type === "wheel") canvas.dispatchEvent(new WheelEvent("wheel", { ...common, deltaY: p.deltaY, cancelable: true }));
         else canvas.dispatchEvent(new PointerEvent(p.type, common));
     }
@@ -366,6 +421,11 @@ const page: {
     editNode: (id: string, atClick: boolean, x: number, y: number) => void;
     endEdit: () => void;
     setting: (name: string, value: string) => void;
+    showLine: (text: string) => void;
+    hideLine: () => void;
+    showMessage: (text: string) => void;
+    hideMessage: () => void;
+    status: (text: string) => void;
 } = {
     repaint: () => {},
     editNode: () => {},
@@ -373,6 +433,15 @@ const page: {
     setting: (name, value) => {
         if (name === "nvim-theme") useNvimColours = value !== "off";
         page.repaint();
+    },
+    showLine,
+    hideLine,
+    showMessage,
+    hideMessage,
+    status: (text) => {
+        // a space keeps the line's height
+        const shown = text === "" ? " " : text;
+        if (statusLine.textContent !== shown) statusLine.textContent = shown;
     },
 };
 

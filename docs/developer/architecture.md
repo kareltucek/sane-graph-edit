@@ -758,6 +758,11 @@ Items currently missing and planned under `tasks/`:
   `client.PointerInput`**, shared by the renderers.
   `GraphMouseListener` only translates AWT events and wraps the
   cursor at the window's edges during a gesture.
+- **What the `:` / `/` / `?` line does with the text typed into it
+  is in `client.CommandLine`**, and the status line's text in
+  `client.StatusLine`, shared by the renderers. A renderer supplies
+  a text field (`CommandLineWidget`): Swing's `CommandBar`, the
+  Electron page's `<input>`.
 - **`Graph.testGraph()`** still exists as a seed fixture but no
   longer runs on startup — fresh tabs are empty. Useful for
   manual inspection and for tests.

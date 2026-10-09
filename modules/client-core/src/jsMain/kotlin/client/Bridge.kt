@@ -34,8 +34,55 @@ private class GridMeasurer(private val grid: GridMetrics) : TextMeasurer {
 
 /** One view of a document, for a renderer to draw and to feed the user's input to. */
 @JsExport
-class JsView internal constructor(private val view: EditorView, private val measurer: TextMeasurer, val file: String, page: dynamic) {
-    private val keys: KeyMapper = keyMapper(page)
+class JsView internal constructor(private val view: EditorView, private val measurer: TextMeasurer, val file: String, private val page: dynamic) {
+    private val keys: KeyMapper = keyMapper(page).also { it.modeListener = { status() } }
+
+    private val line = CommandLine(
+        view,
+        object : CommandLineWidget {
+            override fun show(text: String) {
+                page.showLine(text)
+            }
+            override fun hide() {
+                page.hideLine()
+            }
+            override fun showList(text: String) {
+                page.showMessage(text)
+            }
+            override fun hideList() {
+                page.hideMessage()
+            }
+        },
+    ) { keys }
+
+    /** Tell the page its status line. */
+    internal fun status() {
+        page.status(StatusLine.text(view, keys, stylePickerOpen = false))
+    }
+
+    // --- the `:` / `/` / `?` line: the page has the text field, opened and closed through `showLine` / `hideLine` ---
+
+    /** The user edited the line; it now holds [text]. */
+    fun lineTyped(text: String) = line.typed(text)
+
+    /**
+     * A key went down in the line; [key] is a DOM `KeyboardEvent.key`.
+     * True if it means something there (Enter, Escape, the arrows up
+     * and down, Tab, Ctrl+D) and is not the text field's to handle.
+     */
+    fun lineKey(key: String, control: Boolean, shift: Boolean): Boolean {
+        val action: (() -> Unit)? = when {
+            key == "Enter" -> line::execute
+            key == "Escape" -> line::cancel
+            key == "ArrowUp" -> line::historyUp
+            key == "ArrowDown" -> line::historyDown
+            key == "Tab" -> ({ line.complete(backward = shift) })
+            key == "d" && control -> line::listCompletions
+            else -> null
+        }
+        action?.invoke()
+        return action != null
+    }
 
     /**
      * What to draw, sizes brought up to date:
@@ -45,6 +92,8 @@ class JsView internal constructor(private val view: EditorView, private val meas
      */
     fun scene(): dynamic {
         val scene = view.scene(measurer)
+        // the links shown there follow the selection
+        status()
         val o: dynamic = js("({})")
         o.scale = view.viewTransform.scale
         o.offsetX = view.viewTransform.offset.x
@@ -162,10 +211,15 @@ class JsView internal constructor(private val view: EditorView, private val meas
             else -> null
         }
         if (key in modifierKeys) keys.modifierPressed()
-        notation?.let {
-            keys.activeView = view
-            keys.feedKey(it)
-            view.repaint()
+        when {
+            notation == null -> {}
+            // these open the line instead of going through the key mapping
+            special == null && !control && notation in lineOpeners -> line.open(notation)
+            else -> {
+                keys.activeView = view
+                keys.feedKey(notation)
+                view.repaint()
+            }
         }
         return notation != null
     }
@@ -175,6 +229,7 @@ class JsView internal constructor(private val view: EditorView, private val meas
         const val WHEEL_PIXELS_PER_STEP = 100.0 / 3
 
         val modifierKeys = setOf("Shift", "Control", "Alt", "Meta", "AltGraph")
+        val lineOpeners = setOf(":", "/", "?")
         val functionKey = Regex("F([1-9]|1[0-2])")
 
         /** DOM key names in the client's [KeyNotation]. */
@@ -222,7 +277,10 @@ private fun css(c: Rgb): String = "#" + ((c.red shl 16) or (c.green shl 8) or c.
  * `repaint()` — the picture is out of date;
  * `editNode(id, atClick, x, y)` — let the user edit the node's text, with the caret at the view position x, y if `atClick`;
  * `endEdit()` — close that editor;
- * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`.
+ * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`;
+ * `showLine(text)` — show the `:` line holding `text`, the caret at its end, and give it the keys; `hideLine()`;
+ * `showMessage(text)` — show `text` (several lines) until the user dismisses it; `hideMessage()`;
+ * `status(text)` — the status line reads `text`.
  */
 @JsExport
 fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: (view: JsView?, error: String?) -> Unit) {
@@ -235,9 +293,11 @@ fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: 
                 EditorClient(c).open(path) { opened ->
                     opened.fold(
                         onSuccess = { session ->
+                            // the view that has the status line exists only after its renderer
+                            var onStatus: () -> Unit = {}
                             val renderer = object : Renderer {
                                 override fun repaint() = onRepaint()
-                                override fun refreshStatus() {}
+                                override fun refreshStatus() = onStatus()
                                 override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
                                     page.editNode(nodeId, screenClick != null, screenClick?.x ?: 0.0, screenClick?.y ?: 0.0)
                                 }
@@ -247,10 +307,21 @@ fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: 
                                 override fun startStylePicker(screen: Vector2?) {}
                                 override fun endStylePicker() {}
                             }
+                            val shell = object : Shell by NoShell {
+                                override fun message(text: String) {
+                                    page.showMessage(text)
+                                }
+                                override fun alert(title: String, text: String, error: Boolean) {
+                                    page.showMessage("$title: $text")
+                                }
+                                override fun modesChanged() = onRepaint()
+                            }
                             // the view edits the session's replica; opening through ViewContent would block
-                            val view = EditorView(session.graph, renderer)
+                            val view = EditorView(session.graph, renderer, shell)
                             session.onChange = { onRepaint() }
-                            done(JsView(view, measurer, path, page), null)
+                            val jsView = JsView(view, measurer, path, page)
+                            onStatus = { jsView.status() }
+                            done(jsView, null)
                         },
                         onFailure = { done(null, it.message ?: it.toString()) },
                     )
