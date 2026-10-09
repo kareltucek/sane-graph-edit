@@ -145,8 +145,17 @@ class DepthTest {
     fun `a node in the plane has no attribute, and a depth is written to a file and read back`() {
         Depth.set(far, 0.0)
         assertTrue(Depth.ATTRIBUTE !in far.attributes.other)
-        val back = DotGraphLoader.parse(DotGraphLoader.tokenize(DotGraphLoader.serialize(view.g)))
+        val text = DotGraphLoader.serialize(view.g)
+        // as the third number of the position, and not as an attribute of its own
+        assertTrue("pos=\"-100.0,-50.0,-500.0!\"" in text && "pos=\"200.0,100.0!\"" in text && "z=" !in text, text)
+        val back = DotGraphLoader.parse(DotGraphLoader.tokenize(text))
         assertEquals(listOf(-2000.0, -500.0, 0.0, 0.0), back.nodes.map { Depth.of(it) }.sorted())
+    }
+
+    @Test
+    fun `an attribute z in a file is a depth too`() {
+        val read = DotGraphLoader.parse(DotGraphLoader.tokenize("digraph g { a [label=\"a\"; pos=\"1,2!\"; z=\"30\"]; b [label=\"b\"; pos=\"1,2,-4!\"]; }"))
+        assertEquals(listOf(-4.0, 30.0), read.nodes.map { Depth.of(it) }.sorted())
     }
 
     @Test

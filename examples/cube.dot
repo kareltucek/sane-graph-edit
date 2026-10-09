@@ -1,14 +1,14 @@
 digraph cube {
   // the front face, towards the viewer
-  f00 [label="front\ntop left"; pos="-200,-200!"; z="-200"];
-  f10 [label="front\ntop right"; pos="200,-200!"; z="-200"];
-  f01 [label="front\nbottom left"; pos="-200,200!"; z="-200"];
-  f11 [label="front\nbottom right"; pos="200,200!"; z="-200"];
+  f00 [label="front\ntop left"; pos="-200,-200,-200!"];
+  f10 [label="front\ntop right"; pos="200,-200,-200!"];
+  f01 [label="front\nbottom left"; pos="-200,200,-200!"];
+  f11 [label="front\nbottom right"; pos="200,200,-200!"];
   // the back face
-  b00 [label="back\ntop left"; pos="-200,-200!"; z="200"];
-  b10 [label="back\ntop right"; pos="200,-200!"; z="200"];
-  b01 [label="back\nbottom left"; pos="-200,200!"; z="200"];
-  b11 [label="back\nbottom right"; pos="200,200!"; z="200"];
+  b00 [label="back\ntop left"; pos="-200,-200,200!"];
+  b10 [label="back\ntop right"; pos="200,-200,200!"];
+  b01 [label="back\nbottom left"; pos="-200,200,200!"];
+  b11 [label="back\nbottom right"; pos="200,200,200!"];
   f00 -> f10; f10 -> f11; f11 -> f01; f01 -> f00;
   b00 -> b10; b10 -> b11; b11 -> b01; b01 -> b00;
   f00 -> b00; f10 -> b10; f01 -> b01; f11 -> b11;

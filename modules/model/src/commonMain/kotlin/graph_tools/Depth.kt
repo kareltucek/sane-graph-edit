@@ -7,7 +7,10 @@ import utils.Utils.toNiceString
  * A node's third coordinate: how far it is behind the plane the
  * graph is drawn in, away from the viewer, in the units of its
  * position; negative for a node in front of that plane.
- * Kept as the DOT attribute `z`; a node without one is in the plane.
+ * In a DOT file it is the third number of `pos` (`pos="x,y,z!"`), and
+ * an attribute `z` is read as well; a node with neither is in the
+ * plane. Among a node's attributes here it is kept as `z`, so that it
+ * is undone and shared like the others.
  */
 object Depth {
     const val ATTRIBUTE = "z"

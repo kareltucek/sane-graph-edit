@@ -121,9 +121,11 @@ class Node(
                 .replace("!", "")
                 .split(",")
                 .map { it.toDouble() }
-                .takeIf { it.size == 2 }
+                .takeIf { it.size == 2 || it.size == 3 }
                 ?.let {
                     position = Vector2(it[0], it[1])
+                    // a third number is the depth
+                    it.getOrNull(2)?.let { z -> Depth.set(this, z) }
                 }
 
             else -> attributes.other[l] = r
@@ -137,8 +139,9 @@ class Node(
             "fontsize" to attributes.nodeScale?.let { Constants.fontSizeZoomCoef.pow(it)*Constants.defaultFontSize }?.toNiceString(),
             "label" to attributes.text,
             "marks" to attributes.marks.takeIf { it.isNotEmpty() },
-            "pos" to "${position.x.toNiceString()},${position.y.toNiceString()}!",
-        ).filterNotNull() + attributes.other.filterNotNull()
+            // the depth is the third number, for a node that has one
+            "pos" to (listOf(position.x, position.y) + listOfNotNull(Depth.of(this).takeIf { it != 0.0 })).joinToString(",") { it.toNiceString() } + "!",
+        ).filterNotNull() + attributes.other.filterNotNull().filterKeys { it != Depth.ATTRIBUTE }
     }
 
     fun setSize(absolute: Double? = null, relative: Double? = null) {

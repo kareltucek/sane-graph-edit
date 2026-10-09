@@ -227,11 +227,12 @@ and shows every node as text.
 
 ### Depth: `z`
 
-A node can have a third coordinate, the attribute `z`: how far it is
-behind the plane the graph is drawn in, away from you, in the units
-of its position; negative for a node in front of the plane. A node
-without one is in the plane, and a graph without any looks as it
-always did.
+A node can have a third coordinate, `z`, the third number of its
+position (`pos="100,50,200!"`): how far it is behind the plane the
+graph is drawn in, away from you, in the units of its position;
+negative for a node in front of the plane. A node without one is in
+the plane, and a graph without any looks as it always did. (An
+attribute `z="200"` is read as well.)
 
 The view looks straight at the graph. What is further away is drawn
 smaller and nearer the middle of the view, what is nearer bigger;
