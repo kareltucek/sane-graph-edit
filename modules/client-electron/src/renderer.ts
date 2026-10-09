@@ -39,6 +39,10 @@ interface Scene {
 
 const FONT = "monospace";
 const LINE_HEIGHT = 1.2;
+/** Between a node's text and its edge, as a fraction of the node's font size: the same whatever the text's length. */
+const MARGIN = 0.5;
+/** Behind the graph: the grey of the Swing window, so that white nodes stand out. */
+const BACKGROUND = "#eeeeee";
 const CORNER_RADIUS = 5;
 const ARROWHEAD_RADIUS = 3;
 /** Text smaller than this on the screen is not drawn. */
@@ -59,7 +63,7 @@ function measureGrid(): client.GridMetrics {
     ctx.font = `${size}px ${FONT}`;
     const m = ctx.measureText("M");
     const ascent = (LINE_HEIGHT * size - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2 + m.fontBoundingBoxAscent;
-    return new client.GridMetrics(m.width / size, LINE_HEIGHT, ascent / size);
+    return new client.GridMetrics(m.width / size, LINE_HEIGHT, ascent / size, MARGIN);
 }
 
 function drawEdge(e: SceneEdge, scale: number) {
@@ -134,7 +138,6 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         text,
         row,
         column,
-        { background: n.bg ?? "#ffffff", foreground: n.fg ?? "#000000" },
         (now) => view.textTyped(now),
         () => endEdit(view),
     );
@@ -168,7 +171,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     view.resize(width, height);
     const scene = view.scene() as Scene;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = BACKGROUND;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     ctx.strokeStyle = "#000000";
@@ -197,6 +200,8 @@ function start(view: client.JsView, grid: client.GridMetrics) {
         if (!fitted && canvas.clientWidth > 0) {
             fitted = true;
             view.resize(canvas.clientWidth, canvas.clientHeight);
+            // the sizes of the nodes are known once the scene has been asked for
+            view.scene();
             view.fit();
         }
         draw(view, grid);

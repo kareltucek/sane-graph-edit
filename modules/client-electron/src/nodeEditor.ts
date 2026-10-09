@@ -18,16 +18,16 @@ export interface Place {
     cellHeight: number;
 }
 
-export interface Colors {
-    background: string;
-    foreground: string;
-}
-
 /** The terminal's own font size; it is stretched to the node's, so this only sets how sharp the letters are. */
 const TERMINAL_FONT_PX = 16;
 
-/** One column more than the longest line: room for the cursor behind the last character. */
-const SPARE_COLUMNS = 1;
+/**
+ * Room beyond the text, so that neovim need not scroll before the
+ * terminal has grown: the cursor behind the last character plus
+ * the character typed next, and the line a new line opens.
+ */
+const SPARE_COLUMNS = 2;
+const SPARE_ROWS = 1;
 
 /** Neovim draws at least this much whatever size it is given. */
 const MIN_COLUMNS = 12;
@@ -44,7 +44,7 @@ const CLOSE_TIMEOUT_MS = 3000;
 
 // Shown in the node there must be the text and nothing else: no status line, no command line, no columns beside the text.
 const BARE = "set laststatus=0 showtabline=0 cmdheight=0 noruler noshowcmd noshowmode signcolumn=no nonumber norelativenumber foldcolumn=0 nowrap " +
-    "noswapfile shortmess+=IF | hi Normal guibg=NONE ctermbg=NONE";
+    "noswapfile sidescrolloff=0 shortmess+=IF";
 
 export class NodeEditor {
     private readonly element = document.createElement("div");
@@ -65,7 +65,6 @@ export class NodeEditor {
         text: string,
         row: number,
         column: number,
-        colors: Colors,
         private readonly onText: (text: string) => void,
         private readonly onExit: () => void,
     ) {
@@ -80,9 +79,8 @@ export class NodeEditor {
             fontFamily: font,
             fontSize: TERMINAL_FONT_PX,
             cols: Math.max(this.columns, MIN_COLUMNS),
-            rows: Math.max(this.lines.length, MIN_ROWS),
+            rows: this.rows,
             scrollback: 0,
-            theme: { background: colors.background, foreground: colors.foreground, cursor: colors.foreground, cursorAccent: colors.background },
         });
         this.terminal.open(this.element);
 
@@ -92,7 +90,7 @@ export class NodeEditor {
         this.process = pty.spawn(NVIM, ["--listen", socket, "-c", BARE, "-c", cursor, file], {
             name: "xterm-256color",
             cols: Math.max(this.columns, MIN_COLUMNS),
-            rows: Math.max(this.lines.length, MIN_ROWS),
+            rows: this.rows,
             cwd: this.directory,
             env: process.env as { [key: string]: string },
         });
@@ -155,11 +153,17 @@ export class NodeEditor {
     /** As many rows and columns as the text has now, or as few as neovim can do with; [place] cuts off the rest. */
     private fit() {
         const columns = Math.max(this.columns, MIN_COLUMNS);
-        const rows = Math.max(this.lines.length, MIN_ROWS);
+        const rows = this.rows;
         if (this.terminal.cols !== columns || this.terminal.rows !== rows) {
             this.terminal.resize(columns, rows);
             this.process.resize(columns, rows);
+            // if it did scroll meanwhile: all of the text fits again
+            this.nvim.then((nvim) => nvim.call("winrestview", [{ topline: 1, leftcol: 0 }])).catch(() => {});
         }
+    }
+
+    private get rows(): number {
+        return Math.max(this.lines.length + SPARE_ROWS, MIN_ROWS);
     }
 
     /** Put the terminal at [place], stretched so that its cells have the size given there. */

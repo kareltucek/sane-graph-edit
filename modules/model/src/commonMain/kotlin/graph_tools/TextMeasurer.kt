@@ -10,6 +10,13 @@ data class TextMetrics(
     val bounds: Vector2,
     val ascent: Double,
     val lineHeight: Double,
+    /**
+     * Space to leave between the text and the edge of a box, for a
+     * renderer whose text has exactly the measured size. Null: the
+     * shape's own allowance, which grows with the text because a
+     * renderer with whole-pixel fonts may draw it larger.
+     */
+    val margin: Double? = null,
 )
 
 /**
@@ -60,7 +67,7 @@ object NodeText {
 
     fun apply(n: Node, lines: List<String>, metrics: TextMetrics) {
         n.cache.textBounds = metrics.bounds
-        n.cache.shapeBounds = n.cache.shape.computeShapeBounds(metrics.bounds)
+        n.cache.shapeBounds = n.cache.shape.computeShapeBounds(metrics.bounds, metrics.margin)
         n.cache.lines = lines
         n.cache.ascent = metrics.ascent
         n.cache.lineHeight = metrics.lineHeight

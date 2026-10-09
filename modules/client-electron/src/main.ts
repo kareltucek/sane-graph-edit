@@ -61,7 +61,8 @@ app.whenReady().then(() => {
         width: 1000,
         height: 700,
         // the page is this application's own code and loads nothing from elsewhere; it uses Node for files and neovim
-        webPreferences: { nodeIntegration: true, contextIsolation: false },
+        // not throttled in the background: the page only draws when asked to, and a hidden window must still follow the session
+        webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false },
     });
     window.setMenuBarVisibility(false);
     const query: Record<string, string> = {};

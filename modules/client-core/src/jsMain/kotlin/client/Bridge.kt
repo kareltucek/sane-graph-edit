@@ -16,16 +16,17 @@ import utils.Vector2
 /**
  * The text grid of a renderer that shows every node in one
  * monospaced font: the width of a character and the height and
- * ascent of a line, as fractions of the font size.
+ * ascent of a line, and the space between the text and the edge of
+ * a box, all as fractions of the font size.
  */
 @JsExport
-class GridMetrics(val advance: Double, val lineHeight: Double, val ascent: Double)
+class GridMetrics(val advance: Double, val lineHeight: Double, val ascent: Double, val margin: Double)
 
 private class GridMeasurer(private val grid: GridMetrics) : TextMeasurer {
     override fun measure(lines: List<String>, fontSize: Double, monospace: Boolean): TextMetrics {
         val columns = lines.maxOfOrNull { it.length } ?: 0
         val lineHeight = fontSize * grid.lineHeight
-        return TextMetrics(Vector2(columns * fontSize * grid.advance, lines.size * lineHeight), ascent = fontSize * grid.ascent, lineHeight = lineHeight)
+        return TextMetrics(Vector2(columns * fontSize * grid.advance, lines.size * lineHeight), fontSize * grid.ascent, lineHeight, fontSize * grid.margin)
     }
 }
 
