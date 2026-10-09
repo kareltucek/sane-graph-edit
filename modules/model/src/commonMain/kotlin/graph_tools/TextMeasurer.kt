@@ -11,12 +11,13 @@ data class TextMetrics(
     val ascent: Double,
     val lineHeight: Double,
     /**
-     * Space to leave between the text and the edge of a box, for a
-     * renderer whose text has exactly the measured size. Null: the
+     * Space to leave between the text and the edge of a box, beside
+     * it (x) and above and below it (y), for a renderer whose text
+     * has exactly the measured size. Null: the
      * shape's own allowance, which grows with the text because a
      * renderer with whole-pixel fonts may draw it larger.
      */
-    val margin: Double? = null,
+    val margin: Vector2? = null,
 )
 
 /**

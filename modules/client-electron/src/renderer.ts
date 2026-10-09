@@ -1,5 +1,5 @@
 import { client } from "sane-graph-edit-client-core";
-import { NodeEditor, Place } from "./nodeEditor";
+import { Colours, NodeEditor, PAD_COLUMNS, Place } from "./nodeEditor";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -39,11 +39,36 @@ interface Scene {
 
 const FONT = "monospace";
 const LINE_HEIGHT = 1.2;
-/** Between a node's text and its edge, as a fraction of the node's font size: the same whatever the text's length. */
-const MARGIN = 0.5;
-/** Behind the graph: the grey of the Swing window, so that white nodes stand out. */
-const BACKGROUND = "#eeeeee";
-const CORNER_RADIUS = 5;
+/**
+ * Between a node's text and its edge, in characters: beside the
+ * text what the editor shows there and half a column around that,
+ * above and below it half a row.
+ */
+const MARGIN_COLUMNS = PAD_COLUMNS + 0.5;
+const MARGIN_ROWS = 0.5;
+/** How far the space behind the graph is from the nodes' colour, so that they stand out. */
+const CANVAS_CONTRAST = 0.15;
+
+/** Nodes and lines that have no colour of their own. */
+const PLAIN: Colours = { foreground: "#000000", background: "#ffffff" };
+/** Neovim's colour scheme, once it is known; used unless the user's init file says `set nvim-theme=off`. */
+let nvimColours: Colours | null = null;
+let useNvimColours = true;
+
+const colours = () => (useNvimColours && nvimColours !== null ? nvimColours : PLAIN);
+
+const channels = (colour: string) => [1, 3, 5].map((at) => parseInt(colour.slice(at, at + 2), 16));
+
+/** Behind the graph: a little darker than a light node colour, a little lighter than a dark one. */
+function canvasColour(nodes: string): string {
+    const rgb = channels(nodes);
+    const light = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127;
+    const towards = light ? 0 : 255;
+    return "#" + rgb.map((c) => Math.round(c + (towards - c) * CANVAS_CONTRAST).toString(16).padStart(2, "0")).join("");
+}
+const CORNER_RADIUS = 2;
+/** Off while the editor is being worked on: a node without a colour of its own is not filled, so the editor's extent shows against it. */
+const PAINT_PLAIN_NODES = false;
 const ARROWHEAD_RADIUS = 3;
 /** Text smaller than this on the screen is not drawn. */
 const MIN_TEXT_PX = 3;
@@ -63,7 +88,7 @@ function measureGrid(): client.GridMetrics {
     ctx.font = `${size}px ${FONT}`;
     const m = ctx.measureText("M");
     const ascent = (LINE_HEIGHT * size - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2 + m.fontBoundingBoxAscent;
-    return new client.GridMetrics(m.width / size, LINE_HEIGHT, ascent / size, MARGIN);
+    return new client.GridMetrics(m.width / size, LINE_HEIGHT, ascent / size, MARGIN_COLUMNS * m.width / size, MARGIN_ROWS * LINE_HEIGHT);
 }
 
 function drawEdge(e: SceneEdge, scale: number) {
@@ -82,15 +107,17 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
     ctx.beginPath();
     if (n.shape === "oval") ctx.ellipse(n.x, n.y, n.width / 2, n.height / 2, 0, 0, 2 * Math.PI);
     else ctx.roundRect(left, top, n.width, n.height, CORNER_RADIUS);
-    ctx.fillStyle = n.bg ?? "#ffffff";
-    ctx.fill();
-    ctx.strokeStyle = n.fg ?? "#000000";
+    if (n.bg !== null || PAINT_PLAIN_NODES) {
+        ctx.fillStyle = n.bg ?? colours().background;
+        ctx.fill();
+    }
+    ctx.strokeStyle = n.fg ?? colours().foreground;
     // a selected node's outline stays visible however far out the view is zoomed
     ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
     ctx.stroke();
-    // the node being edited has its editor where the text would be
-    if (n.fontSize * scale >= MIN_TEXT_PX && n.id !== editing?.id) {
-        ctx.fillStyle = n.fg ?? "#000000";
+    // the node being edited has its editor where the text would be, once that shows
+    if (n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown)) {
+        ctx.fillStyle = n.fg ?? colours().foreground;
         ctx.font = `${n.fontSize}px ${FONT}`;
         const textLeft = n.x - n.textWidth / 2;
         const textTop = n.y - n.textHeight / 2;
@@ -132,7 +159,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
     const row = click === null ? 0 : Math.min(lines.length - 1, Math.max(0, Math.floor((bounds.top + click.y - place.top) / place.cellHeight)));
     const column = click === null ? 0 : Math.min(Math.max(0, lines[row].length - 1), Math.max(0, Math.floor((bounds.left + click.x - place.left) / place.cellWidth)));
     view.textEditStarted(id);
-    const editor = new NodeEditor(
+    const editor = NodeEditor.open(
         document.body,
         FONT,
         text,
@@ -140,6 +167,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         column,
         (now) => view.textTyped(now),
         () => endEdit(view),
+        () => page.repaint(),
     );
     editing = { id, editor };
     editor.place(place);
@@ -171,11 +199,11 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     view.resize(width, height);
     const scene = view.scene() as Scene;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = BACKGROUND;
+    ctx.fillStyle = canvasColour(colours().background);
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
-    ctx.strokeStyle = "#000000";
-    ctx.fillStyle = "#000000";
+    ctx.strokeStyle = colours().foreground;
+    ctx.fillStyle = colours().foreground;
     ctx.lineWidth = 1;
     scene.edges.forEach((e) => drawEdge(e, scene.scale));
     scene.nodes.forEach((n) => drawNode(n, grid, scene.scale));
@@ -184,7 +212,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     if (edited !== undefined) editing?.editor.place(textPlace(edited, scene, grid));
     const box = scene.selectionBox;
     if (box !== null) {
-        ctx.strokeStyle = "#000000";
+        ctx.strokeStyle = colours().foreground;
         ctx.lineWidth = 1 / scene.scale;
         ctx.setLineDash([4 / scene.scale, 4 / scene.scale]);
         ctx.strokeRect(Math.min(box.x1, box.x2), Math.min(box.y1, box.y2), Math.abs(box.x2 - box.x1), Math.abs(box.y2 - box.y1));
@@ -216,6 +244,15 @@ function start(view: client.JsView, grid: client.GridMetrics) {
     page.editNode = (id, atClick, x, y) => editNode(view, grid, id, atClick ? { x, y } : null);
     page.endEdit = () => endEdit(view);
     window.addEventListener("resize", repaint);
+
+    NodeEditor.warm(document.body, FONT);
+    window.addEventListener("beforeunload", () => NodeEditor.discardSpare());
+    NodeEditor.colours().then((theirs) => {
+        if (theirs !== null) {
+            nvimColours = theirs;
+            repaint();
+        }
+    });
 
     // What the mouse and the keys mean is the client core's business; this only reports them.
     // Positions from clientX / clientY: offsetX / offsetY of an event made by a test come out divided by the device pixel ratio.
@@ -259,6 +296,8 @@ interface Played {
     /** `type`: [key] goes to the node's editor as typed text. `wait`: nothing for [ms] milliseconds. */
     type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown" | "type" | "wait";
     ms?: number;
+    /** x, y are from the middle of the node with this text instead: a test need not know how the window was laid out. */
+    node?: string;
     x?: number;
     y?: number;
     button?: number;
@@ -273,8 +312,11 @@ interface Played {
 async function replay(events: Played[]) {
     for (const p of events) {
         // from the middle of the window, whatever size the window manager gave it
-        const clientX = canvas.clientWidth / 2 + (p.x ?? 0);
-        const clientY = canvas.clientHeight / 2 + (p.y ?? 0);
+        const node = lastScene?.nodes.find((n) => n.lines.join("\n") === p.node);
+        const fromX = node !== undefined && lastScene !== null ? node.x * lastScene.scale + lastScene.offsetX : canvas.clientWidth / 2;
+        const fromY = node !== undefined && lastScene !== null ? node.y * lastScene.scale + lastScene.offsetY : canvas.clientHeight / 2;
+        const clientX = fromX + (p.x ?? 0);
+        const clientY = fromY + (p.y ?? 0);
         const common = { clientX, clientY, button: p.button, buttons: p.buttons, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true };
         if (p.type === "wait") await new Promise((resolve) => setTimeout(resolve, p.ms));
         else if (p.type === "type") editing?.editor.type(p.key ?? "");
@@ -295,7 +337,16 @@ const page: {
     repaint: () => void;
     editNode: (id: string, atClick: boolean, x: number, y: number) => void;
     endEdit: () => void;
-} = { repaint: () => {}, editNode: () => {}, endEdit: () => {} };
+    setting: (name: string, value: string) => void;
+} = {
+    repaint: () => {},
+    editNode: () => {},
+    endEdit: () => {},
+    setting: (name, value) => {
+        if (name === "nvim-theme") useNvimColours = value !== "off";
+        page.repaint();
+    },
+};
 
 const query = new URLSearchParams(window.location.search);
 const problem = query.get("problem");

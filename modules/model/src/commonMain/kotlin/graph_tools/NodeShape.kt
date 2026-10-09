@@ -18,7 +18,7 @@ enum class NodeShape(val id: String, val impl: NodeShapeImpl) {
 interface NodeShapeImpl {
     fun connectionPoint(dir: Vector2, n: Node, offsetBy: Double = 0.0): Vector2
     /** The shape's size for text of [textBounds]; [margin] as [TextMetrics.margin]. */
-    fun computeShapeBounds(textBounds: Vector2, margin: Double? = null): Vector2
+    fun computeShapeBounds(textBounds: Vector2, margin: Vector2? = null): Vector2
 }
 
 class OvalShape : NodeShapeImpl {
@@ -39,7 +39,7 @@ class OvalShape : NodeShapeImpl {
     }
 
     // an oval around text is larger in proportion whatever the margin: its corners would cut the text
-    override fun computeShapeBounds(textBounds: Vector2, margin: Double?): Vector2 {
+    override fun computeShapeBounds(textBounds: Vector2, margin: Vector2?): Vector2 {
 
         return textBounds * shapeSizeCf + Vector2(shapeSizeMargin, shapeSizeMargin) * 2
     }
@@ -76,8 +76,8 @@ class RectangleShape : NodeShapeImpl {
         }
     }
 
-    override fun computeShapeBounds(textBounds: Vector2, margin: Double?): Vector2 =
-        if (margin != null) textBounds + Vector2(margin, margin) * 2 else textBounds * shapeSizeCf + Vector2(shapeSizeMargin, shapeSizeMargin) * 2
+    override fun computeShapeBounds(textBounds: Vector2, margin: Vector2?): Vector2 =
+        if (margin != null) textBounds + margin * 2 else textBounds * shapeSizeCf + Vector2(shapeSizeMargin, shapeSizeMargin) * 2
 
     companion object {
         val singleton = RectangleShape()

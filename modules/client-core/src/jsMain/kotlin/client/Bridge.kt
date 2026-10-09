@@ -17,23 +17,25 @@ import utils.Vector2
  * The text grid of a renderer that shows every node in one
  * monospaced font: the width of a character and the height and
  * ascent of a line, and the space between the text and the edge of
- * a box, all as fractions of the font size.
+ * a box beside the text and above and below it, all as fractions
+ * of the font size.
  */
 @JsExport
-class GridMetrics(val advance: Double, val lineHeight: Double, val ascent: Double, val margin: Double)
+class GridMetrics(val advance: Double, val lineHeight: Double, val ascent: Double, val marginX: Double, val marginY: Double)
 
 private class GridMeasurer(private val grid: GridMetrics) : TextMeasurer {
     override fun measure(lines: List<String>, fontSize: Double, monospace: Boolean): TextMetrics {
         val columns = lines.maxOfOrNull { it.length } ?: 0
         val lineHeight = fontSize * grid.lineHeight
-        return TextMetrics(Vector2(columns * fontSize * grid.advance, lines.size * lineHeight), fontSize * grid.ascent, lineHeight, fontSize * grid.margin)
+        val margin = Vector2(grid.marginX, grid.marginY) * fontSize
+        return TextMetrics(Vector2(columns * fontSize * grid.advance, lines.size * lineHeight), fontSize * grid.ascent, lineHeight, margin)
     }
 }
 
 /** One view of a document, for a renderer to draw and to feed the user's input to. */
 @JsExport
-class JsView internal constructor(private val view: EditorView, private val measurer: TextMeasurer, val file: String) {
-    private val keys: KeyMapper = keyMapper()
+class JsView internal constructor(private val view: EditorView, private val measurer: TextMeasurer, val file: String, page: dynamic) {
+    private val keys: KeyMapper = keyMapper(page)
 
     /**
      * What to draw, sizes brought up to date:
@@ -192,10 +194,14 @@ private object JsScheduler : Scheduler {
     }
 }
 
+/** `set <name>=<value>` of these is the page's to act on. */
+private val PAGE_SETTINGS = listOf("nvim-theme")
+
 /** The key mapping of a JavaScript renderer: the editing commands, and the user's init file like the Swing application's. */
-private fun keyMapper(): KeyMapper {
+private fun keyMapper(page: dynamic): KeyMapper {
     registerEditingCommands()
     val mapper = KeyMapper(KeyMapper.defaultBindings(), JsScheduler)
+    PAGE_SETTINGS.forEach { name -> mapper.applicationSettings[name] = { value -> page.setting(name, value) } }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
     mapper.commandNames = { CommandRegistry.list() }
     mapper.markSetter = { view, letter -> Actions.setMark(view, letter) }
@@ -215,7 +221,8 @@ private fun css(c: Rgb): String = "#" + ((c.red shl 16) or (c.green shl 8) or c.
  * [page] is an object with what the client asks of the page:
  * `repaint()` — the picture is out of date;
  * `editNode(id, atClick, x, y)` — let the user edit the node's text, with the caret at the view position x, y if `atClick`;
- * `endEdit()` — close that editor.
+ * `endEdit()` — close that editor;
+ * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`.
  */
 @JsExport
 fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: (view: JsView?, error: String?) -> Unit) {
@@ -243,7 +250,7 @@ fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: 
                             // the view edits the session's replica; opening through ViewContent would block
                             val view = EditorView(session.graph, renderer)
                             session.onChange = { onRepaint() }
-                            done(JsView(view, measurer, path), null)
+                            done(JsView(view, measurer, path, page), null)
                         },
                         onFailure = { done(null, it.message ?: it.toString()) },
                     )
