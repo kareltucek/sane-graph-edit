@@ -113,6 +113,41 @@ function hideMessage() {
     pane.style.display = "none";
 }
 
+// The style picker: colours, size and shape for the selected nodes. Which styles there are and what picking does is the client core's business.
+const picker = document.getElementById("picker") as HTMLDivElement;
+const pickerColours = document.getElementById("picker-colours") as HTMLDivElement;
+
+const pickerOpen = () => picker.style.display === "flex";
+
+/** Show the picker around the view position x, y, all of it inside the view. */
+function showPicker(x: number, y: number) {
+    picker.style.display = "flex";
+    const bounds = canvas.getBoundingClientRect();
+    const within = (centre: number, size: number, room: number) => Math.max(0, Math.min(centre - size / 2, room - size));
+    picker.style.left = `${bounds.left + within(x, picker.offsetWidth, bounds.width)}px`;
+    picker.style.top = `${bounds.top + within(y, picker.offsetHeight, bounds.height)}px`;
+}
+
+function hidePicker() {
+    picker.style.display = "none";
+}
+
+function fillPicker(view: client.JsView) {
+    const offered = view.pickerStyles() as { columns: number; styles: { bg: string | null; fg: string | null; label: string }[] };
+    pickerColours.style.gridTemplateColumns = `repeat(${offered.columns}, 1fr)`;
+    offered.styles.forEach((style, index) => {
+        const button = document.createElement("button");
+        button.textContent = style.label;
+        // a style without colours is the default one
+        button.style.background = style.bg ?? "var(--bg)";
+        button.style.color = style.fg ?? "var(--fg)";
+        button.addEventListener("click", () => view.pickColour(index));
+        pickerColours.appendChild(button);
+    });
+    picker.querySelectorAll<HTMLButtonElement>("button[data-size]").forEach((b) => b.addEventListener("click", () => view.pickSize(Number(b.dataset.size))));
+    picker.querySelectorAll<HTMLButtonElement>("button[data-shape]").forEach((b) => b.addEventListener("click", () => view.pickShape(b.dataset.shape!)));
+}
+
 /** Keys that put a message away and do nothing else; any other key puts it away and means what it always does. */
 const DISMISSING_KEYS = ["Escape", "Enter", "q"];
 
@@ -341,9 +376,11 @@ function start(view: client.JsView, grid: client.GridMetrics) {
         const dismissed = paneOpen() && !lineOpen() && editing === null;
         if (dismissed) hideMessage();
         if (dismissed && DISMISSING_KEYS.includes(e.key)) e.preventDefault();
+        else if (pickerOpen() && e.key === "Escape") view.pickerDismissed();
         // while a node is edited the keys are neovim's, and while the line is open they are the line's
         else if (editing === null && !lineOpen() && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
     });
+    fillPicker(view);
     lineInput.addEventListener("input", () => view.lineTyped(lineInput.value));
     lineInput.addEventListener("keydown", (e) => {
         if (view.lineKey(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
@@ -372,7 +409,9 @@ function start(view: client.JsView, grid: client.GridMetrics) {
 /** A user's action for a test to replay (`--play <json file>`): a pointer event at x, y from the middle of the window, or a key. */
 interface Played {
     /** `type`: [key] goes to the node's editor as typed text. `wait`: nothing for [ms] milliseconds. */
-    type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown" | "type" | "wait";
+    type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown" | "type" | "wait" | "click";
+    /** `click`: the element of the page to click, as a CSS selector. */
+    selector?: string;
     ms?: number;
     /** x, y are from the middle of the node with this text instead: a test need not know how the window was laid out. */
     node?: string;
@@ -397,6 +436,7 @@ async function replay(events: Played[]) {
         const clientY = fromY + (p.y ?? 0);
         const common = { clientX, clientY, button: p.button, buttons: p.buttons, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true };
         if (p.type === "wait") await new Promise((resolve) => setTimeout(resolve, p.ms));
+        else if (p.type === "click") document.querySelector<HTMLElement>(p.selector ?? "")?.click();
         else if (p.type === "type" && lineOpen()) {
             lineInput.value += p.key ?? "";
             lineInput.dispatchEvent(new Event("input"));
@@ -425,6 +465,8 @@ const page: {
     hideLine: () => void;
     showMessage: (text: string) => void;
     hideMessage: () => void;
+    showPicker: (x: number, y: number) => void;
+    hidePicker: () => void;
     status: (text: string) => void;
 } = {
     repaint: () => {},
@@ -438,6 +480,8 @@ const page: {
     hideLine,
     showMessage,
     hideMessage,
+    showPicker,
+    hidePicker,
     status: (text) => {
         // a space keeps the line's height
         const shown = text === "" ? " " : text;

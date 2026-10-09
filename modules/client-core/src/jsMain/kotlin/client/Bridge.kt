@@ -57,8 +57,57 @@ class JsView internal constructor(private val view: EditorView, private val meas
 
     /** Tell the page its status line. */
     internal fun status() {
-        page.status(StatusLine.text(view, keys, stylePickerOpen = false))
+        page.status(StatusLine.text(view, keys, pickerOpen))
     }
+
+    // --- the style picker: the page has the buttons, shown and hidden through `showPicker` / `hidePicker` ---
+
+    private var pickerOpen = false
+
+    internal fun pickerStarted(screen: Vector2?) {
+        val at = screen ?: view.lastScreenCursorPosition
+        pickerOpen = true
+        page.showPicker(at.x, at.y)
+        status()
+    }
+
+    internal fun pickerEnded() {
+        pickerOpen = false
+        page.hidePicker()
+        status()
+    }
+
+    /** The colour styles to offer, row by row: `{columns, styles: [{bg, fg, label}]}`; a colour is `#rrggbb`, or null for the default. */
+    fun pickerStyles(): dynamic {
+        val o: dynamic = js("({})")
+        o.columns = ColorStyle.PickerSet.saturationHue.size
+        o.styles = ColorStyle.PickerSet.colorStyles.map { s ->
+            val j: dynamic = js("({})")
+            j.bg = s.background?.let(::css)
+            j.fg = s.foreground?.let(::css)
+            j.label = s.label
+            j
+        }.toTypedArray()
+        return o
+    }
+
+    /** The user picked the style at [index] of [pickerStyles]: the selected nodes get it and the picker closes. */
+    fun pickColour(index: Int) {
+        ColorStyle.PickerSet.colorStyles.getOrNull(index)?.let { Actions.colorSelection(view, it) }
+        view.endStylePicker()
+        view.repaint()
+    }
+
+    /** Make the selected nodes [steps] size steps bigger (smaller when negative). */
+    fun pickSize(steps: Double) = Actions.resizeSelection(view, steps)
+
+    /** Give the selected nodes the shape [shape]: `box` or `oval`. */
+    fun pickShape(shape: String) {
+        graph_tools.NodeShape.fromString(shape)?.let { Actions.shapeSelection(view, it) }
+    }
+
+    /** The user dismissed the picker (Escape). */
+    fun pickerDismissed() = view.endStylePicker()
 
     // --- the `:` / `/` / `?` line: the page has the text field, opened and closed through `showLine` / `hideLine` ---
 
@@ -280,7 +329,8 @@ private fun css(c: Rgb): String = "#" + ((c.red shl 16) or (c.green shl 8) or c.
  * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`;
  * `showLine(text)` — show the `:` line holding `text`, the caret at its end, and give it the keys; `hideLine()`;
  * `showMessage(text)` — show `text` (several lines) until the user dismisses it; `hideMessage()`;
- * `status(text)` — the status line reads `text`.
+ * `status(text)` — the status line reads `text`;
+ * `showPicker(x, y)` — show the style picker around the view position x, y; `hidePicker()`.
  */
 @JsExport
 fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: (view: JsView?, error: String?) -> Unit) {
@@ -294,18 +344,24 @@ fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: 
                     opened.fold(
                         onSuccess = { session ->
                             // the view that has the status line exists only after its renderer
-                            var onStatus: () -> Unit = {}
+                            var shown: JsView? = null
                             val renderer = object : Renderer {
                                 override fun repaint() = onRepaint()
-                                override fun refreshStatus() = onStatus()
+                                override fun refreshStatus() {
+                                    shown?.status()
+                                }
                                 override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
                                     page.editNode(nodeId, screenClick != null, screenClick?.x ?: 0.0, screenClick?.y ?: 0.0)
                                 }
                                 override fun endNodeEdit() {
                                     page.endEdit()
                                 }
-                                override fun startStylePicker(screen: Vector2?) {}
-                                override fun endStylePicker() {}
+                                override fun startStylePicker(screen: Vector2?) {
+                                    shown?.pickerStarted(screen)
+                                }
+                                override fun endStylePicker() {
+                                    shown?.pickerEnded()
+                                }
                             }
                             val shell = object : Shell by NoShell {
                                 override fun message(text: String) {
@@ -320,7 +376,7 @@ fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: 
                             val view = EditorView(session.graph, renderer, shell)
                             session.onChange = { onRepaint() }
                             val jsView = JsView(view, measurer, path, page)
-                            onStatus = { jsView.status() }
+                            shown = jsView
                             done(jsView, null)
                         },
                         onFailure = { done(null, it.message ?: it.toString()) },

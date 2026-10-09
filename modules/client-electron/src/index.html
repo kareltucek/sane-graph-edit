@@ -19,6 +19,14 @@
       position: absolute; left: 0; right: 0; bottom: 100%; max-height: 40vh; overflow: auto; margin: 0; padding: 4px 6px; display: none;
       font: inherit; white-space: pre; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000);
     }
+    #picker {
+      position: fixed; display: none; flex-direction: column; box-sizing: border-box; width: 500px; height: 300px;
+      background: var(--bg, #fff); border: 1px solid var(--fg, #000);
+    }
+    #picker button { font: inherit; border: 1px solid var(--canvas, #ccc); margin: 0; padding: 0; cursor: pointer; }
+    #picker-colours { flex: 1; display: grid; }
+    #picker-rest { display: flex; align-items: center; gap: 6px; padding: 4px 6px; }
+    #picker-rest button { min-width: 3em; height: 2em; color: var(--fg, #000); background: var(--canvas, #ddd); }
     #message { position: fixed; left: 0; right: 0; bottom: 0; padding: 4px 8px; background: #eee; color: #000; display: none; }
   </style>
 </head>
@@ -28,6 +36,13 @@
     <pre id="pane"></pre>
     <div id="status">&nbsp;</div>
     <input id="line" spellcheck="false" autocomplete="off">
+  </div>
+  <div id="picker">
+    <div id="picker-colours"></div>
+    <div id="picker-rest">
+      <span>Size:</span><button data-size="-1">-</button><button data-size="1">+</button>
+      <span>Shape:</span><button data-shape="box">⬜</button><button data-shape="oval">⚪</button>
+    </div>
   </div>
   <div id="message"></div>
   <script src="renderer.js"></script>
