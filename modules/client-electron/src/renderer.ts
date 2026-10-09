@@ -1,5 +1,6 @@
 import { client, host } from "sane-graph-edit-editor-host";
 import { Cells, GridEditor, Painting, StatusPiece } from "./gridEditor";
+import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 
 // The page: draws what the client core says the view shows and
@@ -271,6 +272,33 @@ function paintingOf(n: SceneNode): Painting | null {
     return filetype === "" ? null : paintings.get(key) ?? null;
 }
 
+/** Markdown nodes as pictures, made in a frame of their own. */
+const markdownPictures = new MarkdownPictures(() => page.repaint());
+
+/** The picture of the formatted text of [n], if [n] is markdown and the picture has been made; null otherwise. */
+function pictureOf(n: SceneNode): Picture | null {
+    // lines are broken where the source's longest line ends, so that the picture is about as wide as the text
+    const maxWidth = Math.ceil((n.textWidth / n.fontSize) * REFERENCE_FONT_PX) + 2;
+    return n.type === "markdown" ? markdownPictures.get(n.lines.join("\n"), FONT, inkOf(n), !isLight(n.bg ?? colours().background), maxWidth) : null;
+}
+
+/**
+ * Draw [picture] in the node [n]: at the size of the node's font,
+ * where its text would start; smaller if it would not fit into the
+ * node, and then in the middle of it.
+ */
+function drawPicture(n: SceneNode, picture: Picture) {
+    const natural = n.fontSize / REFERENCE_FONT_PX;
+    const inset = n.fontSize * 0.25;
+    const fit = Math.min(1, (n.width - 2 * inset) / (picture.width * natural), (n.height - 2 * inset) / (picture.height * natural));
+    const width = picture.width * natural * fit;
+    const height = picture.height * natural * fit;
+    const fitsText = width <= n.textWidth + 0.5 && height <= n.textHeight + 0.5;
+    const left = fitsText ? n.x - n.textWidth / 2 : n.x - width / 2;
+    const top = fitsText ? n.y - n.textHeight / 2 : n.y - height / 2;
+    ctx.drawImage(picture.image, left, top, width, height);
+}
+
 /** The colour of the text and outline of [n]. A node with a background of its own and no text colour: the theme's text may not show on it. */
 function inkOf(n: SceneNode): string {
     return n.fg ?? (n.bg === null ? colours().foreground : isLight(n.bg) ? "#000000" : "#ffffff");
@@ -290,8 +318,12 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
     ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
     ctx.stroke();
     // the node being edited has its editor where the text would be, once that shows
+    const shown = n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown);
+    const picture = shown ? pictureOf(n) : null;
+    // a markdown node is its picture, once that is made
+    if (picture !== null) drawPicture(n, picture);
     // nor is the text drawn here when neovim's painting of it is (a code node): that goes on top afterwards
-    if (n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown) && paintingOf(n) === null) {
+    else if (shown && paintingOf(n) === null) {
         ctx.fillStyle = ink;
         ctx.font = `${n.fontSize}px ${FONT}`;
         const textLeft = n.x - n.textWidth / 2;

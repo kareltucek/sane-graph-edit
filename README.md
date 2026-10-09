@@ -206,6 +206,25 @@ Flags:
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |
 
+### What a node's text is: `content-type`
+
+A node's text is plain unless its `content-type` attribute says
+otherwise:
+
+| `content-type` | The text is            | Shown, while not edited (Electron client)          |
+|----------------|------------------------|-----------------------------------------------------|
+| (none)         | plain text             | as it is                                            |
+| `code-<lang>`  | code, e.g. `code-scala` | highlighted as neovim highlights that file type    |
+| `code`         | code in no named language | as it is                                         |
+| `markdown`     | markdown               | formatted; ` ```mermaid ` and ` ```dot ` blocks are drawn as diagrams |
+
+`:content-type code-scala` (or `markdown`, `plain`, …) sets it for
+the selected nodes; `:content-type` alone tells it. The language is
+a neovim file type, and the node is edited as one. A node keeps the
+size of its source text whatever is shown in it; a picture that
+does not fit is scaled down. The Swing client keeps the attribute
+and shows every node as text.
+
 ### Keyboard — `z`: view and folding
 
 These act on the selection, or on the last active node when nothing

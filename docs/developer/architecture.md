@@ -70,6 +70,19 @@ to the node's character cells. For tests the page can replay input
 off the screen and save pictures of the whole window
 (`--shots <dir>`).
 
+A node's `content-type` attribute (`graph_tools.NodeType`) says what
+its text is, and the Electron client shows it accordingly while the
+node is not edited. A code node is drawn from neovim's own painting
+of the text (`GridEditor.paint`: one neovim kept for it, the same
+screen protocol as the editor), so its colours are the editor's. A
+markdown node is drawn as a picture (`markdown.ts`): the text is
+formatted by `render.ts` in a sandboxed frame that has scripts and
+nothing else — markdown by `marked`, cleaned by `DOMPurify`,
+` ```mermaid ` and ` ```dot ` blocks drawn by `mermaid` and Graphviz
+compiled to WebAssembly — and comes back as an SVG, which the page
+only ever uses as an image. A document's text never becomes markup
+of the page, which has Node.
+
 `:model`, `:editor-core`, `:client-core` and `:editor-host` are
 Kotlin Multiplatform subprojects with two targets, the JVM and
 JavaScript for Node.js; `:client-swing` is JVM only. The root project
