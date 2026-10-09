@@ -46,15 +46,30 @@ actual object Fs {
             false
         }
 
-    actual fun list(dir: Path): List<Path> = (nodeFs.readdirSync(dir.toString()) as Array<String>).map { dir.resolve(it) }
+    /**
+     * What Node throws when a file cannot be read or written is not
+     * an [Exception] to Kotlin, so a `catch (e: Exception)` around a
+     * file operation would let it through: here it becomes one, as
+     * the same failure is on the JVM.
+     */
+    private fun <T> io(operation: () -> T): T =
+        try {
+            operation()
+        } catch (e: Exception) {
+            throw e
+        } catch (e: Throwable) {
+            throw IllegalStateException(e.message ?: e.toString())
+        }
 
-    actual fun readText(path: Path): String = nodeFs.readFileSync(path.toString(), "utf8") as String
+    actual fun list(dir: Path): List<Path> = io { (nodeFs.readdirSync(dir.toString()) as Array<String>).map { dir.resolve(it) } }
+
+    actual fun readText(path: Path): String = io { nodeFs.readFileSync(path.toString(), "utf8") as String }
 
     // Node replaces bytes that are not UTF-8 by itself
     actual fun readLines(path: Path, upTo: Int): List<String> = readText(path).lineSequence().take(upTo).toList()
 
     actual fun writeText(path: Path, text: String) {
-        nodeFs.writeFileSync(path.toString(), text, "utf8")
+        io { nodeFs.writeFileSync(path.toString(), text, "utf8") }
     }
 }
 
