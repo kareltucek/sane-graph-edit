@@ -14,7 +14,8 @@ import java.nio.file.Path
  * left to right — the filesystem root on the left, the chain of
  * parents down to [build]'s directory, then its subtree fanning out
  * to the right. Every node carries a `link` ([FileLink]) to its
- * path, so `gf` opens a `.dot` file or browses a directory.
+ * path, so `gf` opens a `.dot` file or browses a directory. A `help`
+ * node above the browsed directory links to the built-in help graph.
  *
  * Only directories and `.dot` files are shown, hidden entries
  * (`.git`, …) are skipped. The scan is breadth-first and stops after
@@ -41,6 +42,7 @@ object FileTree {
 
     private val dirColor = Color(0xDBE9F6)
     private val currentDirColor = Color(0x8FB8E0)
+    private val helpColor = Color(0xF6EFC4)
     private const val COLUMN_GAP = 40.0
     private const val ROW_GAP = 8.0
 
@@ -100,7 +102,14 @@ object FileTree {
         }
         addSubtree(chain.last(), top.children, 1)
 
-        val fits = layout(g, chain, files, dirs, available)
+        val help = Node(FileLink.HELP_TITLE, Vector2(0, 0)).also {
+            it.attributes.bg = helpColor
+            it.attributes.other[FileLink.ATTRIBUTE] = FileLink.HELP
+        }
+        g.add(help)
+        g.add(Edge(chain.last(), help))
+
+        val fits = layout(g, chain, help, files, dirs, available)
         g.lastActiveNode = chain.last()
         return Rendered(g, fits)
     }
@@ -156,7 +165,8 @@ object FileTree {
      * its [dirs] in the one after. Files take consecutive rows from
      * the directory's first row, and so do the subdirectories'
      * blocks; a directory is centred on its subdirectories (or its
-     * files); the ancestor chain is on the browsed directory's row.
+     * files); the ancestor chain is on the browsed directory's row,
+     * [help] is right above the browsed directory.
      *
      * True if the graph fits [available]: it is then centred on the
      * origin, otherwise the browsed directory is — a fresh tab's
@@ -165,6 +175,7 @@ object FileTree {
     private fun layout(
         g: Graph,
         chain: List<Node>,
+        help: Node,
         files: Map<Node, List<Node>>,
         dirs: Map<Node, List<Node>>,
         available: Vector2,
@@ -173,6 +184,7 @@ object FileTree {
         val size = { n: Node -> n.cache.shapeBounds }
         val column = mutableMapOf<Node, Int>()
         chain.forEachIndexed { i, n -> column[n] = i }
+        column[help] = chain.lastIndex
         fun assignColumns(n: Node) {
             files[n].orEmpty().forEach { f -> column[f] = column.getValue(n) + 1 }
             dirs[n].orEmpty().forEach { d -> column[d] = column.getValue(n) + 2; assignColumns(d) }
@@ -198,6 +210,7 @@ object FileTree {
         }
         placeRows(chain.last(), 0)
         chain.dropLast(1).forEach { y[it] = y.getValue(chain.last()) }
+        y[help] = y.getValue(chain.last()) - rowHeight
 
         val centre = { n: Node -> Vector2(columnLeft[column.getValue(n)] + size(n).x / 2, y.getValue(n)) }
         val topLeft = g.nodes.map { centre(it) - size(it) / 2 }.reduce(Vector2::min)

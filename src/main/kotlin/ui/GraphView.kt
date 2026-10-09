@@ -536,6 +536,10 @@ class GraphView(
         val inThisGraph = target.lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
         val from = currentLocation()
         when {
+            target.help -> if (confirmDiscard("open the help")) {
+                jumps.record(from)
+                showHelpInPlace()
+            }
             path != null && target.lines != null -> if (confirmDiscard("open ${path.fileName}:${target.lines}")) {
                 if (showSourceInPlace(path, target.lines)) jumps.record(from)
             }
@@ -559,6 +563,7 @@ class GraphView(
     fun openTargetInTab(target: FileLink.Target) {
         val path = target.path
         val opened = when {
+            target.help -> tabManager?.newTab()?.also { it.untitledName = FileLink.HELP_TITLE; it.onStateChange() }
             path == null -> {
                 jumps.record(currentLocation())
                 focusNode(target.nodeId)
@@ -605,6 +610,18 @@ class GraphView(
             tabManager?.saveSession()
         }
         return graph != null
+    }
+
+    /** Replace this tab's graph with the built-in help graph (the `help` node of a [FileTree]). */
+    fun showHelpInPlace() {
+        replaceGraph(Graph.defaultGraph())
+        currentFile = null
+        browseDir = null
+        sourceView = null
+        untitledName = FileLink.HELP_TITLE
+        onStateChange()
+        if (graphCanvas.width > 0) setViewTo(Vector2.Zero, Plotter.t.scaleX)
+        tabManager?.saveSession()
     }
 
     /** Where this tab is now, as a [JumpList] entry. */

@@ -102,6 +102,29 @@ class FileTreeTest {
     }
 
     @Test
+    fun `a help node above the browsed directory opens the help graph`() {
+        val root = tree()
+        val gv = GraphView(initialGraph = FileTree.build(root, bigScreen))
+        gv.setSize(3000, 2000)
+        gv.browseDir = root
+        val help = gv.g.nodes.single { it.attributes.text == "help" }
+        val current = gv.g.nodes.single { it.attributes.text == "${root.fileName}/" }
+
+        assertTrue(gv.g.findEdge(current, help) != null)
+        assertEquals(current.position.x - current.cache.shapeBounds.x / 2, help.position.x - help.cache.shapeBounds.x / 2, 1e-6)
+        assertTrue(help.position.y < current.position.y)
+
+        gv.g.cleanSelect(setOf(help))
+        gv.followFileLink()
+        assertEquals(Graph.defaultGraph().nodes.size, gv.g.nodes.size)
+        assertEquals("help", gv.untitledName)
+        assertEquals(null, gv.browseDir)
+
+        gv.jumpBack()
+        assertEquals(root, gv.browseDir)
+    }
+
+    @Test
     fun `the tree is cut to fit the screen, keeping one level`() {
         val root = tree()
         val labels = FileTree.build(root, utils.Vector2(10.0, 10.0)).nodes.map { it.attributes.text }.toSet()

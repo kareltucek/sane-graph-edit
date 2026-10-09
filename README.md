@@ -267,7 +267,7 @@ navigation, not data.
 | `gf`            | Follow the selected node's `link` in this tab: open the file (and focus `:nodeid` if given), or show the directory's file tree |
 | `g<letter>`     | Same for `link-<letter>`, unless `g<letter>` is mapped to something else. Without such a link it reports that and does nothing (it doesn't grab) — except `gx` / `gy` / `gs` / `gg`, which then grab |
 | `gF`            | Same as `gf`, but into a new tab                       |
-| `:browse [dir]` | New tab with a file tree of `dir` (default: working directory); `gf` on a node opens it. Files are one column right of their directory, subdirectories two; the tree is cut to the depth that fits the window, the last level being `name/ …` |
+| `:browse [dir]` | New tab with a file tree of `dir` (default: working directory); `gf` on a node opens it. Files are one column right of their directory, subdirectories two; the tree is cut to the depth that fits the window, the last level being `name/ …`. The `help` node above the directory opens the key and command reference. `:tabnew` is `:browse` of the workspace |
 | `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line) |
 | `:file`         | Show the full path of the tab's file (or the browsed directory) |
 | `:cd <dir>`     | Switch the workspace to `dir` (see [Workspaces](#workspaces)); bare `:cd` shows it |

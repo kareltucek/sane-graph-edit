@@ -311,10 +311,10 @@ class Graph(
 
     companion object {
         /**
-         * The graph shown in a fresh tab — both the very first launch
-         * and every `:tabnew` afterward. Holds the in-app
-         * keystroke and command reference, so a new user can read it
-         * by just opening the editor without having to find a manual.
+         * The help graph, opened from the `help` node of a file tree
+         * (the first launch in a workspace, `:tabnew`, `:browse`).
+         * Holds the in-app keystroke and command reference, so a new
+         * user can read it without having to find a manual.
          *
          * Layout: a star with the commands node at the centre and the
          * other four reference nodes around it (selection on top,

@@ -141,7 +141,7 @@ fun registerAllCommands() {
     r.register("export-selection") { it.exportSelection() }
 
     // Tabs
-    r.register("tabnew") { it.tabManager?.newTab() }
+    r.register("tabnew") { it.tabManager?.browse(Workspace.dir) }
     r.register("tabedit") { it.tabManager?.openInNewTab() }
     r.register("tabclose") { it.tabManager?.closeCurrent() }
     r.register("tabnext") { it.tabManager?.selectNext() }

@@ -169,10 +169,8 @@ class TabManager(
      * All user-initiated paths leave it at the default `true`.
      */
     fun newTab(
-        // Default to the help/keystroke reference graph rather than a
-        // truly empty document. A fresh tab is also "first contact"
-        // for any new user, and the help text being one `:tabnew` away
-        // is more useful than a blank canvas.
+        // Default to the help/keystroke reference graph (the `help`
+        // node of a file tree) rather than a truly empty document.
         graph: Graph = Graph.defaultGraph(),
         path: Path? = null,
         persistSession: Boolean = true,
