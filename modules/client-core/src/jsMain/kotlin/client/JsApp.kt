@@ -159,18 +159,23 @@ class JsApp internal constructor(private val client: EditorClient, private val m
  */
 @JsExport
 fun openApp(url: String, path: String?, grid: GridMetrics, page: dynamic, done: (app: JsApp?, error: String?) -> Unit) {
-    val measurer = GridMeasurer(grid)
-    TextMeasurer.default = measurer
     WebSocketConnection.connect(url) { connection ->
         connection.fold(
-            onSuccess = { c ->
-                val client = EditorClient(c)
-                client.onFailure = { reason -> page.showMessage(reason) }
-                val app = JsApp(client, measurer, page)
-                done(app, null)
-                app.start(path)
-            },
+            onSuccess = { c -> done(startApp(c, path, grid, page), null) },
             onFailure = { done(null, it.message ?: it.toString()) },
         )
     }
+}
+
+/**
+ * A window on the editor behind [connection], showing [path] as
+ * [openApp] does: for [openApp], and for a host that has the
+ * editor in the page's own process.
+ */
+fun startApp(connection: EditorConnection, path: String?, grid: GridMetrics, page: dynamic): JsApp {
+    val measurer = GridMeasurer(grid)
+    TextMeasurer.default = measurer
+    val client = EditorClient(connection)
+    client.onFailure = { reason -> page.showMessage(reason) }
+    return JsApp(client, measurer, page).also { it.start(path) }
 }

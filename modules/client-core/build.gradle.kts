@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension
 import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 import org.jetbrains.kotlin.gradle.targets.js.testing.KotlinJsTest
 
@@ -47,11 +48,11 @@ tasks.withType<Test> {
 // The JavaScript client is tested against a real editor: `host.TestEditor`
 // from the tests of :editor-host, which the test starts with what it is told here.
 tasks.withType<KotlinJsTest> {
-    dependsOn(":editor-host:testClasses")
+    dependsOn(":editor-host:jvmTestClasses")
     val java = javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) }
     doFirst {
-        val editorTests = project(":editor-host").extensions.getByType<SourceSetContainer>()["test"]
+        val editorTests = project(":editor-host").extensions.getByType<KotlinMultiplatformExtension>().jvm().compilations["test"]
         environment("SGE_TEST_JAVA", java.get().executablePath.asFile.path)
-        environment("SGE_TEST_EDITOR_CLASSPATH", editorTests.runtimeClasspath.asPath)
+        environment("SGE_TEST_EDITOR_CLASSPATH", (editorTests.output.allOutputs + editorTests.runtimeDependencyFiles!!).asPath)
     }
 }

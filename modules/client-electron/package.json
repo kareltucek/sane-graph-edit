@@ -5,7 +5,7 @@
   "description": "Electron client of a sane-graph-edit session",
   "main": "dist/main.js",
   "scripts": {
-    "core": "cd ../.. && ./gradlew :client-core:jsNodeDevelopmentLibraryDistribution",
+    "core": "cd ../.. && ./gradlew :editor-host:jsNodeDevelopmentLibraryDistribution",
     "check": "tsc --noEmit",
     "build:main": "esbuild src/main.ts --bundle --platform=node --external:electron --outfile=dist/main.js",
     "build:renderer": "esbuild src/renderer.ts --bundle --platform=node --external:electron --external:node-pty --external:neovim --sourcemap --outfile=dist/renderer.js",
@@ -16,7 +16,7 @@
     "@xterm/xterm": "^6.0.0",
     "neovim": "^5.5.0",
     "node-pty": "^1.1.0",
-    "sane-graph-edit-client-core": "file:../client-core/build/dist/js/developmentLibrary"
+    "sane-graph-edit-editor-host": "file:../editor-host/build/dist/js/developmentLibrary"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

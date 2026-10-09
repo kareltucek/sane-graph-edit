@@ -1,21 +1,18 @@
 package host
 
 import client.EditorConnection
+import client.Fs
 import editor.EditorCore
 import editor.EditorHub
 import editor.FileStore
 import sync.Event
 import sync.Request
-import java.nio.file.Files
-import java.nio.file.Paths
 
 /** The local file system. */
 object DiskFiles : FileStore {
-    override fun read(path: String): String = Files.readString(Paths.get(path))
+    override fun read(path: String): String = Fs.readText(Fs.path(path))
 
-    override fun write(path: String, text: String) {
-        Files.writeString(Paths.get(path), text)
-    }
+    override fun write(path: String, text: String) = Fs.writeText(Fs.path(path), text)
 }
 
 /**
@@ -23,7 +20,7 @@ object DiskFiles : FileStore {
  * clients made by [connect] included — runs on the thread that
  * uses it.
  */
-class EditorHost(files: FileStore = DiskFiles, now: () -> Long = System::currentTimeMillis) {
+class EditorHost(files: FileStore = DiskFiles, now: () -> Long = { utils.Platform.nowMillis() }) {
     val hub = EditorHub(EditorCore(files), now)
 
     /** A connection for a client in this process; the first one is the session owner. */

@@ -1,4 +1,4 @@
-import { client } from "sane-graph-edit-client-core";
+import { client, host } from "sane-graph-edit-editor-host";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 
 // The page: draws what the client core says the view shows and
@@ -551,12 +551,26 @@ const query = new URLSearchParams(window.location.search);
 const problem = query.get("problem");
 const url = query.get("url");
 const file = query.get("file");
-if (problem !== null || url === null) {
-    say(problem ?? "no editor to connect to");
+const grid = measureGrid();
+
+/** This window runs the editor itself. */
+function startAlone() {
+    try {
+        start(host.openLocalApp(file, grid, page), grid);
+    } catch (e) {
+        say(`cannot open ${file}: ${e instanceof Error ? e.message : e}`);
+    }
+}
+
+if (problem !== null) {
+    say(problem);
+} else if (url === null) {
+    startAlone();
 } else {
-    const grid = measureGrid();
     client.openApp(url, file, grid, page, (app, error) => {
         if (app) start(app, grid);
-        else say(`cannot connect to the editor: ${error}`);
+        // an address that was found, not asked for, may be what a window that is gone left behind
+        else if (query.get("asked") === null) startAlone();
+        else say(`cannot connect to the editor at ${url}: ${error}`);
     });
 }

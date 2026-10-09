@@ -25,21 +25,25 @@ directory of its name under `modules/`:
 | `:model`       | Data model (`graph_tools`: `Graph`, `Node`, `Edge`, commands, layout), DOT (`parser_dot`), SVG (`export`), and what clients and the editor exchange (`sync`). No AWT. |
 | `:editor-core` | The authoritative side of a session: documents, order of changes, undo (`editor`). Pure logic, no threads or IO. |
 | `:client-core` | A client of a session, without a GUI: replicas of its open documents, and everything about editing that is per user — commands, gestures, key mapping, the `:` command line, what a view shows (`client`). No AWT. |
-| `:editor-host` | Runs an editor on the JVM: files, in-process and socket connections (`host`). |
+| `:editor-host` | Runs an editor: its files and an in-process connection on the JVM and in JavaScript, the socket servers on the JVM only (`host`). |
 | `:client-swing` | The Swing renderer and application: widgets, AWT event translation, tabs, dialogs (`ui`), painting (`graph_tools.Plotter`). |
 
-Beside them, `modules/client-electron` is a second renderer, a
-proof of concept in TypeScript on Electron (an npm project, not a
-Gradle one). It links `:client-core` compiled to JavaScript and
-sees only what `client/Bridge.kt` exports: it gets the scene as
-plain objects and passes input back. It attaches to a Swing window
-started with `--ws`. Build and run:
+Beside them, `modules/client-electron` is a second renderer, in
+TypeScript on Electron (an npm project, not a Gradle one). It links
+`:editor-host` compiled to JavaScript, which brings `:client-core`
+with it, and sees only what `client/Bridge.kt`, `client/JsApp.kt`
+and `host/LocalApp.kt` export: it gets the scene as plain objects
+and passes input back. It runs an editor of its own in the page's
+process, unless a window started with `--ws` has the session of the
+directory it is started in (or `--url` names one): then it is a
+client of that session. Nothing can attach to a session an Electron
+window owns yet. Build and run:
 
 ```sh
 cd modules/client-electron
-npm run core      # client-core as a JavaScript library (Gradle)
+npm run core      # editor-host with client-core as a JavaScript library (Gradle)
 npm install
-npm start -- <file>     # in the directory of the window started with --ws
+npm start -- [<file or directory>]
 ```
 
 Its files: `main.ts` (the Electron process: arguments, the window),
@@ -50,9 +54,9 @@ character cells; the text is followed over neovim's RPC socket).
 For tests the page can replay input (`--play <json>`) and save its
 canvas (`--capture <png>`).
 
-`:model`, `:editor-core` and `:client-core` are Kotlin Multiplatform
-subprojects with two targets, the JVM and JavaScript for Node.js;
-`:editor-host` and `:client-swing` are JVM only. The root project
+`:model`, `:editor-core`, `:client-core` and `:editor-host` are
+Kotlin Multiplatform subprojects with two targets, the JVM and
+JavaScript for Node.js; `:client-swing` is JVM only. The root project
 holds no code; the jar and the packages are still built into its
 `build/`. Their code is in
 `src/commonMain`; what differs per platform is behind three

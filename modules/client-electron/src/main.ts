@@ -6,10 +6,11 @@ import * as path from "path";
 
 // sane-graph-edit-electron [--url <ws address>] [<file or directory>]
 //
-// Shows <file>, or the directory it is started in, as a client of the editor session of the window
-// running in this directory, which must have been started with
-// --ws. Without --url the address is read from the file that
-// window keeps beside its session socket.
+// Shows <file>, or the directory it is started in. If a window
+// started with --ws has the editor session of this directory
+// (it keeps its address in a file beside its session socket), or
+// --url names one, this window is a client of that session;
+// otherwise it runs an editor of its own.
 
 // For tests: --capture <png> saves the picture of the graph a moment after it was first drawn, and quits.
 // --shots <directory> draws the window off the screen and saves a picture of all of it, the node's editor included, several times a second.
@@ -22,6 +23,8 @@ process.on("unhandledRejection", (reason) => console.error("sane-graph-edit: unh
 
 interface Args {
     url?: string;
+    /** The address was given with --url, not found: if nobody answers there, that is an error. */
+    asked?: boolean;
     file?: string;
     capture?: string;
     captureAfter?: string;
@@ -53,13 +56,13 @@ function addressFile(workspace: string): string {
     return path.join(runtime, "sane-graph-edit", `${hash}.ws`);
 }
 
+/** With the address of the window that has the session of this directory, if one says it has; without one the page runs an editor of its own. */
 function resolve(args: Args): Args {
-    if (args.url !== undefined) return args;
-    const file = addressFile(process.cwd());
+    if (args.url !== undefined) return { ...args, asked: true };
     try {
-        return { ...args, url: fs.readFileSync(file, "utf8").trim() };
+        return { ...args, url: fs.readFileSync(addressFile(process.cwd()), "utf8").trim() };
     } catch {
-        return { ...args, problem: `no window with --ws is running in ${process.cwd()} (looked for ${file})` };
+        return args;
     }
 }
 
@@ -86,6 +89,7 @@ app.whenReady().then(() => {
     window.setMenuBarVisibility(false);
     const query: Record<string, string> = {};
     if (args.url !== undefined) query.url = args.url;
+    if (args.asked) query.asked = "1";
     if (args.file !== undefined) query.file = args.file;
     if (args.problem !== undefined) query.problem = args.problem;
     if (args.capture !== undefined) query.capture = args.capture;
