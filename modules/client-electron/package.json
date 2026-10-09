@@ -8,11 +8,14 @@
     "core": "cd ../.. && ./gradlew :client-core:jsNodeDevelopmentLibraryDistribution",
     "check": "tsc --noEmit",
     "build:main": "esbuild src/main.ts --bundle --platform=node --external:electron --outfile=dist/main.js",
-    "build:renderer": "esbuild src/renderer.ts --bundle --platform=node --external:electron --sourcemap --outfile=dist/renderer.js",
-    "build": "npm run build:main && npm run build:renderer && cp src/index.html dist/",
+    "build:renderer": "esbuild src/renderer.ts --bundle --platform=node --external:electron --external:node-pty --external:neovim --sourcemap --outfile=dist/renderer.js",
+    "build": "npm run build:main && npm run build:renderer && cp src/index.html node_modules/@xterm/xterm/css/xterm.css dist/",
     "start": "npm run build && electron --no-sandbox ."
   },
   "dependencies": {
+    "@xterm/xterm": "^6.0.0",
+    "neovim": "^5.5.0",
+    "node-pty": "^1.1.0",
     "sane-graph-edit-client-core": "file:../client-core/build/dist/js/developmentLibrary"
   },
   "devDependencies": {

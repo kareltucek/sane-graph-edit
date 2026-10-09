@@ -42,6 +42,14 @@ npm install
 npm start -- <file>     # in the directory of the window started with --ws
 ```
 
+Its files: `main.ts` (the Electron process: arguments, the window),
+`renderer.ts` (the page: canvas drawing, DOM events passed to the
+bridge), `nodeEditor.ts` (a node's text editor: neovim in an
+`xterm.js` terminal laid over the node and stretched to the node's
+character cells; the text is followed over neovim's RPC socket).
+For tests the page can replay input (`--play <json>`) and save its
+canvas (`--capture <png>`).
+
 `:model`, `:editor-core` and `:client-core` are Kotlin Multiplatform
 subprojects with two targets, the JVM and JavaScript for Node.js;
 `:editor-host` and `:client-swing` are JVM only. The root project

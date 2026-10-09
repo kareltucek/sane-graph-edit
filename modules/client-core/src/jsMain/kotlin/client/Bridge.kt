@@ -93,6 +93,26 @@ class JsView internal constructor(private val view: EditorView, private val meas
         view.repaint()
     }
 
+    // --- the renderer's text editor, opened when the client asks for it (`editNode`) ---
+
+    /** The text of the node [id], lines separated by `\n`; null when there is no such node. */
+    fun nodeText(id: String): String? = view.g.node(id)?.attributes?.text
+
+    /** The renderer opened its editor on the node [id]. */
+    fun textEditStarted(id: String) = view.textEditStarted(id)
+
+    /** The editor now holds [text]: the node shows it. */
+    fun textTyped(text: String) {
+        view.textTyped(text)
+        view.repaint()
+    }
+
+    /** The editor was closed with [text] in it: the node's text changes, as one undo step. */
+    fun textEditEnded(text: String) {
+        view.textEditEnded(text)
+        view.repaint()
+    }
+
     // --- input: positions in view pixels, buttons as the DOM numbers them (0 left, 1 middle, 2 right) ---
 
     private fun button(domButton: Int): PointerInput.Button? = when (domButton) {
@@ -189,11 +209,16 @@ private fun css(c: Rgb): String = "#" + ((c.red shl 16) or (c.green shl 8) or c.
 
 /**
  * Connect to the editor at [url] (see `--ws`) and open the file at
- * [path] in a view. [onRepaint] is called whenever the picture is
- * out of date; [done] gets the view, or the reason there is none.
+ * [path] in a view. [done] gets the view, or the reason there is none.
+ *
+ * [page] is an object with what the client asks of the page:
+ * `repaint()` — the picture is out of date;
+ * `editNode(id, atClick, x, y)` — let the user edit the node's text, with the caret at the view position x, y if `atClick`;
+ * `endEdit()` — close that editor.
  */
 @JsExport
-fun openView(url: String, path: String, grid: GridMetrics, onRepaint: () -> Unit, done: (view: JsView?, error: String?) -> Unit) {
+fun openView(url: String, path: String, grid: GridMetrics, page: dynamic, done: (view: JsView?, error: String?) -> Unit) {
+    val onRepaint: () -> Unit = { page.repaint() }
     val measurer = GridMeasurer(grid)
     TextMeasurer.default = measurer
     WebSocketConnection.connect(url) { connection ->
@@ -205,8 +230,12 @@ fun openView(url: String, path: String, grid: GridMetrics, onRepaint: () -> Unit
                             val renderer = object : Renderer {
                                 override fun repaint() = onRepaint()
                                 override fun refreshStatus() {}
-                                override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {}
-                                override fun endNodeEdit() {}
+                                override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
+                                    page.editNode(nodeId, screenClick != null, screenClick?.x ?: 0.0, screenClick?.y ?: 0.0)
+                                }
+                                override fun endNodeEdit() {
+                                    page.endEdit()
+                                }
                                 override fun startStylePicker(screen: Vector2?) {}
                                 override fun endStylePicker() {}
                             }

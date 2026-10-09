@@ -1,4 +1,5 @@
 import { client } from "sane-graph-edit-client-core";
+import { NodeEditor, Place } from "./nodeEditor";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -83,7 +84,8 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
     // a selected node's outline stays visible however far out the view is zoomed
     ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
     ctx.stroke();
-    if (n.fontSize * scale >= MIN_TEXT_PX) {
+    // the node being edited has its editor where the text would be
+    if (n.fontSize * scale >= MIN_TEXT_PX && n.id !== editing?.id) {
         ctx.fillStyle = n.fg ?? "#000000";
         ctx.font = `${n.fontSize}px ${FONT}`;
         const textLeft = n.x - n.textWidth / 2;
@@ -91,6 +93,69 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
         n.lines.forEach((line, i) => ctx.fillText(line, textLeft, textTop + (grid.ascent + i * grid.lineHeight) * n.fontSize));
     }
 }
+
+/** The node whose text is being edited, and its editor. */
+let editing: { id: string; editor: NodeEditor } | null = null;
+
+/** What was drawn last: where a click landed is judged against what the user saw. */
+let lastScene: Scene | null = null;
+
+/** Where the text of [n] is on the page, and the size of its character cells. */
+function textPlace(n: SceneNode, scene: Scene, grid: client.GridMetrics): Place {
+    const bounds = canvas.getBoundingClientRect();
+    return {
+        left: bounds.left + (n.x - n.textWidth / 2) * scene.scale + scene.offsetX,
+        top: bounds.top + (n.y - n.textHeight / 2) * scene.scale + scene.offsetY,
+        cellWidth: grid.advance * n.fontSize * scene.scale,
+        cellHeight: grid.lineHeight * n.fontSize * scene.scale,
+    };
+}
+
+/** Open neovim on the node [id]; with [click] (a position in the view) the cursor goes to the character clicked. */
+function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
+    // the click that asks for this also closed the editor that was open; that one tells its text first
+    endEdit(view);
+    (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click));
+}
+
+function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
+    const n = lastScene?.nodes.find((it) => it.id === id);
+    const text = view.nodeText(id);
+    if (n === undefined || lastScene === null || text == null || editing !== null) return;
+    const place = textPlace(n, lastScene, grid);
+    const bounds = canvas.getBoundingClientRect();
+    const lines = text.split("\n");
+    const row = click === null ? 0 : Math.min(lines.length - 1, Math.max(0, Math.floor((bounds.top + click.y - place.top) / place.cellHeight)));
+    const column = click === null ? 0 : Math.min(Math.max(0, lines[row].length - 1), Math.max(0, Math.floor((bounds.left + click.x - place.left) / place.cellWidth)));
+    view.textEditStarted(id);
+    const editor = new NodeEditor(
+        document.body,
+        FONT,
+        text,
+        row,
+        column,
+        { background: n.bg ?? "#ffffff", foreground: n.fg ?? "#000000" },
+        (now) => view.textTyped(now),
+        () => endEdit(view),
+    );
+    editing = { id, editor };
+    editor.place(place);
+}
+
+/** Close the editor, if any; what it holds becomes the node's text. */
+function endEdit(view: client.JsView) {
+    const was = editing;
+    if (was !== null) {
+        editing = null;
+        closing = was.editor.close().then((text) => {
+            closing = null;
+            view.textEditEnded(text);
+        });
+    }
+}
+
+/** The editor that is being closed has not told its text yet; no other is opened meanwhile. */
+let closing: Promise<void> | null = null;
 
 function draw(view: client.JsView, grid: client.GridMetrics) {
     const dpr = window.devicePixelRatio;
@@ -111,6 +176,9 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     ctx.lineWidth = 1;
     scene.edges.forEach((e) => drawEdge(e, scene.scale));
     scene.nodes.forEach((n) => drawNode(n, grid, scene.scale));
+    lastScene = scene;
+    const edited = scene.nodes.find((n) => n.id === editing?.id);
+    if (edited !== undefined) editing?.editor.place(textPlace(edited, scene, grid));
     const box = scene.selectionBox;
     if (box !== null) {
         ctx.strokeStyle = "#000000";
@@ -139,7 +207,9 @@ function start(view: client.JsView, grid: client.GridMetrics) {
             requestAnimationFrame(paint);
         }
     };
-    onRepaint = repaint;
+    page.repaint = repaint;
+    page.editNode = (id, atClick, x, y) => editNode(view, grid, id, atClick ? { x, y } : null);
+    page.endEdit = () => endEdit(view);
     window.addEventListener("resize", repaint);
 
     // What the mouse and the keys mean is the client core's business; this only reports them.
@@ -159,7 +229,8 @@ function start(view: client.JsView, grid: client.GridMetrics) {
     canvas.addEventListener("pointerup", (e) => view.pointerUp(x(e), y(e), e.button, e.ctrlKey));
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("keydown", (e) => {
-        if (view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
+        // while a node is edited the keys are neovim's
+        if (editing === null && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
     });
     document.title = `${view.file} — Sane Graph Edit`;
     repaint();
@@ -180,7 +251,9 @@ function start(view: client.JsView, grid: client.GridMetrics) {
 
 /** A user's action for a test to replay (`--play <json file>`): a pointer event at x, y from the middle of the window, or a key. */
 interface Played {
-    type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown";
+    /** `type`: [key] goes to the node's editor as typed text. `wait`: nothing for [ms] milliseconds. */
+    type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown" | "type" | "wait";
+    ms?: number;
     x?: number;
     y?: number;
     button?: number;
@@ -192,16 +265,18 @@ interface Played {
 }
 
 /** Dispatches [events] as the DOM events a user would cause, so that the listeners above are what handles them. */
-function replay(events: Played[]) {
-    events.forEach((p) => {
+async function replay(events: Played[]) {
+    for (const p of events) {
         // from the middle of the window, whatever size the window manager gave it
         const clientX = canvas.clientWidth / 2 + (p.x ?? 0);
         const clientY = canvas.clientHeight / 2 + (p.y ?? 0);
         const common = { clientX, clientY, button: p.button, buttons: p.buttons, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true };
-        if (p.type === "keydown") window.dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift }));
+        if (p.type === "wait") await new Promise((resolve) => setTimeout(resolve, p.ms));
+        else if (p.type === "type") editing?.editor.type(p.key ?? "");
+        else if (p.type === "keydown") window.dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift }));
         else if (p.type === "wheel") canvas.dispatchEvent(new WheelEvent("wheel", { ...common, deltaY: p.deltaY, cancelable: true }));
         else canvas.dispatchEvent(new PointerEvent(p.type, common));
-    });
+    }
 }
 
 /** For tests: after the first drawing, so that positions in the window mean what the test saw. */
@@ -210,7 +285,12 @@ const PLAY_DELAY_MS = 800;
 /** For tests (`--capture`): long enough for the first drawing; `--capture-after <ms>` for a test that changes something meanwhile. */
 const CAPTURE_DELAY_MS = 1500;
 
-let onRepaint: () => void = () => {};
+/** What the client core asks of this page (`openView`); filled in once there is a view. */
+const page: {
+    repaint: () => void;
+    editNode: (id: string, atClick: boolean, x: number, y: number) => void;
+    endEdit: () => void;
+} = { repaint: () => {}, editNode: () => {}, endEdit: () => {} };
 
 const query = new URLSearchParams(window.location.search);
 const problem = query.get("problem");
@@ -220,7 +300,7 @@ if (problem !== null || url === null || file === null) {
     say(problem ?? "no file given");
 } else {
     const grid = measureGrid();
-    client.openView(url, file, grid, () => onRepaint(), (view, error) => {
+    client.openView(url, file, grid, page, (view, error) => {
         if (view) start(view, grid);
         else say(`cannot open ${file}: ${error}`);
     });
