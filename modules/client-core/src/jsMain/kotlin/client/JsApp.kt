@@ -97,8 +97,6 @@ class JsApp internal constructor(private val client: EditorClient, private val m
             page.repaint()
         }
 
-        override fun sessionChanged() {}
-
         override fun modesChanged() {
             page.repaint()
         }
@@ -108,10 +106,12 @@ class JsApp internal constructor(private val client: EditorClient, private val m
         }
     }
 
-    private val tabs: Tabs = Tabs(host, dialogs)
+    private val tabs: Tabs = Tabs(host, dialogs) { Workspace.session() }
 
+    /** The tabs of the workspace's last session, and [path] in one more. */
     internal fun start(path: String?) {
-        if (path != null) tabs.open(Fs.path(path)) else tabs.browse(Workspace.dir)
+        tabs.restore()
+        if (path != null) tabs.open(Fs.path(path))
     }
 
     /** The view the page shows now. */
@@ -139,9 +139,9 @@ class JsApp internal constructor(private val client: EditorClient, private val m
 
 /**
  * Connect to the editor at [url] (see `--ws`) and show the file or
- * directory at [path] in a first tab; without one, the workspace
- * directory. [done] gets the window's tabs, or the reason there
- * are none.
+ * directory at [path] in a tab, after the tabs the workspace's
+ * session remembers; with neither, the workspace directory.
+ * [done] gets the window's tabs, or the reason there are none.
  *
  * [page] is an object with what the client asks of the page:
  * `repaint()` — the picture is out of date;

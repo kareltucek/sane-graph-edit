@@ -44,6 +44,9 @@ expect object Fs {
 
     /** Write [text] to [path], creating or replacing the file. */
     fun writeText(path: Path, text: String)
+
+    /** Make the directory [dir] and those above it that are missing. */
+    fun createDirectories(dir: Path)
 }
 
 /**

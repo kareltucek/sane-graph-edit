@@ -71,6 +71,12 @@ actual object Fs {
     actual fun writeText(path: Path, text: String) {
         io { nodeFs.writeFileSync(path.toString(), text, "utf8") }
     }
+
+    actual fun createDirectories(dir: Path) {
+        val options: dynamic = js("({})")
+        options.recursive = true
+        io { nodeFs.mkdirSync(dir.toString(), options) }
+    }
 }
 
 /** Not kept between runs here. */

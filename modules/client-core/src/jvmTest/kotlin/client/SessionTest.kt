@@ -143,4 +143,39 @@ class SessionTest {
         // about is "does not throw".
         assertTrue(snap.files.isEmpty() || snap.files.isNotEmpty())
     }
+
+    // The file was written by java.util.Properties until the code became common Kotlin: both ways must still read.
+
+    /** Everything that is escaped in a properties file: blanks, separators, comment signs, a backslash, letters beyond ASCII. */
+    private val awkward = Paths.get("/tmp/my graphs/a=b: c#d!e\\f/žluťoučký kůň.dot")
+
+    @Test
+    fun `a session written by Java's Properties is read`() {
+        val (session, dir) = tempSession()
+        val props = java.util.Properties()
+        props.setProperty("openFiles.count", "2")
+        props.setProperty("openFiles.0", awkward.toString())
+        props.setProperty("openFiles.1", "/tmp/graphs/b.dot")
+        props.setProperty("activeFile", awkward.toString())
+        props.setProperty("viewTransform.$awkward", "2.0,0.0,0.0,2.0,-10.5,30.25")
+        Files.newOutputStream(dir.resolve("session.properties")).use { props.store(it, "sane-graph-edit session") }
+
+        val loaded = session.load()
+        assertEquals(listOf(awkward, Paths.get("/tmp/graphs/b.dot")), loaded.files)
+        assertEquals(awkward, loaded.activeFile)
+        assertEquals(mapOf(awkward to listOf(2.0, 0.0, 0.0, 2.0, -10.5, 30.25)), loaded.viewTransforms)
+    }
+
+    @Test
+    fun `a session written here is read by Java's Properties`() {
+        val (session, dir) = tempSession()
+        session.save(Session.Snapshot(listOf(awkward), awkward, mapOf(awkward to listOf(1.5, 0.0, 0.0, 1.5, 4.0, -8.0))))
+
+        val props = java.util.Properties()
+        Files.newInputStream(dir.resolve("session.properties")).use(props::load)
+        assertEquals("1", props.getProperty("openFiles.count"))
+        assertEquals(awkward.toString(), props.getProperty("openFiles.0"))
+        assertEquals(awkward.toString(), props.getProperty("activeFile"))
+        assertEquals("1.5,0.0,0.0,1.5,4.0,-8.0", props.getProperty("viewTransform.$awkward"))
+    }
 }

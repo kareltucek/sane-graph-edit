@@ -34,4 +34,8 @@ actual object Fs {
     actual fun writeText(path: Path, text: String) {
         Files.writeString(path, text)
     }
+
+    actual fun createDirectories(dir: Path) {
+        Files.createDirectories(dir)
+    }
 }

@@ -8,8 +8,7 @@ import client.startApp
 
 /**
  * A window with an editor of its own, in the page's process: no
- * other window is needed. It shows [path] in a first tab, or
- * without one the directory it was started in. [page] is as for
+ * other window is needed. What it shows and [page] are as for
  * `client.openApp`.
  */
 @JsExport

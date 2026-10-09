@@ -29,7 +29,6 @@ class TabsTest {
         override fun tabsChanged() {
             changes++
         }
-        override fun sessionChanged() {}
         override fun modesChanged() {}
         override fun exit() {
             exited = true

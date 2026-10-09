@@ -56,7 +56,10 @@ class JsView internal constructor(
             placed = true
             // the sizes of the nodes are known once the scene has been asked for
             view.scene(measurer)
-            if (view.content.currentFile != null) view.boundScreen() else if (view.viewTransform.isIdentity) view.viewTransform.translate(view.size / 2)
+            // not a view that already looks somewhere: the session put it where it was
+            if (view.viewTransform.isIdentity) {
+                if (view.content.currentFile != null) view.boundScreen() else view.viewTransform.translate(view.size / 2)
+            }
             view.content.pendingFocus?.let {
                 view.content.pendingFocus = null
                 view.content.focusNode(it)

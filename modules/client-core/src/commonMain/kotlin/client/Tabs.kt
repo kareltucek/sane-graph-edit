@@ -17,8 +17,12 @@ interface TabsHost {
     /** Which tabs there are, their titles or the one shown changed. */
     fun tabsChanged()
 
-    /** What is open where changed: worth remembering for the next start. */
-    fun sessionChanged()
+    /**
+     * Whether [view], which has unsaved changes, may be closed: for an
+     * application with a question of its own (one that offers to
+     * save). Null: the tabs ask whether to discard the changes.
+     */
+    fun mayClose(view: EditorView): Boolean? = null
 
     /** A view mode changed: every view shows it. */
     fun modesChanged()
@@ -33,8 +37,95 @@ interface TabsHost {
  * the strip and the current view ([TabsHost]) and asks the user
  * ([Dialogs]).
  */
-class Tabs(private val host: TabsHost, private val dialogs: Dialogs) {
+class Tabs(
+    private val host: TabsHost,
+    private val dialogs: Dialogs,
+    /** The session of the current [Workspace], where the open files are remembered between runs; null remembers nothing. */
+    private val sessionOf: (() -> Session)? = null,
+) {
     private val open = mutableListOf<EditorView>()
+
+    private var session: Session? = sessionOf?.invoke()
+
+    /** While the tabs of a session are being opened, the session is not written. */
+    private var restoring = false
+
+    /**
+     * Write which files are open, which one is shown and where each
+     * view looks to the workspace's session. Done when a tab is
+     * opened or closed and when a view is saved under a name; views
+     * without a file are left out, there is nothing to reopen them by.
+     */
+    fun saveSession() {
+        if (!restoring) {
+            session?.save(
+                Session.Snapshot(
+                    files = open.mapNotNull { it.content.currentFile },
+                    activeFile = current?.content?.currentFile,
+                    viewTransforms = open.mapNotNull { view -> view.content.currentFile?.let { it.toAbsolutePath() to view.viewTransform.matrix } }.toMap(),
+                ),
+            )
+        }
+    }
+
+    /**
+     * Open what the workspace's session remembers: its files that
+     * still exist, each looking where it did, and the one that was
+     * shown. Without any, the workspace directory is browsed: a
+     * window always has a tab.
+     */
+    fun restore() {
+        val snapshot = session?.load() ?: Session.EMPTY
+        restoring = true
+        try {
+            snapshot.files.forEach { path -> if (Fs.exists(path)) restoreTab(path, snapshot) else utils.Platform.warn("sane-graph-edit: session file $path no longer exists, skipping") }
+            if (open.isEmpty()) browse(Workspace.dir)
+        } finally {
+            restoring = false
+        }
+        // the open and save dialogs start where the user was working
+        open.lastOrNull { it.content.currentFile != null }?.content?.currentFile?.toAbsolutePath()?.getParent()?.let {
+            AppState.lastOpenDir = it
+            AppState.lastSaveDir = it
+        }
+        val shown = snapshot.activeFile?.let { wanted -> open.indexOfFirst { it.content.currentFile?.toString() == wanted.toString() } } ?: -1
+        if (shown >= 0) select(shown)
+        host.tabsChanged()
+    }
+
+    private fun restoreTab(path: Path, snapshot: Session.Snapshot) {
+        try {
+            val view = open(path)
+            // by their text: paths are not equal to each other on every platform
+            val key = path.toAbsolutePath().toString()
+            snapshot.viewTransforms.entries.firstOrNull { it.key.toString() == key }?.let { view.viewTransform.matrix = it.value }
+        } catch (e: Exception) {
+            utils.Platform.warn("sane-graph-edit: failed to restore $path: ${e.message}")
+        }
+    }
+
+    /**
+     * `:cd`: make [dir] the [Workspace]. The open tabs are kept in
+     * the session of the workspace being left and replaced by those
+     * of [dir]'s session. Asks about unsaved changes first; false if
+     * the user did not agree.
+     */
+    fun switchWorkspace(dir: Path): Boolean {
+        val agreed = open.all { mayClose(it) }
+        if (agreed) {
+            saveSession()
+            Workspace.dir = dir.toAbsolutePath().normalize()
+            session = sessionOf?.invoke()
+            current?.let { host.leaving(it) }
+            open.forEach { it.content.close() }
+            open.clear()
+            currentIndex = -1
+            AppState.lastOpenDir = Workspace.dir
+            AppState.lastSaveDir = Workspace.dir
+            restore()
+        }
+        return agreed
+    }
 
     val views: List<EditorView> get() = open
 
@@ -48,12 +139,12 @@ class Tabs(private val host: TabsHost, private val dialogs: Dialogs) {
         val tabs: Tabs get() = this@Tabs
 
         override fun stateChanged() = host.tabsChanged()
-        override fun sessionChanged() = host.sessionChanged()
+        override fun sessionChanged() = saveSession()
         override fun newTab(): EditorView = this@Tabs.newTab()
         override fun edit(path: Path): EditorView = this@Tabs.open(path)
         override fun browse(dir: Path): EditorView = this@Tabs.browse(dir)
         override fun switchWorkspace(dir: Path) {
-            Workspace.dir = dir
+            this@Tabs.switchWorkspace(dir)
         }
         override fun quit(force: Boolean, all: Boolean) {
             if (all) quitAll(force) else quitCurrent(force)
@@ -67,7 +158,7 @@ class Tabs(private val host: TabsHost, private val dialogs: Dialogs) {
         open += view
         currentIndex = open.size - 1
         host.tabsChanged()
-        host.sessionChanged()
+        saveSession()
         return view
     }
 
@@ -105,7 +196,7 @@ class Tabs(private val host: TabsHost, private val dialogs: Dialogs) {
 
     /** True when [view] has no unsaved changes or the user agrees to lose them. */
     private fun mayClose(view: EditorView): Boolean =
-        !view.content.isDirty || dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${view.content.title.removePrefix("*")}?")
+        !view.content.isDirty || host.mayClose(view) ?: dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${view.content.title.removePrefix("*")}?")
 
     /**
      * Close the tab at [index], asking first if it has unsaved
@@ -126,7 +217,7 @@ class Tabs(private val host: TabsHost, private val dialogs: Dialogs) {
                 if (currentIndex > index || currentIndex >= open.size) currentIndex--
             }
             host.tabsChanged()
-            host.sessionChanged()
+            saveSession()
         }
         return closing
     }
@@ -140,7 +231,7 @@ class Tabs(private val host: TabsHost, private val dialogs: Dialogs) {
     fun quitAll(force: Boolean): Boolean {
         val agreed = force || open.all { mayClose(it) }
         if (agreed) {
-            host.sessionChanged()
+            saveSession()
             host.exit()
         }
         return agreed
