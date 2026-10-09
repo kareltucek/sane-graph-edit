@@ -44,6 +44,9 @@ class PointerInput(private val view: EditorView) {
         } else if (button == Button.Middle && shift && starts) {
             gestures.startPanView()
             pressAt(pos)
+        } else if (button == Button.Middle && starts) {
+            // turns the view; in 2D mode it does nothing
+            if (gestures.startOrbit(screen)) pressAt(pos)
         }
 
         view.endNodeEdit()
@@ -70,6 +73,7 @@ class PointerInput(private val view: EditorView) {
             GestureController.States.Scaling -> gestures.dragScale(screen)
             GestureController.States.PanningWorkspace -> if (dragging) gestures.dragPanView(pos)
             GestureController.States.SelectionBox -> if (dragging) gestures.dragOrEndSelectionBox(false)
+            GestureController.States.Orbiting -> if (dragging) gestures.dragOrbit(screen)
             null -> Unit
         }
         // again: panning changed the transform, so the same screen point is another workspace point
@@ -81,7 +85,8 @@ class PointerInput(private val view: EditorView) {
 
     /** [screen] unwrapped, so that a drag that wrapped around is not taken for a click; [actual] is where the pointer really is. */
     fun released(screen: Vector2, actual: Vector2, button: Button, control: Boolean) {
-        if (button == Button.Left || (button == Button.Middle && gestures.state == GestureController.States.PanningWorkspace)) {
+        val middleGesture = gestures.state == GestureController.States.PanningWorkspace || gestures.state == GestureController.States.Orbiting
+        if (button == Button.Left || (button == Button.Middle && middleGesture)) {
             if (gestures.state == GestureController.States.SelectionBox) gestures.dragOrEndSelectionBox(true)
             gestures.endSingleClick(workspace(screen), actual, control, view)
         }

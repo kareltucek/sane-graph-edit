@@ -1,7 +1,6 @@
 package graph_tools
 
 import Graph
-import utils.Utils.toNiceString
 
 /**
  * A node's third coordinate: how far it is behind the plane the
@@ -19,7 +18,8 @@ object Depth {
 
     /** Put [node] at [z]. A node in the plane has no attribute: a flat graph's file says nothing of depth. */
     fun set(node: Node, z: Double) {
-        if (z == 0.0) node.attributes.other.remove(ATTRIBUTE) else node.attributes.other[ATTRIBUTE] = z.toNiceString()
+        // in full: a node that is dragged is put somewhere many times over, and rounding each time would add up
+        if (z == 0.0) node.attributes.other.remove(ATTRIBUTE) else node.attributes.other[ATTRIBUTE] = z.toString()
     }
 }
 

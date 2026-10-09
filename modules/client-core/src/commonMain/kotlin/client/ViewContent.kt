@@ -486,7 +486,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             node == null -> shell.message("no node `$nodeId` in ${currentFile?.getFileName() ?: "this graph"}")
             else -> {
                 view.g.cleanSelect(setOf(node))
-                view.setViewTo(node.position, view.viewTransform.scale, graph_tools.Depth.of(node))
+                view.viewPoint(node).let { view.setViewTo(it.xy, view.viewTransform.scale, it.z) }
             }
         }
     }

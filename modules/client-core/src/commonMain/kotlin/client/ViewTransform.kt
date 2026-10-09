@@ -1,7 +1,18 @@
 package client
 
+import graph_tools.ViewModes
 import utils.Constants
 import utils.Vector2
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
+
+/** A point in space: of the graph (a position and a depth), or as a view sees it (across, down, away from the viewer). */
+data class Point3(val x: Double, val y: Double, val z: Double) {
+    val xy: Vector2 get() = Vector2(x, y)
+
+    constructor(xy: Vector2, z: Double) : this(xy.x, xy.y, z)
+}
 
 /** How a node appears in a view: where its middle seems to be, in workspace units of the plane the view speaks of, and how many times its size. */
 data class Apparent(val position: Vector2, val scale: Double)
@@ -88,15 +99,71 @@ class ViewTransform {
     }
 
     /**
+     * How the view is turned, in radians: [yaw] around the vertical
+     * axis, then [pitch] around the horizontal one. Everything else
+     * here speaks of the graph as seen so turned ([toView]): the
+     * plane the view is of is the one at [depth] from that side.
+     * Only in 3D mode ([ViewModes.threeD]); in 2D the view is from
+     * the front whatever these say.
+     */
+    var yaw: Double = 0.0
+        private set
+    var pitch: Double = 0.0
+        private set
+
+    val isTurned: Boolean get() = ViewModes.threeD && (yaw != 0.0 || pitch != 0.0)
+
+    /** A point of the graph (position and depth) as the view sees it: across, down and away from the viewer. */
+    fun toView(p: Point3): Point3 =
+        if (!isTurned) p
+        else {
+            val x = p.x * cos(yaw) + p.z * sin(yaw)
+            val z = -p.x * sin(yaw) + p.z * cos(yaw)
+            Point3(x, p.y * cos(pitch) - z * sin(pitch), p.y * sin(pitch) + z * cos(pitch))
+        }
+
+    /** The point of the graph that the view sees at [p]: [toView] backwards. */
+    fun toWorld(p: Point3): Point3 =
+        if (!isTurned) p
+        else {
+            val y = p.y * cos(pitch) + p.z * sin(pitch)
+            val z = -p.y * sin(pitch) + p.z * cos(pitch)
+            Point3(p.x * cos(yaw) - z * sin(yaw), y, p.x * sin(yaw) + z * cos(yaw))
+        }
+
+    /** Turn the view by [byYaw] and [byPitch] around what is in the [middle] of the screen, in the plane the view is of: that stays where it is. */
+    fun orbit(byYaw: Double, byPitch: Double, middle: Vector2) =
+        turnTo(yaw + byYaw, (pitch + byPitch).coerceIn(-PI / 2, PI / 2), middle)
+
+    /** Turn the view to [yaw] and [pitch], around the same point as [orbit]. */
+    fun turnTo(yaw: Double, pitch: Double, middle: Vector2) {
+        val at = toWorkspace(middle)
+        val pivot = toWorld(Point3(at.x, at.y, depth))
+        this.yaw = yaw
+        this.pitch = pitch
+        val seen = toView(pivot)
+        depth = seen.z
+        offset = middle - seen.xy * scale
+    }
+
+    /**
      * As the six numbers of an affine matrix (`m00 m10 m01 m11 m02
-     * m12`): the form kept in session files. A seventh is the
-     * [depth], when the view is not of the plane at 0.
+     * m12`): the form kept in session files. After them the [depth],
+     * when the view is not of the plane at 0 from the front, and
+     * then [yaw] and [pitch], when it is turned.
      */
     var matrix: List<Double>
-        get() = listOf(scale, 0.0, 0.0, scale, offset.x, offset.y) + listOfNotNull(depth.takeIf { it != 0.0 })
+        get() {
+            val turned = yaw != 0.0 || pitch != 0.0
+            return listOf(scale, 0.0, 0.0, scale, offset.x, offset.y) +
+                (if (depth != 0.0 || turned) listOf(depth) else emptyList()) +
+                (if (turned) listOf(yaw, pitch) else emptyList())
+        }
         set(m) {
             scale = m[0]
             offset = Vector2(m[4], m[5])
             depth = m.getOrNull(6) ?: 0.0
+            yaw = m.getOrNull(7) ?: 0.0
+            pitch = m.getOrNull(8) ?: 0.0
         }
 }

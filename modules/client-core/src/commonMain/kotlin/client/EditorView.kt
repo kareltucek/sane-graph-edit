@@ -1,8 +1,11 @@
 package client
 
 import Graph
+import graph_tools.CompositeCommand
 import graph_tools.Depth
 import graph_tools.EditTextCommand
+import graph_tools.MoveNodesCommand
+import graph_tools.SetDepthCommand
 import graph_tools.GraphTools
 import graph_tools.Node
 import graph_tools.NodeStyle
@@ -121,9 +124,20 @@ class EditorView(
      * behind the viewer or too near.
      */
     fun apparent(n: Node): Apparent? {
-        val z = Depth.of(n)
-        return if (z == viewTransform.depth) Apparent(n.position, 1.0)
-        else viewTransform.perspective(z)?.let { p -> viewTransform.apparent(n.position, z, size / 2)?.let { Apparent(it, p) } }
+        val at = viewPoint(n)
+        return if (at.z == viewTransform.depth) Apparent(at.xy, 1.0)
+        else viewTransform.perspective(at.z)?.let { p -> viewTransform.apparent(at.xy, at.z, size / 2)?.let { Apparent(it, p) } }
+    }
+
+    /** Where [n] is as this view sees the graph: across, down and away, whichever way the view is turned. */
+    fun viewPoint(n: Node): Point3 = viewTransform.toView(Point3(n.position, Depth.of(n)))
+
+    /** Put [n] where this view sees [at]. */
+    fun place(n: Node, at: Point3) {
+        val world = viewTransform.toWorld(at)
+        n.position = world.xy
+        Depth.set(n, world.z)
+        g.needsRecomputing(n)
     }
 
     /**
@@ -132,9 +146,51 @@ class EditorView(
      * those is behind him. The view's own for no nodes.
      */
     private fun depthOf(nodes: Collection<Node>): Double =
-        nodes.groupingBy { Depth.of(it) }.eachCount().entries
-            .maxWithOrNull(compareBy<Map.Entry<Double, Int>> { it.value }.thenByDescending { it.key })?.key
-            ?: viewTransform.depth
+        when {
+            nodes.isEmpty() -> viewTransform.depth
+            // seen from the side hardly any two are at one depth: their middle
+            viewTransform.isTurned -> nodes.sumOf { viewPoint(it).z } / nodes.size
+            else -> nodes.groupingBy { Depth.of(it) }.eachCount().entries
+                .maxWithOrNull(compareBy<Map.Entry<Double, Int>> { it.value }.thenByDescending { it.key })!!.key
+        }
+
+    /**
+     * Nodes were moved by the user: from the positions [before] and
+     * the depths [depthBefore] to where they are now. That becomes
+     * one undo step, if anything changed.
+     */
+    fun commitMoved(before: Map<Node, Vector2>, depthBefore: Map<Node, Double>) {
+        val after = before.keys.associateWith { it.position }.toMutableMap()
+        val depthAfter = depthBefore.keys.associateWith { Depth.of(it) }
+        val moved = before.any { (n, p) -> after[n] != p }
+        val sunk = depthBefore != depthAfter
+        when {
+            moved && sunk -> g.commitApplied(CompositeCommand(listOf(MoveNodesCommand(g, before, after), SetDepthCommand(g, depthBefore, depthAfter))))
+            moved -> g.commitApplied(MoveNodesCommand(g, before, after))
+            sunk -> g.commitApplied(SetDepthCommand(g, depthBefore, depthAfter))
+        }
+    }
+
+    /** The box around [nodes] as they appear in the plane the view speaks of, each as big as it seems; null if none of them is shown. */
+    fun apparentBox(nodes: Collection<Node>): Pair<Vector2, Vector2>? =
+        nodes.mapNotNull { n -> apparent(n)?.let { it.position to n.cache.shapeBounds * it.scale / 2 } }.takeIf { it.isNotEmpty() }?.let { seen ->
+            Vector2(seen.minOf { it.first.x - it.second.x }, seen.minOf { it.first.y - it.second.y }) to
+                Vector2(seen.maxOf { it.first.x + it.second.x }, seen.maxOf { it.first.y + it.second.y })
+        }
+
+    /** How far away the middle of what a turn of the view goes around is: of the selection, or of everything visible. Null when there is nothing. */
+    fun orbitDepth(): Double? = focus().takeIf { it.isNotEmpty() }?.let { nodes -> nodes.sumOf { viewPoint(it).z } / nodes.size }
+
+    /** The middle of [nodes] across the view: of the box around them in the graph, or, in a turned view, around where they are seen. Null for none. */
+    fun middleOf(nodes: Collection<Node>): Vector2? = boxOf(nodes)?.let { (ul, br) -> (ul + br) / 2 }
+
+    /** The box around [nodes] as the view sees them, or null for none; in a view from the front, the box around them in the graph. */
+    private fun boxOf(nodes: Collection<Node>): Pair<Vector2, Vector2>? =
+        if (!viewTransform.isTurned) GraphTools.computeBoundingBox(nodes)?.let { it.ul to it.br }
+        else nodes.takeIf { it.isNotEmpty() }?.map { viewPoint(it).xy to it.cache.shapeBounds / 2 }?.let { seen ->
+            Vector2(seen.minOf { it.first.x - it.second.x }, seen.minOf { it.first.y - it.second.y }) to
+                Vector2(seen.maxOf { it.first.x + it.second.x }, seen.maxOf { it.first.y + it.second.y })
+        }
 
     /** Look at [pos] with zoom [scale]: [pos] goes to the middle of the view. With [depth], [pos] is in the plane at that depth. */
     fun setViewTo(pos: Vector2, scale: Double = 1.0, depth: Double? = null) {
@@ -148,15 +204,17 @@ class EditorView(
 
     /** Centre on the selection, or on everything visible, at zoom 1. */
     fun centerScreen() {
-        setViewTo(GraphTools.computeCenterOfMass(focus()), 1.0, depthOf(focus()))
+        val nodes = focus()
+        val middle = if (viewTransform.isTurned) nodes.fold(Vector2.Zero) { sum, n -> sum + viewPoint(n).xy } / nodes.size else GraphTools.computeCenterOfMass(nodes)
+        setViewTo(middle, 1.0, depthOf(nodes))
     }
 
     /** Fit the selection, or everything visible, into the view. */
     fun boundScreen() {
-        GraphTools.computeBoundingBox(focus())?.let { box ->
-            val scale = size / (box.br - box.ul)
+        boxOf(focus())?.let { (ul, br) ->
+            val scale = size / (br - ul)
             val targetScale = (minOf(scale.x, scale.y) / 1.1).coerceIn(0.0001, 1.0)
-            setViewTo((box.ul + box.br) / 2, targetScale, depthOf(focus()))
+            setViewTo((ul + br) / 2, targetScale, depthOf(focus()))
         }
     }
 }

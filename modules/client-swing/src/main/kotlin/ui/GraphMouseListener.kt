@@ -44,9 +44,10 @@ class GraphMouseListener(
     private val statusBarInset: Int
         get() = if (graphView.statusBar != null) StatusBar.HEIGHT_PX else 0
 
-    /** Pan and the three transforms wrap the cursor; box select doesn't. */
+    /** Pan, orbit and the three transforms wrap the cursor; box select doesn't. */
     private val wrapsCursor: Boolean
         get() = controller.state == GestureController.States.PanningWorkspace ||
+            controller.state == GestureController.States.Orbiting ||
             controller.state?.isTransformGesture == true
 
     /**

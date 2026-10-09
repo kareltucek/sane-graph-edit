@@ -35,10 +35,10 @@ object ZCommands {
      * the window ends up with that edge of its own there.
      */
     fun viewToEdge(view: EditorView, edge: Edge, command: String) {
-        GraphTools.computeBoundingBox(target(view, command))?.let { box ->
+        view.apparentBox(target(view, command))?.let { box ->
             val t = view.viewTransform
-            val ul = t.toScreen(box.ul)
-            val br = t.toScreen(box.br)
+            val ul = t.toScreen(box.first)
+            val br = t.toScreen(box.second)
             val move = when (edge) {
                 Edge.Top -> Vector2(0.0, EDGE_MARGIN - ul.y)
                 Edge.Bottom -> Vector2(0.0, view.size.y - EDGE_MARGIN - br.y)

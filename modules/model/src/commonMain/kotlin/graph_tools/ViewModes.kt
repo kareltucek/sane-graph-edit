@@ -33,4 +33,12 @@ object ViewModes {
      * just discard them.
      */
     var discard: Boolean = false
+
+    /**
+     * `:set 3d` — views can be turned (the middle button orbits).
+     * Off, every view is from the front, however it was turned, and
+     * nothing turns one by accident. Depth and perspective are there
+     * either way.
+     */
+    var threeD: Boolean = false
 }

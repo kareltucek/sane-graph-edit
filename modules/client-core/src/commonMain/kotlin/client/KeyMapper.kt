@@ -913,6 +913,7 @@ class KeyMapper(
             "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
+            "3d" -> graph_tools.ViewModes.threeD = change(graph_tools.ViewModes.threeD)
             else -> utils.Platform.warn("sane-graph-edit: unknown setting '$spec'")
         }
         activeView?.shell?.modesChanged()
@@ -1306,7 +1307,7 @@ class KeyMapper(
         val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker")
 
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
-        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard")
+        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard", "3d")
 
         /** `:help <topic>` topics. */
         val HELP_TOPICS = listOf("commands", "keys", "map", "bindings", "init", "config", "settings")

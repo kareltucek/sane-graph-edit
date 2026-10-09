@@ -2,6 +2,7 @@ package client
 
 import graph_tools.AddNodeCommand
 import graph_tools.Depth
+import graph_tools.ViewModes
 import graph_tools.GraphTools
 import graph_tools.LayoutOptimizer
 import graph_tools.MoveNodesCommand
@@ -99,7 +100,7 @@ class GestureController(
     var lockY: Boolean = false,
 )  {
     enum class States {
-        PanningWorkspace, MovingNodes, SelectionBox, Rotating, Scaling;
+        PanningWorkspace, MovingNodes, SelectionBox, Rotating, Scaling, Orbiting;
 
         /**
          * True for the three modal "transform" gestures —
@@ -213,8 +214,31 @@ class GestureController(
      * state regardless of how many intermediate drag events fire.
      */
     private fun captureMoveStart() {
-        moveStartPositions = graphView.g.movable(graphView.g.selectedNodes).associateWith { it.position }
+        moveStartPositions = captureStart(graphView.g.movable(graphView.g.selectedNodes))
     }
+
+    /**
+     * The depths the nodes of the gesture in progress started at.
+     * A gesture moves nodes across the view; seen from the side that
+     * changes their depth as well as their position.
+     */
+    private var startDepths: Map<Node, Double>? = null
+
+    /** Note where [nodes] are as a gesture begins: their positions are returned, their depths kept here. */
+    private fun captureStart(nodes: Collection<Node>): Map<Node, Vector2> {
+        startDepths = nodes.associateWith { Depth.of(it) }
+        return nodes.associateWith { it.position }
+    }
+
+    /** Where [n] was when the gesture began, as the view sees it; [position] is what was captured of it then. */
+    private fun startSeen(n: Node, position: Vector2): Point3 =
+        graphView.viewTransform.toView(Point3(position, startDepths?.get(n) ?: Depth.of(n)))
+
+    /** The gesture is over: what it did to the nodes of [before], captured at its start, becomes one undo step. */
+    private fun commitMoved(before: Map<Node, Vector2>) =
+        graphView.commitMoved(before, (startDepths ?: emptyMap()).filterKeys { it in before })
+
+    private fun middleOf(nodes: Collection<Node>): Vector2? = graphView.middleOf(nodes)
 
     fun startOrEndMove() {
         when (state) {
@@ -274,13 +298,9 @@ class GestureController(
     private fun captureRotateStart(): Boolean {
         val sel = graphView.g.movable(graphView.g.selectedNodes)
         if (sel.isEmpty()) return false
-        val box = GraphTools.computeBoundingBox(sel) ?: return false
-        val center = Vector2(
-            (box.ul.x + box.br.x) / 2,
-            (box.ul.y + box.br.y) / 2,
-        )
+        val center = middleOf(sel) ?: return false
         rotateCenter = center
-        rotateStartPositions = sel.associateWith { it.position }
+        rotateStartPositions = captureStart(sel)
         val cursor = graphView.lastCursorPosition
         rotateStartAngle = atan2(cursor.y - center.y, cursor.x - center.x)
         return true
@@ -290,12 +310,7 @@ class GestureController(
         val before = rotateStartPositions ?: return
         rotateStartPositions = null
         rotateCenter = null
-        val after = before.keys.associateWith { it.position }.toMutableMap()
-        if (before.any { (n, p) -> after[n] != p }) {
-            graphView.g.commitApplied(
-                MoveNodesCommand(graphView.g, before, after),
-            )
-        }
+        commitMoved(before)
     }
 
     /**
@@ -314,14 +329,12 @@ class GestureController(
         val delta = currentAngle - rotateStartAngle
         val cos = cos(delta)
         val sin = sin(delta)
+        // around the axis the view looks along: in a view from the front, in the graph's plane
         for ((n, origPos) in start) {
-            val dx = origPos.x - center.x
-            val dy = origPos.y - center.y
-            n.position = Vector2(
-                center.x + dx * cos - dy * sin,
-                center.y + dx * sin + dy * cos,
-            )
-            graphView.g.needsRecomputing(n)
+            val was = startSeen(n, origPos)
+            val dx = was.x - center.x
+            val dy = was.y - center.y
+            graphView.place(n, Point3(center.x + dx * cos - dy * sin, center.y + dx * sin + dy * cos, was.z))
         }
         graphView.repaint()
     }
@@ -364,14 +377,10 @@ class GestureController(
         // dragging the cursor *to* the bbox centre drives
         // the factor to 0 and collapses the selection at the
         // anchor.
-        val box = GraphTools.computeBoundingBox(sel) ?: return false
-        val anchor = Vector2(
-            (box.ul.x + box.br.x) / 2,
-            (box.ul.y + box.br.y) / 2,
-        )
+        val anchor = middleOf(sel) ?: return false
         scaleAnchor = anchor
         scaleAnchorScreen = graphView.viewTransform.toScreen(anchor)
-        scaleStartPositions = sel.associateWith { it.position }
+        scaleStartPositions = captureStart(sel)
         scaleStartCursorScreen = graphView.lastScreenCursorPosition
         return true
     }
@@ -382,12 +391,7 @@ class GestureController(
         scaleAnchor = null
         scaleAnchorScreen = null
         scaleStartCursorScreen = null
-        val after = before.keys.associateWith { it.position }.toMutableMap()
-        if (before.any { (n, p) -> after[n] != p }) {
-            graphView.g.commitApplied(
-                MoveNodesCommand(graphView.g, before, after),
-            )
-        }
+        commitMoved(before)
     }
 
     /**
@@ -425,11 +429,10 @@ class GestureController(
         val sx = if (lockX) 1.0 else factor
         val sy = if (lockY) 1.0 else factor
 
+        // across the view: the depth each node is seen at stays
         for ((n, origPos) in start) {
-            val dx = origPos.x - anchor.x
-            val dy = origPos.y - anchor.y
-            n.position = Vector2(anchor.x + dx * sx, anchor.y + dy * sy)
-            graphView.g.needsRecomputing(n)
+            val was = startSeen(n, origPos)
+            graphView.place(n, Point3(anchor.x + (was.x - anchor.x) * sx, anchor.y + (was.y - anchor.y) * sy, was.z))
         }
         graphView.repaint()
     }
@@ -471,6 +474,7 @@ class GestureController(
         // no extra bookkeeping here.
         captured?.forEach { (n, p) ->
             n.position = p
+            startDepths?.get(n)?.let { Depth.set(n, it) }
             graphView.g.needsRecomputing(n)
         }
         state = null
@@ -486,6 +490,28 @@ class GestureController(
         graphView.g.cleanSelect(mouseoverNodes)
         state = States.MovingNodes
         captureMoveStart()
+    }
+
+    /** Turning the view starts, the pointer being at [screen]. Only in 3D mode: in 2D nothing turns a view. */
+    fun startOrbit(screen: Vector2): Boolean {
+        if (ViewModes.threeD) {
+            state = States.Orbiting
+            orbitedFrom = screen
+            // around the selection, or everything shown, not around the plane the view happened to be of
+            graphView.orbitDepth()?.let { graphView.viewTransform.refocus(it, graphView.size / 2) }
+        }
+        return ViewModes.threeD
+    }
+
+    private var orbitedFrom: Vector2 = Vector2.Zero
+
+    /** The pointer went to [screen] while turning the view: the view turns around what is in its middle, as far as the pointer went. */
+    fun dragOrbit(screen: Vector2) {
+        val by = (screen - orbitedFrom) * ORBIT_RADIANS_PER_PIXEL
+        // the graph follows the pointer: dragged right, its near side goes right
+        graphView.viewTransform.orbit(-by.x, by.y, graphView.size / 2)
+        orbitedFrom = screen
+        graphView.repaint()
     }
 
     fun dragPanView(pos: Vector2) {
@@ -512,8 +538,8 @@ class GestureController(
                 if (lockY) 0.0 else totalRaw.y,
             )
             for ((n, origPos) in start) {
-                n.position = origPos + total / apparentScale(n)
-                graphView.g.needsRecomputing(n)
+                val was = startSeen(n, origPos)
+                graphView.place(n, Point3(was.xy + total / apparentScale(n), was.z))
             }
         } else {
             // Mouse-driven drag (no anchor captured). Stay on
@@ -528,8 +554,8 @@ class GestureController(
                 if (lockY) 0.0 else raw.y,
             )
             graphView.g.movable(graphView.g.selectedNodes).forEach {
-                it.position = it.position + diff / apparentScale(it)
-                graphView.g.needsRecomputing(it)
+                val now = graphView.viewPoint(it)
+                graphView.place(it, Point3(now.xy + diff / apparentScale(it), now.z))
             }
         }
         if (graphView.optimizeOnDrag || restrictOperator) {
@@ -603,10 +629,7 @@ class GestureController(
         val before = moveStartPositions ?: return
         moveStartPositions = null
         moveAnchor = null
-        val after = before.keys.associateWith { it.position }.toMutableMap()
-        if (before.any { (n, p) -> after[n] != p }) {
-            graphView.g.commitApplied(MoveNodesCommand(graphView.g, before, after))
-        }
+        commitMoved(before)
     }
 
     fun dragOrEndSelectionBox(saveHistory: Boolean) {
@@ -624,13 +647,14 @@ class GestureController(
     }
 
     fun spawnNewNode(pos: Vector2) {
+        // in the plane the view speaks of: where the pointer is
+        val at = graphView.viewTransform.toWorld(Point3(pos, graphView.viewTransform.depth))
         val newNode = Node(
             label = Constants.defaultNodeText,
-            pos = pos,
+            pos = at.xy,
             style = graphView.defaultNodeStyle,
         )
-        // in the plane the view speaks of: where the pointer is
-        Depth.set(newNode, graphView.viewTransform.depth)
+        Depth.set(newNode, at.z)
 
         graphView.g.commit(AddNodeCommand(graphView.g, newNode))
         graphView.g.cleanSelect(mutableSetOf(newNode))
@@ -659,5 +683,8 @@ class GestureController(
          * continues smoothly from 1.0 rather than jumping.
          */
         const val SCALE_CENTER_EPSILON: Double = 4.0
+
+        /** How far the view turns for each pixel the pointer goes while orbiting: half a turn across some 600 pixels. */
+        const val ORBIT_RADIANS_PER_PIXEL: Double = 0.005
     }
 }

@@ -9,8 +9,11 @@ import graph_tools.Depth
 import graph_tools.Edge
 import graph_tools.Node
 import graph_tools.TextMeasurer
+import graph_tools.ViewModes
 import utils.Vector2
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -156,6 +159,68 @@ class DepthTest {
     fun `an attribute z in a file is a depth too`() {
         val read = DotGraphLoader.parse(DotGraphLoader.tokenize("digraph g { a [label=\"a\"; pos=\"1,2!\"; z=\"30\"]; b [label=\"b\"; pos=\"1,2,-4!\"]; }"))
         assertEquals(listOf(-4.0, 30.0), read.nodes.map { Depth.of(it) }.sorted())
+    }
+
+    @AfterTest
+    fun backTo2D() {
+        ViewModes.threeD = false
+    }
+
+    private fun dragMiddle(from: Vector2, to: Vector2) {
+        view.pointer.pressed(from, Button.Middle, false, false)
+        view.pointer.moved(to, true, false)
+        view.pointer.released(to, to, Button.Middle, false)
+    }
+
+    @Test
+    fun `in 2D mode the middle button turns nothing, in 3D mode it turns the view around the selection in its middle`() {
+        dragMiddle(Vector2(400, 300), Vector2(500, 300))
+        assertEquals(0.0, view.viewTransform.yaw)
+        ViewModes.threeD = true
+        view.g.cleanSelect(setOf(flat))
+        val was = screen(far)
+        dragMiddle(Vector2(400, 300), Vector2(500, 320))
+        assertEquals(-0.5, view.viewTransform.yaw)
+        assertEquals(0.1, view.viewTransform.pitch)
+        // what was in the middle is still there; what was not, is not where it was
+        assertNear(Vector2(400, 300), screen(flat))
+        assertTrue((screen(far) - was).length() > 10)
+    }
+
+    @Test
+    fun `a view that is turned is from the front again in 2D mode`() {
+        ViewModes.threeD = true
+        view.viewTransform.turnTo(PI / 2, 0.0, view.size / 2)
+        // from the side: what was away is across
+        assertNear(Vector2(1000, 100), view.viewPoint(far).xy)
+        ViewModes.threeD = false
+        assertNear(Vector2(200, 100), view.viewPoint(far).xy)
+    }
+
+    @Test
+    fun `a node dragged in a turned view goes across the view, which is into the graph, and undo puts it back`() {
+        ViewModes.threeD = true
+        view.viewTransform.turnTo(PI / 2, 0.0, view.size / 2)
+        view.pointer.pressed(Vector2(400, 300), Button.Left, false, false)
+        view.pointer.moved(Vector2(440, 300), true, false)
+        view.pointer.released(Vector2(440, 300), Vector2(440, 300), Button.Left, false)
+        assertNear(Vector2(440, 300), screen(flat))
+        assertNear(Vector2(0, 0), flat.position)
+        assertTrue(abs(Depth.of(flat) - 40.0) < 1e-6, "depth ${Depth.of(flat)}")
+        view.g.undo()
+        assertEquals(0.0, Depth.of(flat))
+        assertNear(Vector2(0, 0), flat.position)
+    }
+
+    @Test
+    fun `the view turns back to the front around its middle, and a session remembers how it was turned`() {
+        ViewModes.threeD = true
+        view.viewTransform.orbit(0.4, -0.2, view.size / 2)
+        val kept = ViewTransform().also { it.matrix = view.viewTransform.matrix }
+        assertEquals(listOf(0.4, -0.2, view.viewTransform.depth), listOf(kept.yaw, kept.pitch, kept.depth))
+        CommandRegistry.execute("view-front", view)
+        assertEquals(listOf(0.0, 0.0), listOf(view.viewTransform.yaw, view.viewTransform.pitch))
+        assertNear(Vector2(400, 300), screen(flat))
     }
 
     @Test

@@ -96,6 +96,15 @@ is behind the viewer; a renderer only draws a node that much bigger
 or smaller around its position. A graph with no depths goes through
 none of this: every factor is 1.
 
+In 3D mode (`ViewModes.threeD`, `:set 3d`) a view can also be turned
+(`ViewTransform.yaw`, `pitch`; the middle button, `orbit`). All of
+the above then speaks of the graph as the view sees it
+(`ViewTransform.toView`, `EditorView.viewPoint`): across, down and
+away from the viewer. Gestures that move nodes read where a node is
+seen and put it back with `EditorView.place`, so they act across the
+view, and an undo step for them holds depths as well as positions
+(`EditorView.commitMoved`). Renderers know nothing of the turn.
+
 Only what is in the view is drawn. What a node shows inside its
 outline (text, painting or picture) is kept as a bitmap
 (`bitmaps.ts`), made at the scale of a view that is not zoomed. A

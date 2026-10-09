@@ -304,14 +304,20 @@ object Actions {
     fun pasteClipboard(graphView: EditorView) {
         val frag = Clipboard.fragment ?: return
         val g = graphView.g
-        val target = graphView.lastCursorPosition
-        val delta = target - frag.referencePoint
+        // under the cursor, in the plane the view speaks of; the fragment's middle depth goes there
+        val t = graphView.viewTransform
+        val target = t.toWorld(Point3(graphView.lastCursorPosition, t.depth))
+        val delta = target.xy - frag.referencePoint
+        val sink = target.z - frag.nodes.sumOf { Depth.of(it) } / frag.nodes.size
 
         // Clone again on every paste so repeated Ctrl+V calls
         // produce independent copies rather than multiple
         // references to the same node.
         val pasteMap: Map<Node, Node> = frag.nodes.associateWith { src ->
-            src.deepClone().also { it.position = src.position + delta }
+            src.deepClone().also {
+                it.position = src.position + delta
+                Depth.set(it, Depth.of(src) + sink)
+            }
         }
         val newNodes = pasteMap.values.toList()
         val newEdges = frag.edges.map { e ->
@@ -350,6 +356,12 @@ object Actions {
 
     fun boundScreen(graphView: EditorView) {
         graphView.boundScreen()
+    }
+
+    /** Turn the view back to the front, around what is in its middle. */
+    fun viewFront(graphView: EditorView) {
+        graphView.viewTransform.turnTo(0.0, 0.0, graphView.size / 2)
+        graphView.repaint()
     }
 
     fun selectClosure(graphView: EditorView, forward: Boolean) {
@@ -399,26 +411,15 @@ object Actions {
     fun mirror(graphView: EditorView, horizontal: Boolean) {
         val sel = graphView.g.movable(graphView.g.selectedNodes)
         if (sel.isEmpty()) return
-        val box = GraphTools.computeBoundingBox(sel) ?: return
-        val cx = (box.ul.x + box.br.x) / 2
-        val cy = (box.ul.y + box.br.y) / 2
-
+        // across the view: left and right, up and down are the viewer's
+        val middle = graphView.middleOf(sel) ?: return
         val before = sel.associateWith { it.position }
+        val depthBefore = sel.associateWith { Depth.of(it) }
         for (n in sel) {
-            val p = n.position
-            n.position = if (horizontal) {
-                Vector2(2 * cx - p.x, p.y)
-            } else {
-                Vector2(p.x, 2 * cy - p.y)
-            }
-            graphView.g.needsRecomputing(n)
+            val p = graphView.viewPoint(n)
+            graphView.place(n, if (horizontal) Point3(2 * middle.x - p.x, p.y, p.z) else Point3(p.x, 2 * middle.y - p.y, p.z))
         }
-        val after = sel.associateWith { it.position }.toMutableMap()
-        if (before != after) {
-            graphView.g.commitApplied(
-                MoveNodesCommand(graphView.g, before, after),
-            )
-        }
+        graphView.commitMoved(before, depthBefore)
         graphView.repaint()
     }
 
@@ -670,12 +671,13 @@ object Actions {
             ?.let { GraphTools.pickNodeStyle(g, it.first()) }
             .orElse(graphView.defaultNodeStyle)
 
+        val at = graphView.viewTransform.toWorld(Point3(pos, graphView.viewTransform.depth))
         val newNode = Node(
             label = "New node",
-            pos = pos,
+            pos = at.xy,
             style = style,
         )
-        Depth.set(newNode, graphView.viewTransform.depth)
+        Depth.set(newNode, at.z)
 
         val newEdges = from.map { selectedNode ->
             if (forwardEdge) Edge(selectedNode, newNode) else Edge(newNode, selectedNode)
