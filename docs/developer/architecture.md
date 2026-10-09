@@ -88,7 +88,9 @@ outline (text, painting or picture) is kept as a bitmap
 (`bitmaps.ts`), made at the scale of a view that is not zoomed. A
 view zoomed out, or not zoomed, draws nodes from these; one zoomed
 in closer draws the few nodes it then shows as they are, so they
-stay sharp. The bitmaps together are held to 256 MB, the ones used
+stay sharp. A view zoomed far out makes its bitmaps at half that
+scale, a quarter and so on, whichever is still at least what it
+shows; a finer one that is already kept is used as it is. The bitmaps together are held to 256 MB, the ones used
 longest ago going first; when even those of one view do not fit, the
 rest of its nodes are drawn as they are. `SGE_DRAW_TIMES=<file>`
 notes how long frames take, for tests.

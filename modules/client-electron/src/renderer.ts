@@ -360,13 +360,16 @@ const bitmaps = new Bitmaps();
  */
 function drawContent(content: Content, scene: Scene, dpr: number) {
     const needed = scene.scale * dpr;
-    const kept = bitmaps.scaleOf(content.width, content.height, dpr);
-    const bitmap = needed <= kept * SAME_SCALE
-        ? bitmaps.get(`${content.key}\n${content.width} ${content.height}`, content.width, content.height, kept, (to) => {
+    const finest = bitmaps.scaleOf(content.width, content.height, dpr);
+    // half the finest scale as often as still leaves at least what the view needs
+    const halvings = Math.max(0, Math.floor(Math.log2(finest * SAME_SCALE / needed)));
+    const bitmap = needed <= finest * SAME_SCALE
+        ? bitmaps.get(`${content.key}\n${content.width} ${content.height}`, content.width, content.height, finest / 2 ** halvings, (to) => {
             to.translate(-content.left, -content.top);
             content.draw(to);
         })
         : null;
+    const kept = bitmap?.scale ?? finest;
     if (bitmap === null) content.draw(ctx);
     else if (needed >= kept / SAME_SCALE) {
         // pixel for pixel, at whole pixels: nothing is blurred

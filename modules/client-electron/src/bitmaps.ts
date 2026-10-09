@@ -1,7 +1,9 @@
 // What nodes show, kept as bitmaps: a node's text is drawn once,
 // at the scale it has when the view is not zoomed, and that drawing
 // is what a view zoomed out shows of it. Closer than that a kept
-// drawing would be coarse, and the text is drawn as it is.
+// drawing would be coarse, and the text is drawn as it is. A view
+// zoomed far out makes its drawings at half that scale, a quarter,
+// and so on: a node shown small does not hold a big bitmap.
 
 /** A kept drawing, [scale] bitmap pixels to one of the graph's units. */
 export interface Bitmap {
@@ -61,14 +63,16 @@ export class Bitmaps {
     }
 
     /**
-     * The drawing kept as [key]. One that is not there is made:
-     * [draw] draws [width] by [height] units from 0, 0, at [scale]
-     * pixels each. Null when there is no room for it, all that is
-     * kept being in use in this drawing of the view.
+     * The drawing kept as [key], at [scale] or finer. One that is
+     * not there is made: [draw] draws [width] by [height] units
+     * from 0, 0, at [scale] pixels each. Null when there is no room
+     * for it, all that is kept being in use in this drawing of the
+     * view.
      */
     get(key: string, width: number, height: number, scale: number, draw: (ctx: OffscreenCanvasRenderingContext2D) => void): Bitmap | null {
         const found = this.kept.get(key);
-        if (found !== undefined && found.bitmap.scale === scale) {
+        // one that is finer than asked for does as well
+        if (found !== undefined && found.bitmap.scale >= scale) {
             // last used, last let go of
             this.kept.delete(key);
             this.kept.set(key, { ...found, frame: this.frame });
