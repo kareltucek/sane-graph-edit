@@ -168,6 +168,22 @@ fun openApp(url: String, path: String?, grid: GridMetrics, page: dynamic, done: 
 }
 
 /**
+ * Join the session of the window already running in the directory
+ * this one is started in, through its socket ([SessionSocket]), and
+ * show [path] as [openApp] does. [done] gets the window's tabs, or
+ * the reason there are none: nobody has a session there.
+ */
+@JsExport
+fun attachApp(path: String?, grid: GridMetrics, page: dynamic, done: (app: JsApp?, error: String?) -> Unit) {
+    UnixSocketConnection.connect(SessionSocket.pathFor(Workspace.dir).toString()) { connection ->
+        connection.fold(
+            onSuccess = { c -> done(startApp(c, path, grid, page), null) },
+            onFailure = { done(null, "no window is running in ${Workspace.dir}") },
+        )
+    }
+}
+
+/**
  * A window on the editor behind [connection], showing [path] as
  * [openApp] does: for [openApp], and for a host that has the
  * editor in the page's own process.
@@ -177,5 +193,10 @@ fun startApp(connection: EditorConnection, path: String?, grid: GridMetrics, pag
     TextMeasurer.default = measurer
     val client = EditorClient(connection)
     client.onFailure = { reason -> page.showMessage(reason) }
+    (connection as? RemoteConnection)?.onClosed = {
+        // what is open stays, as graphs of this window's own that can still be saved
+        client.connectionLost()
+        page.showMessage("The window that had this session is gone.\nWhat is open here is no longer shared; it can still be saved.")
+    }
     return JsApp(client, measurer, page).also { it.start(path) }
 }

@@ -40,18 +40,19 @@ object Editor {
     fun start(socket: Path? = null, webSocketPort: Int? = null) {
         if (client == null) {
             val host = EditorHost()
+            // the window's own client before anybody can connect: the first one is the session's owner
+            client = EditorClient(host.connect())
             webSocketPort?.let { port ->
                 runCatching { WebSocketServer(host.hub, port) { SwingUtilities.invokeLater(it) }.start() }
                     .onSuccess { server -> announce(server, socket) }
                     .onFailure { System.err.println("sane-graph-edit: no WebSocket on port $port: ${it.message}") }
             }
             // best effort: without the socket the editor still works, alone
-            socket?.takeIf { runCatching { SessionLock.acquire(it) }.getOrDefault(false) }?.let { s ->
-                runCatching { SocketServer(host.hub, s) { SwingUtilities.invokeLater(it) }.start() }
-                    .onSuccess { server -> Runtime.getRuntime().addShutdownHook(Thread { server.close() }) }
+            socket?.let { s ->
+                runCatching { SessionLock.claim(s) { SocketServer(host.hub, s) { SwingUtilities.invokeLater(it) }.start() } }
+                    .onSuccess { server -> server?.let { Runtime.getRuntime().addShutdownHook(Thread { it.close() }) } }
                     .onFailure { System.err.println("sane-graph-edit: no session socket at $s: ${it.message}") }
             }
-            client = EditorClient(host.connect())
         }
     }
 

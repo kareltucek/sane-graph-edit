@@ -36,6 +36,13 @@ actual object Fs {
             return path(xdg ?: "$home/.config").resolve("sane-graph-edit")
         }
 
+    // as the JVM's: the same session socket whichever of them looks for it
+    actual val runtimeDir: Path
+        get() {
+            val xdg = (process.env.XDG_RUNTIME_DIR as String?)?.takeIf { it.isNotBlank() }
+            return path(xdg ?: "${nodeOs.tmpdir()}/runtime-${nodeOs.userInfo().username}")
+        }
+
     actual fun exists(path: Path): Boolean = nodeFs.existsSync(path.toString()) as Boolean
 
     actual fun isDirectory(path: Path, followLinks: Boolean): Boolean =
@@ -84,3 +91,5 @@ actual object AppState {
     actual var lastOpenDir: Path? = null
     actual var lastSaveDir: Path? = null
 }
+
+actual fun sha1Hex(text: String): String = require("crypto").createHash("sha1").update(text, "utf8").digest("hex") as String

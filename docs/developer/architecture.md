@@ -36,8 +36,15 @@ and `host/LocalApp.kt` export: it gets the scene as plain objects
 and passes input back. It runs an editor of its own in the page's
 process, unless a window started with `--ws` has the session of the
 directory it is started in (or `--url` names one): then it is a
-client of that session. Nothing can attach to a session an Electron
-window owns yet. Build and run:
+client of that session. A window with its own editor serves the
+directory's session socket if nobody does (`host/SessionServer.kt`,
+the JavaScript counterpart of the JVM's `SocketServer`), and
+`--attach` joins the session of whoever does, through
+`client.UnixSocketConnection`. Who serves a socket is settled the
+same way by both runtimes: one process at a time (the one that
+could create `<socket>.starting`) asks the socket whether somebody
+answers there, and starts to listen if nobody does. It has no
+WebSocket server of its own. Build and run:
 
 ```sh
 cd modules/client-electron

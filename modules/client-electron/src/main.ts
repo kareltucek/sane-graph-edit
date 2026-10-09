@@ -4,13 +4,16 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-// sane-graph-edit-electron [--url <ws address>] [<file or directory>]
+// sane-graph-edit-electron [--attach | --url <ws address>] [<file or directory>]
 //
-// Shows <file>, or the directory it is started in. If a window
-// started with --ws has the editor session of this directory
-// (it keeps its address in a file beside its session socket), or
-// --url names one, this window is a client of that session;
-// otherwise it runs an editor of its own.
+// Shows <file>, or the directory it is started in. The window runs
+// an editor of its own, and serves the session socket of the
+// directory if nobody does (for `ctl` and windows started with
+// --attach). With --attach it joins the session of the window
+// already running in the directory instead, as the Swing client's
+// --attach does. It is also a client, not an editor, when --url
+// names a WebSocket address, or when a window started with --ws
+// has left one for this directory in a file beside its socket.
 
 // For tests: --capture <png> saves the picture of the graph a moment after it was first drawn, and quits.
 // --shots <directory> draws the window off the screen and saves a picture of all of it, the node's editor included, several times a second.
@@ -25,6 +28,8 @@ interface Args {
     url?: string;
     /** The address was given with --url, not found: if nobody answers there, that is an error. */
     asked?: boolean;
+    /** Join the session of the window already running in this directory, through its socket. */
+    attach?: boolean;
     file?: string;
     capture?: string;
     captureAfter?: string;
@@ -38,6 +43,7 @@ function parseArgs(argv: string[]): Args {
     for (let i = 0; i < argv.length; i++) {
         const a = argv[i];
         if (a === "--url") args.url = argv[++i];
+        else if (a === "--attach") args.attach = true;
         else if (a === "--capture") args.capture = path.resolve(argv[++i]);
         else if (a === "--capture-after") args.captureAfter = argv[++i];
         else if (a === "--play") args.play = path.resolve(argv[++i]);
@@ -58,6 +64,7 @@ function addressFile(workspace: string): string {
 
 /** With the address of the window that has the session of this directory, if one says it has; without one the page runs an editor of its own. */
 function resolve(args: Args): Args {
+    if (args.attach) return args;
     if (args.url !== undefined) return { ...args, asked: true };
     try {
         return { ...args, url: fs.readFileSync(addressFile(process.cwd()), "utf8").trim() };
@@ -90,6 +97,7 @@ app.whenReady().then(() => {
     const query: Record<string, string> = {};
     if (args.url !== undefined) query.url = args.url;
     if (args.asked) query.asked = "1";
+    if (args.attach) query.attach = "1";
     if (args.file !== undefined) query.file = args.file;
     if (args.problem !== undefined) query.problem = args.problem;
     if (args.capture !== undefined) query.capture = args.capture;

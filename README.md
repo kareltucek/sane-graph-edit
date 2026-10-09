@@ -320,6 +320,12 @@ stands; the refused change disappears with a message. When the
 owner quits, the other windows carry on by themselves with what
 they had.
 
+The window that has a directory's session is the one that answers
+at its socket, whichever client it is: a window of the Electron
+client has it, is joined with `--attach` and is scripted with `ctl`
+the same way, and a Swing window and an Electron window can share
+one session.
+
 ### Scripting a running window (`ctl`)
 
 A script or an agent can read and change the documents of a running

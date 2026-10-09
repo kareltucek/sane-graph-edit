@@ -15,6 +15,10 @@ actual object Fs {
 
     actual val configDir: Path get() = XdgPaths.appConfigDir
 
+    actual val runtimeDir: Path
+        get() = System.getenv("XDG_RUNTIME_DIR")?.takeIf { it.isNotBlank() }?.let { Paths.get(it) }
+            ?: Paths.get(System.getProperty("java.io.tmpdir"), "runtime-${System.getProperty("user.name")}")
+
     actual fun exists(path: Path): Boolean = Files.exists(path)
 
     actual fun isDirectory(path: Path, followLinks: Boolean): Boolean =
@@ -39,3 +43,6 @@ actual object Fs {
         Files.createDirectories(dir)
     }
 }
+
+actual fun sha1Hex(text: String): String =
+    java.security.MessageDigest.getInstance("SHA-1").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }

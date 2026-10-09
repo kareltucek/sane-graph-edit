@@ -564,6 +564,11 @@ function startAlone() {
 
 if (problem !== null) {
     say(problem);
+} else if (query.get("attach") !== null) {
+    client.attachApp(file, grid, page, (app, error) => {
+        if (app) start(app, grid);
+        else say(`--attach: ${error}`);
+    });
 } else if (url === null) {
     startAlone();
 } else {

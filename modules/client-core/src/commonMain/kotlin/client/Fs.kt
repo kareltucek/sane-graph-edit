@@ -29,6 +29,9 @@ expect object Fs {
     /** Where the application keeps its configuration (the `init` file). */
     val configDir: Path
 
+    /** The user's directory for what lasts as long as the login: `$XDG_RUNTIME_DIR`, or a directory of the user's among the temporary files. */
+    val runtimeDir: Path
+
     fun exists(path: Path): Boolean
 
     /** With [followLinks] false a link to a directory is not one. */
@@ -48,6 +51,9 @@ expect object Fs {
     /** Make the directory [dir] and those above it that are missing. */
     fun createDirectories(dir: Path)
 }
+
+/** The SHA-1 of [text] as UTF-8, in lowercase hexadecimal. */
+expect fun sha1Hex(text: String): String
 
 /**
  * Small things remembered between runs: the directories the open
