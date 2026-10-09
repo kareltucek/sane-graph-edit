@@ -12,6 +12,9 @@ import * as path from "path";
 // window keeps beside its session socket.
 
 // For tests: --capture <png> saves the picture of the graph a moment after it was first drawn, and quits.
+// --shots <directory> draws the window off the screen and saves a picture of all of it, the node's editor included, several times a second.
+
+const SHOT_INTERVAL_MS = 250;
 
 interface Args {
     url?: string;
@@ -19,6 +22,7 @@ interface Args {
     capture?: string;
     captureAfter?: string;
     play?: string;
+    shots?: string;
     problem?: string;
 }
 
@@ -30,6 +34,7 @@ function parseArgs(argv: string[]): Args {
         else if (a === "--capture") args.capture = path.resolve(argv[++i]);
         else if (a === "--capture-after") args.captureAfter = argv[++i];
         else if (a === "--play") args.play = path.resolve(argv[++i]);
+        else if (a === "--shots") args.shots = path.resolve(argv[++i]);
         else if (a.startsWith("-")) continue; // Chromium's own switches
         else if (path.resolve(a) === app.getAppPath()) continue; // `electron <this application>`
         else if (args.file === undefined) args.file = path.resolve(a);
@@ -62,8 +67,17 @@ app.whenReady().then(() => {
         height: 700,
         // the page is this application's own code and loads nothing from elsewhere; it uses Node for files and neovim
         // not throttled in the background: the page only draws when asked to, and a hidden window must still follow the session
-        webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false },
+        show: args.shots === undefined,
+        webPreferences: { nodeIntegration: true, contextIsolation: false, backgroundThrottling: false, offscreen: args.shots !== undefined },
     });
+    const shots = args.shots;
+    if (shots !== undefined) {
+        fs.mkdirSync(shots, { recursive: true });
+        const started = Date.now();
+        setInterval(() => {
+            window.webContents.capturePage().then((image) => fs.writeFileSync(path.join(shots, `${Date.now() - started}.png`), image.toPNG()));
+        }, SHOT_INTERVAL_MS);
+    }
     window.setMenuBarVisibility(false);
     const query: Record<string, string> = {};
     if (args.url !== undefined) query.url = args.url;

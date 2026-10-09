@@ -1,5 +1,5 @@
 import { client } from "sane-graph-edit-client-core";
-import { Colours, NodeEditor, PAD_COLUMNS, Place } from "./nodeEditor";
+import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -82,21 +82,40 @@ function say(text: string) {
     message.style.display = "block";
 }
 
+/**
+ * Where the baseline is in a cell of the node's editor, as a
+ * fraction of the cell's height: measured on a row built like the
+ * terminal's, at its font size. The node's text is drawn on the
+ * same, or it moves when editing starts; the font's box as a canvas
+ * tells it puts the baseline lower, and so does HTML at other sizes.
+ */
+function editorBaseline(): number {
+    const font = `font: ${TERMINAL_FONT_PX}px ${FONT};`;
+    const sample = document.createElement("span");
+    sample.style.cssText = `position: absolute; visibility: hidden; line-height: normal; ${font}`;
+    sample.textContent = "W";
+    const row = document.createElement("div");
+    const cell = document.createElement("span");
+    cell.style.cssText = "display: inline-block; height: 100%; vertical-align: top;";
+    const mark = document.createElement("span");
+    mark.style.cssText = "display: inline-block; width: 0; height: 0;";
+    cell.append(mark, "W");
+    row.appendChild(cell);
+    document.body.append(sample, row);
+    const height = Math.ceil(sample.getBoundingClientRect().height);
+    row.style.cssText = `position: absolute; visibility: hidden; overflow: hidden; ${font} height: ${height}px; line-height: ${height}px;`;
+    const baseline = (mark.getBoundingClientRect().top - row.getBoundingClientRect().top) / height;
+    sample.remove();
+    row.remove();
+    return baseline;
+}
+
 /** The font's cell, as fractions of the font size; the client core sizes nodes with it. */
 function measureGrid(): client.GridMetrics {
     const size = 100;
     ctx.font = `${size}px ${FONT}`;
     const m = ctx.measureText("M");
-    // Where a line's baseline is, asked of the page's own layout: the node's editor is laid out by it,
-    // and the font's box as a canvas tells it is another (a pixel lower at 16 px).
-    const line = document.createElement("div");
-    line.style.cssText = `position: absolute; visibility: hidden; font: ${size}px ${FONT}; line-height: ${LINE_HEIGHT * size}px;`;
-    const mark = document.createElement("span");
-    mark.style.cssText = "display: inline-block; width: 0; height: 0;";
-    line.append(mark, "M");
-    document.body.appendChild(line);
-    const ascent = mark.getBoundingClientRect().top - line.getBoundingClientRect().top;
-    line.remove();
+    const ascent = editorBaseline() * LINE_HEIGHT * size;
     return new client.GridMetrics(m.width / size, LINE_HEIGHT, ascent / size, MARGIN_COLUMNS * m.width / size, MARGIN_ROWS * LINE_HEIGHT);
 }
 

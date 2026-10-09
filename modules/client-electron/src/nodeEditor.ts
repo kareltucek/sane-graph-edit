@@ -29,7 +29,7 @@ export interface Colours {
 }
 
 /** The terminal's own font size; it is stretched to the node's, so this only sets how sharp the letters are. */
-const TERMINAL_FONT_PX = 16;
+export const TERMINAL_FONT_PX = 16;
 
 /**
  * Room beyond the text, so that neovim need not scroll before the
