@@ -87,7 +87,16 @@ function measureGrid(): client.GridMetrics {
     const size = 100;
     ctx.font = `${size}px ${FONT}`;
     const m = ctx.measureText("M");
-    const ascent = (LINE_HEIGHT * size - (m.fontBoundingBoxAscent + m.fontBoundingBoxDescent)) / 2 + m.fontBoundingBoxAscent;
+    // Where a line's baseline is, asked of the page's own layout: the node's editor is laid out by it,
+    // and the font's box as a canvas tells it is another (a pixel lower at 16 px).
+    const line = document.createElement("div");
+    line.style.cssText = `position: absolute; visibility: hidden; font: ${size}px ${FONT}; line-height: ${LINE_HEIGHT * size}px;`;
+    const mark = document.createElement("span");
+    mark.style.cssText = "display: inline-block; width: 0; height: 0;";
+    line.append(mark, "M");
+    document.body.appendChild(line);
+    const ascent = mark.getBoundingClientRect().top - line.getBoundingClientRect().top;
+    line.remove();
     return new client.GridMetrics(m.width / size, LINE_HEIGHT, ascent / size, MARGIN_COLUMNS * m.width / size, MARGIN_ROWS * LINE_HEIGHT);
 }
 
