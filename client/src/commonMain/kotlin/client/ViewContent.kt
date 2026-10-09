@@ -4,6 +4,7 @@ import DotGraphLoader
 import Graph
 import export.SvgWriter
 import graph_tools.Node
+import graph_tools.ReplaceContentCommand
 import graph_tools.ViewModes
 import utils.Vector2
 
@@ -203,9 +204,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
 
     /**
      * Re-read [currentFile], e.g. after an external tool regenerated
-     * it. Unsaved changes are lost, so a changed graph asks first
-     * unless [force] is set (`:e!`). The view keeps looking at the
-     * same spot.
+     * it or another editor saved it. The reload is a step in the undo
+     * history: undo brings back the graph as it was, unsaved changes
+     * included. A changed graph still asks first unless [force] is
+     * set (`:e!`). The view keeps looking at the same spot.
      */
     fun reload(force: Boolean = false) {
         val path = currentFile
@@ -214,13 +216,34 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         } else if (force || confirmDiscard("reload ${path.name}")) {
             try {
                 // with a document everyone attached gets the file's content; a failure comes back as a message
-                document?.reload() ?: replaceGraph(DotGraphLoader.loadFromFile(path.toString()))
+                document?.reload() ?: reloadOwn(path)
                 view.repaint()
             } catch (t: Throwable) {
                 shell.alert("Reload error", "Could not reload $path:\n${t.message}")
             }
         }
     }
+
+    // one more step in the graph's own history: undo brings back what the reload replaced
+    private fun reloadOwn(path: Path) {
+        val g = view.g
+        g.commit(ReplaceContentCommand(g, g.content(), DotGraphLoader.loadFromFile(path.toString()).content()))
+        dirty(false)
+    }
+
+    /** What the view shows: the file's full path, the browsed directory, the source lines, or its name. */
+    val filePath: String
+        get() {
+            val shown = sourceView?.let { "${it.path}:${it.lines}" }
+                ?: currentFile?.toAbsolutePath()?.normalize()?.toString()
+                ?: browseDir?.toString()
+                ?: untitledName
+                ?: "(untitled)"
+            return if (isDirty) "$shown [modified]" else shown
+        }
+
+    /** `:file` — vim's: show [filePath]. */
+    fun showFilePath() = shell.message(filePath)
 
     /** True when there are no unsaved changes, the user agrees to lose them to [action], or `:set discard` says not to ask. */
     private fun confirmDiscard(action: String): Boolean =
@@ -234,9 +257,9 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         view.repaint()
     }
 
-    /** Replace the graph with the [FileTree] of [dir]; the directory sits in the middle of the view. */
+    /** Replace the graph with the [FileTree] of [dir], cut to fit the view; it is laid out around the middle of the view. */
     fun browseInPlace(dir: Path) {
-        replaceGraph(FileTree.build(dir))
+        replaceGraph(FileTree.build(dir, view.size.takeIf { it.x > 0 && it.y > 0 } ?: FileTree.DEFAULT_SCREEN))
         currentFile = null
         browseDir = dir.toAbsolutePath().normalize()
         sourceView = null
@@ -265,6 +288,18 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             shell.sessionChanged()
         }
         return graph != null
+    }
+
+    /** Replace the graph with the built-in help graph (the `help` node of a [FileTree]). */
+    fun showHelpInPlace() {
+        replaceGraph(Graph.defaultGraph())
+        currentFile = null
+        browseDir = null
+        sourceView = null
+        untitledName = FileLink.HELP_TITLE
+        shell.stateChanged()
+        if (view.size.x > 0) view.setViewTo(Vector2.Zero, view.viewTransform.scale)
+        shell.sessionChanged()
     }
 
     // --- links ---
@@ -314,6 +349,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val inThisGraph = lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
         val from = currentLocation()
         when {
+            target.help -> if (confirmDiscard("open the help")) {
+                jumps.record(from)
+                showHelpInPlace()
+            }
             path != null && lines != null -> if (confirmDiscard("open ${path.name}:$lines")) {
                 if (showSourceInPlace(path, lines)) jumps.record(from)
             }
@@ -338,6 +377,11 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val path = target.path
         val lines = target.lines
         val opened = when {
+            // a new tab starts with the help graph
+            target.help -> shell.newTab()?.also {
+                it.content.untitledName = FileLink.HELP_TITLE
+                it.shell.stateChanged()
+            }
             path == null -> {
                 jumps.record(currentLocation())
                 focusNode(target.nodeId)

@@ -18,7 +18,15 @@ object FileLink {
         val nodeId: String?,
         /** `<file>:<line>` / `<file>:<from>-<to>` of a non-`.dot` file: shown as a [SourceView]. */
         val lines: Lines? = null,
+        /** The built-in help graph ([HELP]). */
+        val help: Boolean = false,
     )
+
+    /** Link value of the built-in help graph (`Graph.defaultGraph`). */
+    const val HELP = "sge:help"
+
+    /** Tab title of the help graph. */
+    const val HELP_TITLE = "help"
 
     /** A line (`to == null`: shown with context around it) or a range, 1-based, inclusive. */
     data class Lines(val from: Int, val to: Int?) {
@@ -69,6 +77,7 @@ object FileLink {
             ?.let { lineSpec.matchEntire(it) }
             ?.let { m -> Lines(m.groupValues[1].toInt(), m.groupValues[2].takeIf { it.isNotEmpty() }?.toInt()) }
         return when {
+            link == HELP -> Target(null, null, help = true)
             !split -> Target(whole, null)
             pathPart.isEmpty() -> Target(null, nodeId)
             lines != null -> Target(resolvePath(pathPart, baseDir), null, lines)

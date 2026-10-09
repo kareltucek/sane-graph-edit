@@ -175,9 +175,10 @@ class KeyMapper(
     /**
      * Callback for an unmapped `g<letter>`: follow the selected
      * node's `link-<letter>`. Returns false when there is no such
-     * link, and the keys are then resolved as before. Set by Window.
+     * link — reporting it, unless the third argument (quiet) is set.
+     * Set by Window.
      */
-    var linkFollower: ((EditorView, Char) -> Boolean)? = null
+    var linkFollower: ((EditorView, Char, Boolean) -> Boolean)? = null
 
     /**
      * When non-null, we're accumulating characters into a
@@ -305,9 +306,13 @@ class KeyMapper(
             return
         }
 
+        // The prefix keys below start a sequence of their own; after
+        // a waiting key they are its continuation (`gm` = link-m).
+        val startsSequence = pending.isEmpty()
+
         // `q` toggles recording. If recording, stop. If not
         // recording, wait for the next key as register name.
-        if (key == "q") {
+        if (key == "q" && startsSequence) {
             if (isRecording) {
                 stopRecording()
             } else {
@@ -317,19 +322,19 @@ class KeyMapper(
         }
 
         // `@` starts replay — wait for the register name.
-        if (key == "@") {
+        if (key == "@" && startsSequence) {
             waitingForPrefix = PrefixAction.ReplayMacro
             return
         }
 
         // `m` sets a mark — wait for the register letter.
-        if (key == "m") {
+        if (key == "m" && startsSequence) {
             waitingForPrefix = PrefixAction.SetMark
             return
         }
 
         // `'` recalls a mark — wait for the register letter.
-        if (key == "'") {
+        if (key == "'" && startsSequence) {
             waitingForPrefix = PrefixAction.RecallMark
             return
         }
@@ -453,13 +458,23 @@ class KeyMapper(
 
     /**
      * `g<letter>` that no mapping claims: try the selected node's
-     * `link-<letter>` via [linkFollower]. True if it was followed.
+     * `link-<letter>` via [linkFollower]. True if the keys were
+     * consumed: the link was followed, or there is none and that was
+     * reported — a failed `gm` must not grab. Only a letter that
+     * means something during a grab (`gx`: grab along X) is left to
+     * be resolved as `g` + the letter.
      */
     private fun followLink(accumulated: String): Boolean {
         val letter = accumulated.getOrNull(1)
         val isGLetter = accumulated.length == 2 && accumulated[0] == 'g' && letter != null && letter.isLetter()
         val gv = activeView
-        return isGLetter && gv != null && linkFollower?.invoke(gv, letter!!) == true
+        val follower = linkFollower
+        return if (isGLetter && gv != null && follower != null) {
+            val continuesGrab = letter.toString() in transformModeBindings
+            follower(gv, letter!!, continuesGrab) || !continuesGrab
+        } else {
+            false
+        }
     }
 
     /**
@@ -841,6 +856,19 @@ class KeyMapper(
         }
     }
 
+    /**
+     * The mouse moved: if the key waiting for its timeout starts a
+     * mouse gesture (`g` = grab, which could still become `gt`), the
+     * gesture starts now instead of after the timeout.
+     */
+    fun mouseMoved() {
+        val gestureWaiting = pendingTimer != null && pending !in mappings && defaults[pending] in MOUSE_GESTURES
+        if (gestureWaiting) {
+            cancelTimer()
+            onTimeout()
+        }
+    }
+
     private fun startTimeout() {
         pendingTimer = scheduler.after(timeoutMs) { onTimeout() }
     }
@@ -931,8 +959,8 @@ class KeyMapper(
         sb.appendLine("                    Session-only. Default: 0.8. Current: ${graph_tools.LayoutOptimizer.springScaleStep}.")
         sb.appendLine()
         sb.appendLine("  picker=<command>  Shell command behind Ctrl+P (pick-file), run with")
-        sb.appendLine("                    `sh -c` in the background. Env: SGE_DIR (current")
-        sb.appendLine("                    file's / browsed directory), SGE_FILE. It prints")
+        sb.appendLine("                    `sh -c` in the background. Env: SGE_DIR (the")
+        sb.appendLine("                    workspace directory), SGE_FILE. It prints")
         sb.appendLine("                    `path[:nodeid]` lines (relative to SGE_DIR); the")
         sb.appendLine("                    first opens in this tab, the rest in new tabs.")
         sb.appendLine("                    Opening a terminal is its job. Default: xterm +")
@@ -1154,6 +1182,9 @@ class KeyMapper(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
             "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
         )
+
+        /** Commands driven by moving the mouse ([mouseMoved]). */
+        val MOUSE_GESTURES = setOf("grab", "scale", "rotate")
 
         /** `:set <name>=<value>` settings ([applySetting]). */
         val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker")

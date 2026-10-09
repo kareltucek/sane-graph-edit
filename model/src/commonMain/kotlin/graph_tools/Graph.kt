@@ -115,6 +115,34 @@ class Graph(
         committer?.redo() ?: history.redo()
     }
 
+    /** What a file holds: everything a (re)load replaces. See [ReplaceContentCommand]. */
+    class Content(
+        val id: String,
+        val nodes: List<Node>,
+        val edges: List<Edge>,
+        val selectedNodes: List<Node>,
+        val lastActiveNode: Node?,
+        val parseLog: ParseLog?,
+        val attributes: Map<String, String>,
+    )
+
+    fun content(): Content =
+        Content(id, nodes.toList(), edges.toList(), selectedNodes.toList(), lastActiveNode, parseLog, LinkedHashMap(attributes))
+
+    /** Make this graph hold [content] instead of what it holds now; the [history] stays. */
+    fun replaceContent(content: Content) {
+        removeAllNodes(nodes.toList())
+        id = content.id
+        parseLog = content.parseLog
+        attributes.clear()
+        attributes.putAll(content.attributes)
+        dynamicBaseline = null
+        addAllNodes(content.nodes)
+        addAllEdges(content.edges)
+        cleanSelect(content.selectedNodes)
+        lastActiveNode = content.lastActiveNode
+    }
+
     val nodes: Set<Node>
         get() {
             return nodesRestricted
@@ -311,10 +339,10 @@ class Graph(
 
     companion object {
         /**
-         * The graph shown in a fresh tab — both the very first launch
-         * and every `:tabnew` afterward. Holds the in-app
-         * keystroke and command reference, so a new user can read it
-         * by just opening the editor without having to find a manual.
+         * The help graph, opened from the `help` node of a file tree
+         * (the first launch in a workspace, `:tabnew`, `:browse`).
+         * Holds the in-app keystroke and command reference, so a new
+         * user can read it without having to find a manual.
          *
          * Layout: a star with the commands node at the centre and the
          * other four reference nodes around it (selection on top,

@@ -28,7 +28,18 @@ interface FileStore {
  * simply overwrite each other in the order they arrive.
  */
 class EditorCore(private val files: FileStore) {
-    private class HistoryEntry(var forward: Patch, val backward: Patch, val client: String, var time: Long)
+    /** What saving needs besides the state: the name in `digraph <name> {` and the layout of the source file. */
+    private class FileForm(val graphName: String?, val parseLog: ParseLog?)
+
+    /** [formBefore] / [formAfter] only for a reload, which changes the [FileForm] too. */
+    private class HistoryEntry(
+        var forward: Patch,
+        val backward: Patch,
+        val client: String,
+        var time: Long,
+        val formBefore: FileForm? = null,
+        val formAfter: FileForm? = null,
+    )
 
     private class Change(val revision: Long, val client: String)
 
@@ -83,8 +94,8 @@ class EditorCore(private val files: FileStore) {
                 is Detach -> detach(document(request.document), client)
                 is ListDocuments -> listOf(Outgoing(client, Documents(documents.values.map { it.info })))
                 is Submit -> submit(client, document(request.document), request, now)
-                is Undo -> document(request.document).let { d -> step(client, d, d.undo, d.redo) { it.backward } }
-                is Redo -> document(request.document).let { d -> step(client, d, d.redo, d.undo) { it.forward } }
+                is Undo -> step(client, document(request.document), undoing = true)
+                is Redo -> step(client, document(request.document), undoing = false)
                 is Save -> save(document(request.document), request.path, request.copy)
                 is Reload -> reload(client, document(request.document))
                 is Show -> listOf(Outgoing(owner ?: error("the session has no owner"), ShowRequested(request.path, request.here)))
@@ -149,13 +160,18 @@ class EditorCore(private val files: FileStore) {
         return changed(d, after, forward, client, r.opId)
     }
 
-    /** Move the top of [from] to [to], applying the patch [pick] selects. */
-    private fun step(client: String, d: Document, from: ArrayDeque<HistoryEntry>, to: ArrayDeque<HistoryEntry>, pick: (HistoryEntry) -> Patch): List<Outgoing> {
-        val entry = from.removeLastOrNull() ?: return emptyList()
-        to.addLast(entry)
+    /** Undo the last change, or redo the last undone one. */
+    private fun step(client: String, d: Document, undoing: Boolean): List<Outgoing> {
+        val entry = (if (undoing) d.undo else d.redo).removeLastOrNull() ?: return emptyList()
+        (if (undoing) d.redo else d.undo).addLast(entry)
         // the next change must not merge into an entry that was undone and redone
         entry.time = Long.MIN_VALUE / 2
-        return changed(d, d.state.apply(pick(entry)), pick(entry), client, null)
+        (if (undoing) entry.formBefore else entry.formAfter)?.let {
+            d.graphName = it.graphName
+            d.parseLog = it.parseLog
+        }
+        val patch = if (undoing) entry.backward else entry.forward
+        return changed(d, d.state.apply(patch), patch, client, null)
     }
 
     private fun changed(d: Document, state: GraphState, patch: Patch, client: String, opId: String?): List<Outgoing> {
@@ -182,13 +198,17 @@ class EditorCore(private val files: FileStore) {
         return toAll(d, DocumentChanged(d.info))
     }
 
+    // a step in the history: undo brings back the content as it was, with the file layout it had
     private fun reload(client: String, d: Document): List<Outgoing> {
         val (state, name, log) = parse(d.file ?: throw IllegalStateException("the document has no file"))
         val patch = d.state.diff(state)
+        val before = FileForm(d.graphName, d.parseLog)
+        val after = FileForm(name, log)
+        d.undo.addLast(HistoryEntry(patch, state.diff(d.state), client, Long.MIN_VALUE / 2, before, after))
+        while (d.undo.size > MAX_DEPTH) d.undo.removeFirst()
+        d.redo.clear()
         d.graphName = name
         d.parseLog = log
-        d.undo.clear()
-        d.redo.clear()
         val patched = changed(d, state, patch, client, null).filter { it.event is Patched }
         d.dirty = false
         return patched + toAll(d, DocumentChanged(d.info))

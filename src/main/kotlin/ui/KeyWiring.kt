@@ -15,7 +15,7 @@ fun applicationKeyMapper(): KeyMapper {
     mapper.commandNames = { CommandRegistry.list() }
     mapper.markSetter = { view, letter -> Actions.setMark(view, letter) }
     mapper.markRecaller = { view, letter -> Actions.recallMark(view, letter) }
-    mapper.linkFollower = { view, letter -> view.content.followFileLink(letter, quiet = true) }
+    mapper.linkFollower = { view, letter, quiet -> view.content.followFileLink(letter, quiet) }
     mapper.applicationSettings["picker"] = { value -> FilePicker.command = value.ifBlank { FilePicker.DEFAULT_COMMAND } }
     mapper.installDefaultTransformBindings()
     return mapper

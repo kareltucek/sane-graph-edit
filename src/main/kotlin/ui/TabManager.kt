@@ -4,6 +4,7 @@ import client.*
 import DotGraphLoader
 import Graph
 import graph_tools.Plotter
+import utils.Vector2
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JOptionPane
@@ -166,10 +167,8 @@ class TabManager(
      * All user-initiated paths leave it at the default `true`.
      */
     fun newTab(
-        // Default to the help/keystroke reference graph rather than a
-        // truly empty document. A fresh tab is also "first contact"
-        // for any new user, and the help text being one `:tabnew` away
-        // is more useful than a blank canvas.
+        // Default to the help/keystroke reference graph (the `help`
+        // node of a file tree) rather than a truly empty document.
         graph: Graph = Graph.defaultGraph(),
         path: Path? = null,
         persistSession: Boolean = true,
@@ -242,7 +241,9 @@ class TabManager(
      * a file picker driven by `gf`.
      */
     fun browse(dir: Path, persistSession: Boolean = true): GraphView {
-        val gv = newTab(graph = FileTree.build(dir), persistSession = persistSession)
+        // the new tab has no size yet; it gets the pane's (none before the window is shown)
+        val screen = Vector2(tabbedPane.width, tabbedPane.height).takeIf { it.x > 0 && it.y > 0 } ?: FileTree.DEFAULT_SCREEN
+        val gv = newTab(graph = FileTree.build(dir, screen), persistSession = persistSession)
         gv.content.browseDir = dir.toAbsolutePath().normalize()
         gv.content.untitledName = "browse: ${gv.content.browseDir}"
         gv.onStateChange()

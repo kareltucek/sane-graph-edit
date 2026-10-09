@@ -11,7 +11,8 @@ import utils.Vector2
  * left to right — the filesystem root on the left, the chain of
  * parents down to [build]'s directory, then its subtree fanning out
  * to the right. Every node carries a `link` ([FileLink]) to its
- * path, so `gf` opens a `.dot` file or browses a directory.
+ * path, so `gf` opens a `.dot` file or browses a directory. A `help`
+ * node above the browsed directory links to the built-in help graph.
  *
  * Only directories and `.dot` files are shown, hidden entries
  * (`.git`, …) are skipped. The scan is breadth-first and stops after
@@ -20,12 +21,25 @@ import utils.Vector2
  * Directories scanned completely without a `.dot` file below them
  * are left out; directories the scan didn't reach are shown as
  * `name/ …` (`gf` browses into them).
+ *
+ * A directory's files are one column to its right, its
+ * subdirectories two, so both start on the same row. The subtree
+ * is cut at the deepest level with which the graph still fits the
+ * screen (at least the browsed directory's own files and
+ * subdirectories); the directories of the last level are `name/ …`.
  */
 object FileTree {
     const val MAX_ENTRIES = 2000
 
+    /** The window's initial size, for when there is no view to measure yet. */
+    val DEFAULT_SCREEN = Vector2(800.0, 600.0)
+
+    /** Part of the screen the graph may take (the rest is margin and the status bar). */
+    private const val SCREEN_FILL = 0.9
+
     private val dirColor = Rgb(0xDBE9F6)
     private val currentDirColor = Rgb(0x8FB8E0)
+    private val helpColor = Rgb(0xF6EFC4)
     private const val COLUMN_GAP = 40.0
     private const val ROW_GAP = 8.0
 
@@ -39,12 +53,28 @@ object FileTree {
 
         /** Worth a node: a graph, a directory with one below, or one we can't tell about. */
         val shown: Boolean get() = !isDir || !complete || children.any { it.shown }
+
+        /** Levels of entries to show below this directory when nothing is cut. */
+        val levels: Int get() = if (children.none { it.shown }) 0 else 1 + children.filter { it.shown }.maxOf { it.levels }
     }
 
-    fun build(dir: Path): Graph {
+    /** The tree of [dir], cut to fit a view of [screen] pixels. */
+    fun build(dir: Path, screen: Vector2 = DEFAULT_SCREEN): Graph {
         val root = dir.toAbsolutePath().normalize()
         val top = scan(root)
+        val available = screen * SCREEN_FILL
+        // deeper trees are only larger: take the last one that fits
+        return (2..top.levels).asSequence()
+            .map { render(root, top, it, available) }
+            .takeWhile { it.fits }
+            .lastOrNull()?.graph
+            ?: render(root, top, 1, available).graph
+    }
 
+    private class Rendered(val graph: Graph, val fits: Boolean)
+
+    /** The graph with [maxLevels] levels of entries below [root]. */
+    private fun render(root: Path, top: Entry, maxLevels: Int, available: Vector2): Rendered {
         val g = Graph()
         val ancestors = generateSequence(root) { it.getParent() }.toList().reversed()
         val chain = ancestors.map { p ->
@@ -53,21 +83,32 @@ object FileTree {
         chain.zipWithNext().forEach { (a, b) -> g.add(Edge(a, b)) }
         chain.last().attributes.nodeScale = 1.0
 
-        val childNodes = mutableMapOf<Node, List<Node>>()
-        fun addSubtree(parent: Node, entries: List<Entry>) {
-            childNodes[parent] = entries.filter { it.shown }.map { e ->
-                val n = if (e.isDir) dirNode(e.path, dirColor, unexplored = !e.scanned) else fileNode(e.path)
+        val files = mutableMapOf<Node, List<Node>>()
+        val dirs = mutableMapOf<Node, List<Node>>()
+        fun addSubtree(parent: Node, entries: List<Entry>, level: Int) {
+            val (dirEntries, fileEntries) = entries.filter { it.shown }.partition { it.isDir }
+            val expanded = dirEntries.filter { it.scanned && level < maxLevels }
+            val dirNodes = dirEntries.associateWith { e -> dirNode(e.path, dirColor, unexplored = e !in expanded) }
+            files[parent] = fileEntries.map { e -> fileNode(e.path) }
+            dirs[parent] = dirNodes.values.toList()
+            (files.getValue(parent) + dirs.getValue(parent)).forEach { n ->
                 g.add(n)
                 g.add(Edge(parent, n))
-                addSubtree(n, e.children)
-                n
             }
+            expanded.forEach { e -> addSubtree(dirNodes.getValue(e), e.children, level + 1) }
         }
-        addSubtree(chain.last(), top.children)
+        addSubtree(chain.last(), top.children, 1)
 
-        layout(g, chain, childNodes)
+        val help = Node(FileLink.HELP_TITLE, Vector2(0, 0)).also {
+            it.attributes.bg = helpColor
+            it.attributes.other[FileLink.ATTRIBUTE] = FileLink.HELP
+        }
+        g.add(help)
+        g.add(Edge(chain.last(), help))
+
+        val fits = layout(g, chain, help, files, dirs, available)
         g.lastActiveNode = chain.last()
-        return g
+        return Rendered(g, fits)
     }
 
     /**
@@ -117,42 +158,66 @@ object FileTree {
         }
 
     /**
-     * Left-aligned columns by depth (width = widest node in the
-     * column); leaves on consecutive rows, a parent centred on its
-     * children; the ancestor chain on the browsed directory's row.
+     * Left-aligned columns (width = widest node in the column): one
+     * per ancestor, then a directory's [files] in the next column and
+     * its [dirs] in the one after. Files take consecutive rows from
+     * the directory's first row, and so do the subdirectories'
+     * blocks; a directory is centred on its subdirectories (or its
+     * files); the ancestor chain is on the browsed directory's row,
+     * [help] is right above the browsed directory.
+     *
+     * True if the graph fits [available]: it is then centred on the
+     * origin, otherwise the browsed directory is — a fresh tab's
+     * first paint centres the origin.
      */
-    private fun layout(g: Graph, chain: List<Node>, childNodes: Map<Node, List<Node>>) {
+    private fun layout(
+        g: Graph,
+        chain: List<Node>,
+        help: Node,
+        files: Map<Node, List<Node>>,
+        dirs: Map<Node, List<Node>>,
+        available: Vector2,
+    ): Boolean {
         g.ensureCachesFresh(force = true)
         val size = { n: Node -> n.cache.shapeBounds }
-        val depth = mutableMapOf<Node, Int>()
-        chain.forEachIndexed { i, n -> depth[n] = i }
-        fun assignDepth(n: Node) {
-            childNodes[n].orEmpty().forEach { c -> depth[c] = depth.getValue(n) + 1; assignDepth(c) }
+        val column = mutableMapOf<Node, Int>()
+        chain.forEachIndexed { i, n -> column[n] = i }
+        column[help] = chain.lastIndex
+        fun assignColumns(n: Node) {
+            files[n].orEmpty().forEach { f -> column[f] = column.getValue(n) + 1 }
+            dirs[n].orEmpty().forEach { d -> column[d] = column.getValue(n) + 2; assignColumns(d) }
         }
-        assignDepth(chain.last())
+        assignColumns(chain.last())
 
-        val maxDepth = depth.values.max()
-        val columnWidth = (0..maxDepth).map { d -> depth.filterValues { it == d }.keys.maxOf { size(it).x } }
-        val columnLeft = columnWidth.runningFold(0.0) { left, w -> left + w + COLUMN_GAP }
+        // a column nothing landed in (files, when there are only subdirectories) takes no space
+        val columnWidth = (0..column.values.max()).map { c -> column.filterValues { it == c }.keys.maxOfOrNull { size(it).x } }
+        val columnLeft = columnWidth.runningFold(0.0) { left, w -> if (w == null) left else left + w + COLUMN_GAP }
         val rowHeight = g.nodes.maxOf { size(it).y } + ROW_GAP
 
-        var nextRow = 0
         val y = mutableMapOf<Node, Double>()
-        fun placeRows(n: Node) {
-            val cs = childNodes[n].orEmpty()
-            cs.forEach { placeRows(it) }
-            y[n] = if (cs.isEmpty()) rowHeight * nextRow++ else (y.getValue(cs.first()) + y.getValue(cs.last())) / 2
-        }
-        placeRows(chain.last())
-        chain.dropLast(1).forEach { y[it] = y.getValue(chain.last()) }
 
-        // origin on the browsed directory: a fresh tab's first paint centres the origin
-        val current = chain.last()
-        val origin = Vector2(columnLeft[depth.getValue(current)] + size(current).x / 2, y.getValue(current))
-        g.nodes.forEach { n ->
-            val d = depth.getValue(n)
-            n.position = Vector2(columnLeft[d] + size(n).x / 2, y.getValue(n)) - origin
+        /** Places [n]'s block from row [top] down; the number of rows it took. */
+        fun placeRows(n: Node, top: Int): Int {
+            val fs = files[n].orEmpty()
+            val ds = dirs[n].orEmpty()
+            fs.forEachIndexed { i, f -> y[f] = rowHeight * (top + i) }
+            val dirRows = ds.fold(0) { rows, d -> rows + placeRows(d, top + rows) }
+            val centredOn = ds.ifEmpty { fs }
+            y[n] = if (centredOn.isEmpty()) rowHeight * top else (y.getValue(centredOn.first()) + y.getValue(centredOn.last())) / 2
+            return maxOf(fs.size, dirRows, 1)
         }
+        placeRows(chain.last(), 0)
+        chain.dropLast(1).forEach { y[it] = y.getValue(chain.last()) }
+        y[help] = y.getValue(chain.last()) - rowHeight
+
+        val centre = { n: Node -> Vector2(columnLeft[column.getValue(n)] + size(n).x / 2, y.getValue(n)) }
+        val topLeft = g.nodes.map { centre(it) - size(it) / 2 }.reduce(Vector2::min)
+        val bottomRight = g.nodes.map { centre(it) + size(it) / 2 }.reduce(Vector2::max)
+        val extent = bottomRight - topLeft
+        val fits = extent.x <= available.x && extent.y <= available.y
+        val origin = if (fits) (topLeft + bottomRight) / 2 else centre(chain.last())
+        g.nodes.forEach { n -> n.position = centre(n) - origin }
         g.needsRecomputing(g.nodes)
+        return fits
     }
 }

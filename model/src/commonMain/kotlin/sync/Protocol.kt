@@ -58,7 +58,7 @@ data class Redo(val document: String) : Request
 @SerialName("save")
 data class Save(val document: String, val path: String? = null, val copy: Boolean = false) : Request
 
-/** Replace the content with the file's; drops the undo history. */
+/** Replace the content with the file's; one step in the undo history. */
 @Serializable
 @SerialName("reload")
 data class Reload(val document: String) : Request

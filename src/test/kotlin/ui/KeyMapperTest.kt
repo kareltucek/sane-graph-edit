@@ -327,7 +327,8 @@ class KeyMapperTest {
         val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "x" to "delete"), SwingScheduler)
         mapper.activeView = GraphView(initialGraph = Graph()).model
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
-        mapper.linkFollower = { _, letter -> (letter == 'd').also { if (it) followed.add(letter) } }
+        mapper.linkFollower = { _, letter, _ -> (letter == 'd').also { if (it) followed.add(letter) } }
+        mapper.installDefaultTransformBindings()
         return mapper
     }
 
@@ -354,7 +355,39 @@ class KeyMapperTest {
     }
 
     @Test
-    fun `g-letter without a link resolves as before`() {
+    fun `g-letter without a link does nothing, it doesn't grab`() {
+        val executed = mutableListOf<String>()
+        val followed = mutableListOf<Char>()
+        val mapper = linkMapper(executed, followed)
+        mapper.feedKey("g")
+        mapper.feedKey("m")
+        assertEquals(emptyList(), executed)
+        assertEquals(emptyList(), followed)
+    }
+
+    @Test
+    fun `gm and gq follow links, m and q after another waiting key keep their meaning`() {
+        val executed = mutableListOf<String>()
+        val followed = mutableListOf<Char>()
+        val marks = mutableListOf<Char>()
+        val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "d" to "delete", "dd" to "delete-reconnect"), SwingScheduler)
+        mapper.activeView = GraphView(initialGraph = Graph()).model
+        mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
+        mapper.linkFollower = { _, letter, _ -> followed.add(letter) }
+        mapper.markSetter = { _, letter -> marks.add(letter) }
+
+        listOf("g", "m", "g", "q").forEach { mapper.feedKey(it) }
+        assertEquals(listOf('m', 'q'), followed)
+        assertEquals(emptyList(), executed)
+
+        // `d` waits (it could become `dd`); `m` ends that wait and still sets a mark
+        listOf("d", "m", "a").forEach { mapper.feedKey(it) }
+        assertEquals(listOf("delete"), executed)
+        assertEquals(listOf('a'), marks)
+    }
+
+    @Test
+    fun `g and a grab key without a link still grabs`() {
         val executed = mutableListOf<String>()
         val followed = mutableListOf<Char>()
         val mapper = linkMapper(executed, followed)
@@ -377,6 +410,28 @@ class KeyMapperTest {
         mapper.feedKey("g")
         mapper.feedKey("T")
         assertEquals(listOf("tabnext", "tabprevious"), executed)
+    }
+
+    @Test
+    fun `moving the mouse while g waits grabs at once, other waiting keys keep waiting`() {
+        val executed = mutableListOf<String>()
+        val mapper = KeyMapper(mapOf("g" to "grab", "gt" to "tabnext", "d" to "delete", "dd" to "delete-reconnect"), SwingScheduler, timeoutMs = 60_000)
+        mapper.activeView = GraphView(initialGraph = Graph()).model
+        mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
+
+        mapper.mouseMoved()  // nothing waiting
+        mapper.feedKey("d")
+        mapper.mouseMoved()  // not a mouse gesture
+        assertEquals(emptyList(), executed)
+        mapper.feedKey("d")
+        assertEquals(listOf("delete-reconnect"), executed)
+
+        mapper.feedKey("g")
+        mapper.mouseMoved()
+        assertEquals(listOf("delete-reconnect", "grab"), executed)
+        mapper.feedKey("t")  // a new sequence, not the end of gt
+        assertEquals(listOf("delete-reconnect", "grab"), executed)
+        mapper.reset()
     }
 
     @Test

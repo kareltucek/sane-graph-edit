@@ -132,6 +132,7 @@ fun registerAllCommands() {
     r.register("saveas") { it.content.saveAs() }
     r.register("open") { it.content.open() }
     r.register("reload") { it.content.reload() }
+    r.register("file") { it.content.showFilePath() }
     r.register("follow-file-link") { it.content.followFileLink() }
     r.register("follow-file-link-in-tab") { it.content.followFileLinkInTab() }
     r.register("pick-file") { FilePicker.run(it) }
@@ -142,7 +143,7 @@ fun registerAllCommands() {
     r.register("export-selection") { it.content.exportSelection() }
 
     // Tabs
-    r.register("tabnew") { it.tabManager?.newTab() }
+    r.register("tabnew") { it.tabManager?.browse(Workspace.dir) }
     r.register("tabedit") { it.tabManager?.openInNewTab() }
     r.register("tabclose") { it.tabManager?.closeCurrent() }
     r.register("tabnext") { it.tabManager?.selectNext() }

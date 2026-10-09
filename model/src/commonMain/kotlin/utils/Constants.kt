@@ -135,7 +135,8 @@ object Constants {
           F5 / :e      - reload file from disk
           gf / gF      - follow the node's file link (here / new tab)
           g<letter>    - follow the node's link-<letter>
-          :browse      - file tree of the working dir (gf opens)
+          :browse      - file tree of the working dir (gf opens);
+                         its help node opens this help; also :tabnew
           :cd <dir>    - switch the workspace (working dir + its tabs)
           Ctrl+S       - save
           Ctrl+Shift+S - save as
