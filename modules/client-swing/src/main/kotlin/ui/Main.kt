@@ -10,7 +10,7 @@ import java.awt.*
 
 
 
-fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false, webSocketPort: Int? = null) {
+fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false, webSocketPort: Int? = null, execs: List<String> = emptyList()) {
     graph_tools.AwtTextMeasurer.install()
     val socket = client.SessionSocket.pathFor(Workspace.dir)
     if (!attach) {
@@ -28,6 +28,16 @@ fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false, webSo
         )
     }
     frame.isVisible = true
+    // `-e … -u`: the key sequences, once the window is up; each key goes to the tab that is shown then
+    EventQueue.invokeLater {
+        for (exec in execs) {
+            for (key in KeyNotation.tokenize(exec)) {
+                frame.keyMapper.activeView = frame.tabManager.currentOrNull?.model
+                frame.keyMapper.feedKey(key)
+            }
+            frame.keyMapper.reset()
+        }
+    }
 }
 
 /**
@@ -206,6 +216,5 @@ fun main(args: Array<String>) {
 
     // Interactive path (possibly with initial -e commands to
     // replay after the window is up).
-    EventQueue.invokeLater { createAndShowGUI(cli.file?.let(::expandHome), cli.attach, cli.webSocketPort) }
-    // TODO: honour -e -u combination (replay keys after window opens).
+    EventQueue.invokeLater { createAndShowGUI(cli.file?.let(::expandHome), cli.attach, cli.webSocketPort, cli.execs) }
 }
