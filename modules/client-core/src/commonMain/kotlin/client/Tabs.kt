@@ -196,7 +196,11 @@ class Tabs(
 
     /** True when [view] has no unsaved changes or the user agrees to lose them. */
     private fun mayClose(view: EditorView): Boolean =
-        !view.content.isDirty || host.mayClose(view) ?: dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${view.content.title.removePrefix("*")}?")
+        !view.content.isDirty || (host.mayClose(view) ?: discardAgreed(view))
+
+    /** `:set discard` says not to ask; otherwise the user is asked. */
+    private fun discardAgreed(view: EditorView): Boolean =
+        graph_tools.ViewModes.discard || dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${view.content.title.removePrefix("*")}?")
 
     /**
      * Close the tab at [index], asking first if it has unsaved

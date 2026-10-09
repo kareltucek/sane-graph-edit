@@ -99,14 +99,7 @@ class GraphView(
 
     override fun newTab(): EditorView? = tabManager?.newTab()?.model
 
-    override fun edit(path: Path): EditorView? =
-        if (java.nio.file.Files.isDirectory(path)) {
-            tabManager?.browse(path)?.model
-        } else {
-            val loaded = DotGraphLoader.loadFromFile(path.toString())
-            AppState.lastOpenDir = path.toAbsolutePath().parent
-            tabManager?.newTab(graph = loaded, path = path)?.model
-        }
+    override fun edit(path: Path): EditorView? = tabManager?.edit(path)?.model
 
     override fun browse(dir: Path): EditorView? = tabManager?.browse(dir)?.model
 
@@ -380,14 +373,7 @@ class Window(
         // on top of whatever the session restored.
         initialFile?.let { path ->
             try {
-                val opened = java.nio.file.Paths.get(path)
-                if (java.nio.file.Files.isDirectory(opened)) {
-                    tabManager.browse(opened)
-                } else {
-                    val loaded = DotGraphLoader.loadFromFile(path)
-                    tabManager.newTab(graph = loaded, path = opened)
-                    AppState.lastOpenDir = opened.toAbsolutePath().parent
-                }
+                tabManager.edit(java.nio.file.Paths.get(path))
             } catch (t: Throwable) {
                 System.err.println("sane-graph-edit: could not open '$path': ${t.message}")
             }
@@ -431,11 +417,13 @@ class Window(
      * every open tab either way, so the next start restores them.
      */
     fun quit(force: Boolean = false) {
-        if (force || tabManager.confirmCloseAll()) {
-            tabManager.saveSession()
-            autosave.stop()
-            dispose()
-            System.exit(0)
-        }
+        tabManager.tabs.quitAll(force)
+    }
+
+    /** The end, once the tabs have agreed to it and the session is written. */
+    fun exit() {
+        autosave.stop()
+        dispose()
+        System.exit(0)
     }
 }

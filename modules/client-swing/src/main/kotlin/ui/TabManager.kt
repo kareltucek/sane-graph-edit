@@ -3,48 +3,84 @@ package ui
 import client.*
 import DotGraphLoader
 import Graph
-import graph_tools.Plotter
 import utils.Vector2
-import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JOptionPane
 import javax.swing.JTabbedPane
 import javax.swing.event.ChangeListener
 
 /**
- * Owns the [JTabbedPane] and the list of [GraphView]s behind it.
- *
- * Every mutable concern that was previously "window-global" is now
- * "current-tab-global": the current graph, the current file path,
- * the undo stack, the view transform. Switching tabs rewires
- * [Plotter.t] to the active view's [GraphView.viewTransform] so
- * existing rendering and input code that reads `Plotter.t` keeps
- * working without having to thread a transform parameter through.
- *
- * The manager also handles the "last tab" edge case: closing the
- * only remaining tab clears it to an empty untitled document rather
- * than removing it, so the window always has something to show and
- * the user never ends up staring at a blank frame.
+ * The window's tabs as Swing shows them: the [JTabbedPane] and the
+ * [GraphView] of every tab. Which tabs there are, what opening,
+ * closing and quitting do, and what is remembered for the next
+ * start is [client.Tabs]', shared with the other renderers; this
+ * class makes the views, keeps the pane equal to the tabs and puts
+ * the questions to the user.
  */
 class TabManager(
     /**
      * Public so callers that need a reach through to the
      * containing window — the window's `JOptionPane` parenting
      * for prompts, the `refreshTitle` hook — have somewhere to
-     * reach to. Nothing else in this class relies on the window.
+     * reach to.
      */
     val window: Window,
-    /**
-     * The session of the current [Workspace]; replaced by
-     * [switchWorkspace]. Injectable so tests can swap in a
-     * temp-file backed instance.
-     */
-    private var session: Session = Workspace.session(),
+    /** The session of the current [Workspace]; injectable so tests can swap in a temp-file backed one. */
+    sessionOf: () -> Session = { Workspace.session() },
 ) {
 
     val tabbedPane: JTabbedPane = JTabbedPane()
 
-    private val views: MutableList<GraphView> = mutableListOf()
+    /** The Swing side of every view in the tabs. */
+    private val shown = mutableMapOf<EditorView, GraphView>()
+
+    /** The pane is being made equal to the tabs: its selection changes are not the user's. */
+    private var syncing = false
+
+    /** The view the pane showed last, to tell a change of tab from a change of title. */
+    private var lastShown: GraphView? = null
+
+    private val host = object : TabsHost {
+        // The view is its own shell: it asks the user itself and passes what is about tabs on to this class.
+        override fun view(graph: Graph, path: Path?, shell: Shell): EditorView {
+            // read here as well: a file that cannot be read fails before there is a tab, and without an editor it is the content
+            val content = path?.let { DotGraphLoader.loadFromFile(it.toString()) } ?: graph
+            return makeView(content, path).also { shown[it.model] = it }.model
+        }
+
+        // none before the window is shown
+        override fun screen(): Vector2? = Vector2(tabbedPane.width, tabbedPane.height).takeIf { it.x > 0 && it.y > 0 }
+
+        override fun leaving(view: EditorView) {}
+
+        override fun tabsChanged() = sync()
+
+        override fun mayClose(view: EditorView): Boolean? = shown[view]?.let { promptSaveDiscardCancel(it) }
+
+        override fun modesChanged() {
+            views.forEach {
+                it.refreshStatus()
+                it.repaint()
+            }
+        }
+
+        override fun exit() = window.exit()
+    }
+
+    /** The questions of the tabs themselves go to the user through the view that is shown. */
+    private val dialogs = object : Dialogs {
+        private val asker: Dialogs get() = currentOrNull ?: NoShell
+        override fun message(text: String) = asker.message(text)
+        override fun alert(title: String, text: String, error: Boolean) = asker.alert(title, text, error)
+        override fun confirm(title: String, question: String): Boolean = asker.confirm(title, question)
+        override fun chooseOpen(): Path? = asker.chooseOpen()
+        override fun chooseSave(defaultName: String): Path? = asker.chooseSave(defaultName)
+        override fun chooseExport(defaultName: String): Path? = asker.chooseExport(defaultName)
+    }
+
+    val tabs: Tabs = Tabs(host, dialogs, sessionOf)
+
+    private val views: List<GraphView> get() = tabs.views.mapNotNull { shown[it] }
 
     /**
      * Iterate every open view. Exposed for [AutosaveManager]'s
@@ -62,117 +98,19 @@ class TabManager(
      * only for code paths that run during startup.
      */
     val currentOrNull: GraphView?
-        get() = tabbedPane.selectedIndex.takeIf { it in views.indices }?.let { views[it] }
+        get() = tabs.current?.let { shown[it] }
 
     /** Same as [currentOrNull] but throws if there are no tabs. */
     val current: GraphView
-        get() = views[tabbedPane.selectedIndex]
+        get() = currentOrNull ?: throw NoSuchElementException("no tabs")
 
     init {
-        // Tabs are populated by bootstrap() after construction so
-        // the Window can control ordering (session restore before
-        // Plotter.t assignment, autosave timer start after).
-        tabbedPane.addChangeListener(ChangeListener { onChanged() })
+        // the user picked a tab in the pane
+        tabbedPane.addChangeListener(ChangeListener { if (!syncing) tabs.select(tabbedPane.selectedIndex) })
     }
 
-    /**
-     * Restore the workspace's previous session (if any) or browse
-     * the workspace directory, so the window always has something
-     * to show. Called by [Window] after `this` is fully constructed,
-     * and by [switchWorkspace].
-     *
-     * Missing or un-parseable session files are treated as "no
-     * session" — we never want a corrupted state file to block
-     * startup. Individual session entries that fail to load
-     * (deleted since last run, parse error) are skipped with a
-     * stderr warning.
-     *
-     * Note: only the list of *files* is persisted, not the
-     * contents of those files — session restore just reopens
-     * them from disk. That means any unsaved edits present at
-     * the previous shutdown are not recovered this way; that's
-     * the job of the autosave directory, which is never touched
-     * automatically.
-     */
-    fun bootstrap() {
-        val snap = session.load()
-        for (path in snap.files) {
-            if (!Files.exists(path)) {
-                System.err.println("sane-graph-edit: session file $path no longer exists, skipping")
-                continue
-            }
-            try {
-                val g = DotGraphLoader.loadFromFile(path.toString())
-                val gv = newTab(graph = g, path = path, persistSession = false)
-                // Restore the saved pan/zoom if we had one for this
-                // file. Keying by absolute path matches how Session
-                // writes/reads them. GraphCanvas's first-paint
-                // centering translate is gated on `isIdentity`, so
-                // the restore survives that pass.
-                snap.viewTransforms[path.toAbsolutePath()]?.let { m ->
-                    if (m.size == 6) gv.viewTransform.matrix = m
-                }
-            } catch (t: Throwable) {
-                System.err.println("sane-graph-edit: failed to restore $path: ${t.message}")
-            }
-        }
-        if (views.isEmpty()) {
-            browse(Workspace.dir, persistSession = false)
-        }
-        // Point the open/save dialogs at the last restored file's
-        // directory — that's where the user was working, which beats
-        // whatever directory a dialog happened to visit last.
-        views.lastOrNull { it.currentFile != null }
-            ?.currentFile?.toAbsolutePath()?.parent
-            ?.let { dir ->
-                AppState.lastOpenDir = dir
-                AppState.lastSaveDir = dir
-            }
-        // Restore the previously active tab by matching its file
-        // path; if it's no longer among the open tabs, leave the
-        // JTabbedPane's default (index 0).
-        snap.activeFile
-            ?.let { wanted -> views.indexOfFirst { it.currentFile == wanted } }
-            ?.takeIf { it >= 0 }
-            ?.let { tabbedPane.selectedIndex = it }
-    }
-
-    /**
-     * `:cd`: make [dir] the [Workspace]. The open tabs are kept in
-     * the session of the workspace being left and replaced by those
-     * of [dir]'s session. Asks about unsaved changes first; false if
-     * the user cancelled.
-     */
-    fun switchWorkspace(dir: Path): Boolean {
-        if (!confirmCloseAll()) return false
-        saveSession()
-        Workspace.dir = dir.toAbsolutePath().normalize()
-        session = Workspace.session()
-        views.forEach { it.content.close() }
-        views.clear()
-        tabbedPane.removeAll()
-        AppState.lastOpenDir = Workspace.dir
-        AppState.lastSaveDir = Workspace.dir
-        bootstrap()
-        return true
-    }
-
-    /**
-     * Add a new tab holding [graph] (defaults to empty) associated
-     * with [path] (nullable for an untitled document) and switch to
-     * it. Returns the created view.
-     *
-     * [persistSession] can be set to false during session restore
-     * to avoid re-writing session.properties once per restored tab.
-     * All user-initiated paths leave it at the default `true`.
-     */
-    fun newTab(
-        // Default to the help/keystroke reference graph (the `help`
-        // node of a file tree) rather than a truly empty document.
-        graph: Graph = Graph.defaultGraph(),
-        path: Path? = null,
-        persistSession: Boolean = true,
-    ): GraphView {
+    /** A view with its command bar, message area and status bar, not yet in a tab. */
+    private fun makeView(graph: Graph, path: Path?): GraphView {
         val gv = GraphView(initialGraph = graph, initialFile = path)
         gv.tabManager = this
         gv.keyMapper = window.keyMapper
@@ -190,13 +128,60 @@ class TabManager(
             bar.installConstraints()
         }
         gv.refreshStatus()
-        gv.onStateChange = { refreshTab(gv) }
-        views.add(gv)
-        tabbedPane.addTab(gv.title, gv)
-        tabbedPane.selectedIndex = views.size - 1
-        if (persistSession) saveSession()
+        // its title, file or unsaved state changed
+        gv.onStateChange = { sync() }
         return gv
     }
+
+    /** Make the pane show the tabs as they are now: the same views in the same order, their titles, the one selected. */
+    private fun sync() {
+        val wanted = views
+        syncing = true
+        try {
+            for (i in tabbedPane.tabCount - 1 downTo 0) {
+                if (tabbedPane.getComponentAt(i) !in wanted) tabbedPane.removeTabAt(i)
+            }
+            wanted.forEachIndexed { i, gv ->
+                if (i >= tabbedPane.tabCount || tabbedPane.getComponentAt(i) !== gv) tabbedPane.insertTab(gv.title, null, gv, null, i)
+                if (tabbedPane.getTitleAt(i) != gv.title) tabbedPane.setTitleAt(i, gv.title)
+            }
+            if (tabs.currentIndex in 0 until tabbedPane.tabCount) tabbedPane.selectedIndex = tabs.currentIndex
+        } finally {
+            syncing = false
+        }
+        shown.keys.retainAll(tabs.views.toSet())
+        window.refreshTitle()
+        val now = currentOrNull
+        if (now != null && now !== lastShown) {
+            lastShown = now
+            // global modes may have changed while another tab was active
+            now.refreshStatus()
+            // keystrokes go to the tab that is shown
+            now.graphCanvas.requestFocusInWindow()
+            now.repaint()
+        }
+    }
+
+    /**
+     * Restore the workspace's previous session (if any) or browse
+     * the workspace directory, so the window always has something
+     * to show. Called by [Window] after `this` is fully constructed.
+     */
+    fun bootstrap() = tabs.restore()
+
+    /**
+     * `:cd`: make [dir] the [Workspace]. The open tabs are kept in
+     * the session of the workspace being left and replaced by those
+     * of [dir]'s session. Asks about unsaved changes first; false if
+     * the user cancelled.
+     */
+    fun switchWorkspace(dir: Path): Boolean = tabs.switchWorkspace(dir)
+
+    /** A new tab without a file, holding [graph] (the help graph by default), and switch to it. */
+    fun newTab(graph: Graph = Graph.defaultGraph()): GraphView = shown.getValue(tabs.newTab(graph))
+
+    /** The file or directory [path] in a new tab. Fails when the file can't be read. */
+    fun edit(path: Path): GraphView = shown.getValue(tabs.open(path))
 
     /**
      * Prompt for a file and open it in a new tab. Cancelling the
@@ -212,12 +197,9 @@ class TabManager(
      * dialog); a directory is browsed. Parse errors are reported via a
      * dialog.
      */
-    fun openPath(path: Path): GraphView? {
-        if (Files.isDirectory(path)) return browse(path)
-        return try {
-            val loaded = DotGraphLoader.loadFromFile(path.toString())
-            AppState.lastOpenDir = path.toAbsolutePath().parent
-            newTab(graph = loaded, path = path)
+    fun openPath(path: Path): GraphView? =
+        try {
+            edit(path)
         } catch (t: Throwable) {
             JOptionPane.showMessageDialog(
                 window,
@@ -227,7 +209,6 @@ class TabManager(
             )
             null
         }
-    }
 
     /** Somebody outside (`ctl open`) asks to see [path]: in a new tab, or with [here] in the current one, like a followed link. */
     fun present(path: Path, here: Boolean) {
@@ -240,15 +221,7 @@ class TabManager(
      * `:browse`: a new untitled tab with the [FileTree] of [dir],
      * a file picker driven by `gf`.
      */
-    fun browse(dir: Path, persistSession: Boolean = true): GraphView {
-        // the new tab has no size yet; it gets the pane's (none before the window is shown)
-        val screen = Vector2(tabbedPane.width, tabbedPane.height).takeIf { it.x > 0 && it.y > 0 } ?: FileTree.DEFAULT_SCREEN
-        val gv = newTab(graph = FileTree.build(dir, screen), persistSession = persistSession)
-        gv.content.browseDir = dir.toAbsolutePath().normalize()
-        gv.content.untitledName = "browse: ${gv.content.browseDir}"
-        gv.onStateChange()
-        return gv
-    }
+    fun browse(dir: Path): GraphView = shown.getValue(tabs.browse(dir))
 
     /**
      * Close the tab at [idx] after prompting if it has unsaved
@@ -256,131 +229,29 @@ class TabManager(
      * closed (or cleared, on the last-tab path) and false if the
      * user cancelled.
      */
-    fun closeTab(idx: Int, force: Boolean = false): Boolean {
-        val gv = views.getOrNull(idx) ?: return false
-        if (!force && gv.isDirty && !promptSaveDiscardCancel(gv)) return false
-
-        if (views.size == 1) {
-            // Never leave the window with zero tabs. Reset the
-            // remaining slot to a fresh empty document instead.
-            // Deliberately *not* deleting backup files here —
-            // autosave snapshots accumulate as a manual safety
-            // net; pruning is the user's job.
-            gv.content.clearToEmpty()
-            saveSession()
-            return true
-        }
-
-        views.removeAt(idx)
-        tabbedPane.remove(idx)
-        gv.content.close()
-        saveSession()
-        return true
-    }
+    fun closeTab(idx: Int, force: Boolean = false): Boolean = tabs.close(idx, force)
 
     /**
      * Close the currently active tab. Convenience for the Ctrl+W
      * binding — pure delegation to [closeTab].
      */
-    fun closeCurrent(): Boolean = closeTab(tabbedPane.selectedIndex)
+    fun closeCurrent(): Boolean = tabs.close()
 
     /**
      * vim's `:q` / `:q!`: close the current tab, or quit the
      * application when it is the last one (unlike Ctrl+W, which
      * clears the last tab). [force] skips the unsaved-changes prompt.
      */
-    fun quitCurrent(force: Boolean) {
-        if (views.size == 1) {
-            window.quit(force)
-        } else {
-            closeTab(tabbedPane.selectedIndex, force)
-        }
-    }
+    fun quitCurrent(force: Boolean) = tabs.quitCurrent(force)
 
     /** Switch to the next tab, wrapping around at the end. */
-    fun selectNext() {
-        if (views.size < 2) return
-        tabbedPane.selectedIndex = (tabbedPane.selectedIndex + 1) % views.size
-    }
+    fun selectNext() = tabs.selectNext()
 
     /** Switch to the previous tab, wrapping around at the start. */
-    fun selectPrevious() {
-        if (views.size < 2) return
-        tabbedPane.selectedIndex =
-            (tabbedPane.selectedIndex - 1 + views.size) % views.size
-    }
+    fun selectPrevious() = tabs.selectPrevious()
 
-    /**
-     * Walk every tab, prompting Save / Discard / Cancel for each
-     * dirty one. Returns true if every prompt was answered
-     * non-cancel (or the user had nothing dirty to prompt about).
-     * Used by the window's close handler.
-     */
-    fun confirmCloseAll(): Boolean {
-        // Iterate over a snapshot because saveFile could in principle
-        // mutate the list (it doesn't today, but future me might add
-        // "save to a new tab" and this keeps that option open).
-        for (gv in views.toList()) {
-            if (gv.isDirty && !promptSaveDiscardCancel(gv)) return false
-        }
-        return true
-    }
-
-    /**
-     * Invoked by each [GraphView] whenever its title-affecting state
-     * changes (dirty flag, file path, graph swap). Updates both the
-     * tab-bar label and, if this was the current tab, the window
-     * title.
-     */
-    private fun refreshTab(gv: GraphView) {
-        val idx = views.indexOf(gv)
-        if (idx >= 0) {
-            tabbedPane.setTitleAt(idx, gv.title)
-        }
-        if (gv === currentOrNull) {
-            window.refreshTitle()
-        }
-    }
-
-    /**
-     * Handler for `JTabbedPane` selection changes. Points the global
-     * [Plotter.t] at the freshly-active view's transform so
-     * subsequent pans/zooms hit that tab's stored state, refreshes
-     * the window title, and drops focus onto the new canvas so
-     * keystrokes go to the right listener.
-     */
-    private fun onChanged() {
-        val gv = currentOrNull ?: return
-        window.refreshTitle()
-        gv.refreshStatus()  // global modes may have changed while another tab was active
-        gv.graphCanvas.requestFocusInWindow()
-        gv.repaint()
-    }
-
-    /**
-     * Flush the current tab set to the workspace's `session.properties`. Called
-     * on tab open/close/save and on window close — anywhere the
-     * persisted "what was open last time" answer could change.
-     *
-     * Untitled tabs are intentionally omitted: there's no stable
-     * identifier to restore them from. If you care about not
-     * losing unsaved work across restarts, the autosave
-     * directory in `$XDG_CACHE_HOME/sane-graph-edit/backups` is
-     * the place to look.
-     */
-    fun saveSession() {
-        val files = views.mapNotNull { it.currentFile }
-        val active = currentOrNull?.currentFile
-        // Snapshot each file-backed view's transform as six doubles.
-        // Untitled tabs are omitted for the same reason they're
-        // omitted from `files`: no stable key to restore them by.
-        val transforms = mutableMapOf<java.nio.file.Path, List<Double>>()
-        for (gv in views) {
-            val path = gv.currentFile ?: continue
-            transforms[path.toAbsolutePath()] = gv.viewTransform.matrix
-        }
-        session.save(Session.Snapshot(files = files, activeFile = active, viewTransforms = transforms))
-    }
+    /** Flush the current tab set to the workspace's `session.properties`. */
+    fun saveSession() = tabs.saveSession()
 
     /**
      * Three-choice modal prompt for one dirty tab. Returns true iff
