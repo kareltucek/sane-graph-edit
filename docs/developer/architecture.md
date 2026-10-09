@@ -306,8 +306,11 @@ stateDiagram-v2
 ### Keyboard commands
 
 `client.KeyMapper` resolves key sequences to command names,
-`ui.CommandRegistry` maps the names to `client.Actions` functions
-(or to `client.ViewContent` and the tab functions). The canonical list:
+`client.CommandRegistry` maps the names to `client.Actions` and
+`client.ViewContent` functions. The commands every renderer has are
+registered by `registerEditingCommands`; the Swing application adds
+its tabs and its file picker (`ui/SwingCommands.kt`). The canonical
+list:
 
 | Key    | Action                                                 |
 |--------|--------------------------------------------------------|
@@ -743,10 +746,10 @@ Items currently missing and planned under `tasks/`:
 - **`Graph.findEdge` is O(n)** (`Graph.kt:144` has a
   `// todo: optimize this!`). For the graph sizes this tool targets
   (<1000 nodes) it's fine.
-- **`GraphMouseListener` has a `// Todo: refactor this!`** at the
-  top. The file is 312 lines of state-machine-by-convention.
-  Leave it alone until there's a concrete reason to touch it; an
-  input refactor is its own project.
+- **What a mouse press, drag or release starts is decided in
+  `client.PointerInput`**, shared by the renderers.
+  `GraphMouseListener` only translates AWT events and wraps the
+  cursor at the window's edges during a gesture.
 - **`Graph.testGraph()`** still exists as a seed fixture but no
   longer runs on startup — fresh tabs are empty. Useful for
   manual inspection and for tests.

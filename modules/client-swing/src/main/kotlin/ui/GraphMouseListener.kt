@@ -1,89 +1,38 @@
 package ui
 
-import utils.Constants
-import graph_tools.AddNodeCommand
-import graph_tools.GraphTools
-import graph_tools.LayoutOptimizer
-import graph_tools.MoveNodesCommand
-import graph_tools.Node
-import graph_tools.Plotter
-import utils.Vector2
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.sin
-import utils.Utils.orElse
-import client.Clicker
 import client.GestureController
-import client.ViewTransform
+import client.PointerInput
 import utils.AwtUtils.toScreenspaceVector
-import java.awt.Robot
+import utils.Vector2
 import java.awt.event.*
 import java.awt.event.MouseEvent.*
 
-
-//Todo: refactor this!
+/**
+ * Passes AWT mouse events to the client's [PointerInput]. Its own
+ * part is the cursor wrap: during a pan or a transform the cursor
+ * re-enters at the opposite edge, and the client is told the
+ * position as if it had not.
+ */
 class GraphMouseListener(
     val graphView: GraphView,
 ) : MouseListener, MouseMotionListener, MouseWheelListener {
-    /** The view's gesture state machine; this listener only feeds it. */
+    /** The view's gesture state machine. */
     val controller: GestureController get() = graphView.model.gestures
 
-    private val view: ViewTransform get() = graphView.viewTransform
+    private val pointer: PointerInput get() = graphView.model.pointer
 
-    private fun MouseEvent.toWorkspaceVector(): Vector2 = view.toWorkspace(toScreenspaceVector())
-
-    private fun Vector2.toWorkspaceVector(): Vector2 = view.toWorkspace(this)
+    private fun button(e: MouseEvent): PointerInput.Button? = when (e.button) {
+        BUTTON1 -> PointerInput.Button.Left
+        BUTTON2 -> PointerInput.Button.Middle
+        BUTTON3 -> PointerInput.Button.Right
+        else -> null
+    }
 
     override fun mouseClicked(e: MouseEvent) {
     }
 
     override fun mousePressed(e: MouseEvent) {
-        val pos = e.toWorkspaceVector()
-
-        if (e.button == BUTTON1 && controller.state == null) {
-            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
-            when {
-                //move single node
-                !e.isControlDown && mouseoverNodes.isNotEmpty() && graphView.g.selectedNodes.size <= 1 -> {
-                    controller.startMoveOrSelectSingleNode(mouseoverNodes)
-                }
-
-                // move multiple nodes
-                !e.isControlDown && mouseoverNodes.isNotEmpty() && graphView.g.selectedNodes.size > 1 -> {
-                    controller.startMoveMultipleNodes(mouseoverNodes)
-                }
-
-                // pan view
-                !e.isControlDown && mouseoverNodes.isEmpty() -> {
-                    controller.startPanView()
-                }
-
-                // click in empty space - start selection box, adding to current selection
-                e.isControlDown && mouseoverNodes.size == 0 -> {
-                    controller.startBoxSelect(pos)
-                }
-
-                // click on node - invert its selection state
-                e.isControlDown && mouseoverNodes.size == 1 -> {
-                    controller.startToggleMultiselectState(mouseoverNodes)
-                }
-            }
-
-            // update data
-            controller.pressedAt = pos
-            controller.pressedTime = System.currentTimeMillis()
-            controller.lastPosition = pos
-        }
-
-        graphView.endNodeEdit()
-        graphView.endStylePicker()
-
-        if (e.button == BUTTON3) {
-            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
-            controller.startStylePicker(mouseoverNodes, e.toScreenspaceVector())
-        }
-
-        graphView.repaint()
+        button(e)?.let { pointer.pressed(e.toScreenspaceVector(), it, e.isControlDown, e.isShiftDown) }
     }
 
     private val cursorWrap = CursorWrap()
@@ -114,104 +63,33 @@ class GraphMouseListener(
     }
 
     override fun mouseDragged(e: MouseEvent) {
-        val screen = gesturePosition(e) ?: return
-        val pos = screen.toWorkspaceVector()
-
-        when {
-            controller.state == GestureController.States.MovingNodes -> {
-                controller.dragMoveNode(pos, e.isShiftDown)
-            }
-
-            controller.state == GestureController.States.PanningWorkspace -> {
-                controller.dragPanView(pos)
-            }
-
-            controller.state == GestureController.States.SelectionBox -> {
-                controller.dragOrEndSelectionBox(false)
-            }
-
-            controller.state == GestureController.States.Rotating -> {
-                controller.dragRotate(pos)
-            }
-
-            controller.state == GestureController.States.Scaling -> {
-                controller.dragScale(screen)
-            }
+        gesturePosition(e)?.let { screen ->
+            pointer.moved(screen, dragging = true, shift = e.isShiftDown)
+            if (wrapsCursor) cursorWrap.wrapIfAtEdge(e, statusBarInset)
         }
-
-        // Re-read: panning changed the transform, so the same screen point is a new workspace point.
-        val newPos = screen.toWorkspaceVector()
-        graphView.lastCursorPosition = newPos
-        graphView.lastScreenCursorPosition = screen
-        controller.lastPosition = newPos
-        if (wrapsCursor) cursorWrap.wrapIfAtEdge(e, statusBarInset)
     }
 
     override fun mouseMoved(e: MouseEvent) {
         // a waiting `g` grabs right away
         graphView.keyMapper?.mouseMoved()
-        val screen = gesturePosition(e) ?: return
-        val pos = screen.toWorkspaceVector()
-
-        when {
-            controller.state == GestureController.States.MovingNodes -> {
-                controller.dragMoveNode(pos, e.isShiftDown)
-            }
-            controller.state == GestureController.States.Rotating -> {
-                controller.dragRotate(pos)
-            }
-            controller.state == GestureController.States.Scaling -> {
-                controller.dragScale(screen)
-            }
+        gesturePosition(e)?.let { screen ->
+            pointer.moved(screen, dragging = false, shift = e.isShiftDown)
+            if (wrapsCursor) cursorWrap.wrapIfAtEdge(e, statusBarInset)
         }
-
-        graphView.lastCursorPosition = pos
-        graphView.lastScreenCursorPosition = screen
-        controller.lastPosition = pos
-        if (wrapsCursor) cursorWrap.wrapIfAtEdge(e, statusBarInset)
     }
 
     override fun mouseReleased(e: MouseEvent) {
-        // virtual, so a drag that wrapped around isn't mistaken for a click
-        val pos = (gesturePosition(e) ?: e.toScreenspaceVector()).toWorkspaceVector()
-
-        //handle release
-        if (e.button == BUTTON1) {
-            //update selection
-            if (controller.state == GestureController.States.SelectionBox) {
-                controller.dragOrEndSelectionBox(true)
-            }
-
-            controller.endSingleClick(pos, Vector2(e.x, e.y), e.isControlDown, graphView.model)
-        }
-
-        graphView.repaint()
+        button(e)?.let { pointer.released(gesturePosition(e) ?: e.toScreenspaceVector(), Vector2(e.x, e.y), it, e.isControlDown) }
     }
 
-
     override fun mouseEntered(e: MouseEvent?) {}
+
     /** A fast modal move can leave the canvas between two move events; wrap from outside too. */
     override fun mouseExited(e: MouseEvent) {
         if (wrapsCursor && gesturePosition(e) != null) cursorWrap.wrapIfAtEdge(e, statusBarInset)
     }
 
-
     override fun mouseWheelMoved(e: MouseWheelEvent) {
-        graphView.endNodeEdit()
-        graphView.endStylePicker()
-
-        val coef = Math.pow(Constants.zoomOutStep, e.unitsToScroll.toDouble()).toDouble()
-        val maxZoom = Constants.maxZoom
-
-        if ((view.scale > 1/maxZoom || coef > 1.0) && (view.scale < maxZoom || coef < 1.0)) {
-            val oldPos = e.toWorkspaceVector()
-            view.zoom(coef)
-            val newPos = e.toWorkspaceVector()
-            // keep the point under the cursor where it is
-            view.translate(newPos - oldPos)
-
-            graphView.repaint()
-        }
+        pointer.wheel(e.toScreenspaceVector(), e.unitsToScroll.toDouble())
     }
-
 }

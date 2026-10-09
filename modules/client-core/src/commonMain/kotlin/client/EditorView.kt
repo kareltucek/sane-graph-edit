@@ -69,6 +69,9 @@ class EditorView(
 
     val gestures: GestureController = GestureController(this)
 
+    /** Where a renderer reports what the mouse does. */
+    val pointer: PointerInput = PointerInput(this)
+
     /** Told when a transform gesture (grab, rotate, scale) starts (true) and ends (false): keys then mean something else. */
     var onTransformMode: (Boolean) -> Unit = {}
 

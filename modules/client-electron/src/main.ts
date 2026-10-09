@@ -18,6 +18,7 @@ interface Args {
     file?: string;
     capture?: string;
     captureAfter?: string;
+    play?: string;
     problem?: string;
 }
 
@@ -28,6 +29,7 @@ function parseArgs(argv: string[]): Args {
         if (a === "--url") args.url = argv[++i];
         else if (a === "--capture") args.capture = path.resolve(argv[++i]);
         else if (a === "--capture-after") args.captureAfter = argv[++i];
+        else if (a === "--play") args.play = path.resolve(argv[++i]);
         else if (a.startsWith("-")) continue; // Chromium's own switches
         else if (path.resolve(a) === app.getAppPath()) continue; // `electron <this application>`
         else if (args.file === undefined) args.file = path.resolve(a);
@@ -68,6 +70,7 @@ app.whenReady().then(() => {
     if (args.problem !== undefined) query.problem = args.problem;
     if (args.capture !== undefined) query.capture = args.capture;
     if (args.captureAfter !== undefined) query.captureAfter = args.captureAfter;
+    if (args.play !== undefined) query.play = args.play;
     window.loadFile(path.join(__dirname, "index.html"), { query });
 });
 

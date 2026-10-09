@@ -10,7 +10,7 @@
     "build:main": "esbuild src/main.ts --bundle --platform=node --external:electron --outfile=dist/main.js",
     "build:renderer": "esbuild src/renderer.ts --bundle --platform=node --external:electron --sourcemap --outfile=dist/renderer.js",
     "build": "npm run build:main && npm run build:renderer && cp src/index.html dist/",
-    "start": "npm run build && electron ."
+    "start": "npm run build && electron --no-sandbox ."
   },
   "dependencies": {
     "sane-graph-edit-client-core": "file:../client-core/build/dist/js/developmentLibrary"

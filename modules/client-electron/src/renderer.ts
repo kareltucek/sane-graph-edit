@@ -32,13 +32,14 @@ interface Scene {
     offsetY: number;
     nodes: SceneNode[];
     edges: SceneEdge[];
+    /** The selection rectangle being dragged: two opposite corners. */
+    selectionBox: SceneEdge | null;
 }
 
 const FONT = "monospace";
 const LINE_HEIGHT = 1.2;
 const CORNER_RADIUS = 5;
 const ARROWHEAD_RADIUS = 3;
-const ZOOM_STEP = 1.1;
 /** Text smaller than this on the screen is not drawn. */
 const MIN_TEXT_PX = 3;
 
@@ -110,6 +111,14 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     ctx.lineWidth = 1;
     scene.edges.forEach((e) => drawEdge(e, scene.scale));
     scene.nodes.forEach((n) => drawNode(n, grid, scene.scale));
+    const box = scene.selectionBox;
+    if (box !== null) {
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1 / scene.scale;
+        ctx.setLineDash([4 / scene.scale, 4 / scene.scale]);
+        ctx.strokeRect(Math.min(box.x1, box.x2), Math.min(box.y1, box.y2), Math.abs(box.x2 - box.x1), Math.abs(box.y2 - box.y1));
+        ctx.setLineDash([]);
+    }
 }
 
 function start(view: client.JsView, grid: client.GridMetrics) {
@@ -133,24 +142,30 @@ function start(view: client.JsView, grid: client.GridMetrics) {
     onRepaint = repaint;
     window.addEventListener("resize", repaint);
 
-    // scroll: scale. left drag, shift + middle drag: pan. middle drag: orbit, once there is a third dimension.
+    // What the mouse and the keys mean is the client core's business; this only reports them.
+    // Positions from clientX / clientY: offsetX / offsetY of an event made by a test come out divided by the device pixel ratio.
+    const x = (e: MouseEvent) => e.clientX - canvas.getBoundingClientRect().left;
+    const y = (e: MouseEvent) => e.clientY - canvas.getBoundingClientRect().top;
     canvas.addEventListener("wheel", (e) => {
         e.preventDefault();
-        view.zoomAt(e.offsetX, e.offsetY, e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+        view.wheel(x(e), y(e), e.deltaY);
     }, { passive: false });
-    let panning = false;
     canvas.addEventListener("pointerdown", (e) => {
-        panning = e.button === 0 || (e.button === 1 && e.shiftKey);
-        if (panning) canvas.setPointerCapture(e.pointerId);
+        // a drag goes on when the pointer leaves the window; an event made by a test has no pointer to capture
+        if (e.isTrusted) canvas.setPointerCapture(e.pointerId);
+        view.pointerDown(x(e), y(e), e.button, e.ctrlKey, e.shiftKey);
     });
-    canvas.addEventListener("pointermove", (e) => {
-        if (panning) view.pan(e.movementX, e.movementY);
-    });
-    canvas.addEventListener("pointerup", () => {
-        panning = false;
+    canvas.addEventListener("pointermove", (e) => view.pointerMove(x(e), y(e), e.buttons !== 0, e.shiftKey));
+    canvas.addEventListener("pointerup", (e) => view.pointerUp(x(e), y(e), e.button, e.ctrlKey));
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    window.addEventListener("keydown", (e) => {
+        if (view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
     });
     document.title = `${view.file} — Sane Graph Edit`;
     repaint();
+
+    const play = query.get("play");
+    if (play !== null) setTimeout(() => replay(JSON.parse(require("fs").readFileSync(play, "utf8"))), PLAY_DELAY_MS);
 
     const capture = query.get("capture");
     if (capture !== null) {
@@ -162,6 +177,35 @@ function start(view: client.JsView, grid: client.GridMetrics) {
         }, Number(query.get("captureAfter") ?? CAPTURE_DELAY_MS));
     }
 }
+
+/** A user's action for a test to replay (`--play <json file>`): a pointer event at x, y from the middle of the window, or a key. */
+interface Played {
+    type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown";
+    x?: number;
+    y?: number;
+    button?: number;
+    buttons?: number;
+    deltaY?: number;
+    key?: string;
+    ctrl?: boolean;
+    shift?: boolean;
+}
+
+/** Dispatches [events] as the DOM events a user would cause, so that the listeners above are what handles them. */
+function replay(events: Played[]) {
+    events.forEach((p) => {
+        // from the middle of the window, whatever size the window manager gave it
+        const clientX = canvas.clientWidth / 2 + (p.x ?? 0);
+        const clientY = canvas.clientHeight / 2 + (p.y ?? 0);
+        const common = { clientX, clientY, button: p.button, buttons: p.buttons, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true };
+        if (p.type === "keydown") window.dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift }));
+        else if (p.type === "wheel") canvas.dispatchEvent(new WheelEvent("wheel", { ...common, deltaY: p.deltaY, cancelable: true }));
+        else canvas.dispatchEvent(new PointerEvent(p.type, common));
+    });
+}
+
+/** For tests: after the first drawing, so that positions in the window mean what the test saw. */
+const PLAY_DELAY_MS = 800;
 
 /** For tests (`--capture`): long enough for the first drawing; `--capture-after <ms>` for a test that changes something meanwhile. */
 const CAPTURE_DELAY_MS = 1500;

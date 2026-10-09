@@ -1,6 +1,7 @@
 package ui
 
 import client.Actions
+import client.CommandRegistry
 import client.KeyMapper
 
 /**
@@ -11,7 +12,7 @@ import client.KeyMapper
  */
 fun applicationKeyMapper(): KeyMapper {
     val mapper = KeyMapper(KeyMapper.defaultBindings(), SwingScheduler)
-    mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view.shell as GraphView) }
+    mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
     mapper.commandNames = { CommandRegistry.list() }
     mapper.markSetter = { view, letter -> Actions.setMark(view, letter) }
     mapper.markRecaller = { view, letter -> Actions.recallMark(view, letter) }
