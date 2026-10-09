@@ -95,6 +95,12 @@ longest ago going first; when even those of one view do not fit, the
 rest of its nodes are drawn as they are. `SGE_DRAW_TIMES=<file>`
 notes how long frames take, for tests.
 
+The screen's pixel density is Chromium's business: on X11 it reads
+`Xft.dpi` (96 is a scale of one), and `--force-device-scale-factor`
+overrides it. The page draws in its own units and gives the canvas
+exactly as many pixels as the screen has under it; the bitmaps are
+made at that density too.
+
 `:model`, `:editor-core`, `:client-core` and `:editor-host` are
 Kotlin Multiplatform subprojects with two targets, the JVM and
 JavaScript for Node.js; `:client-swing` is JVM only. The root project

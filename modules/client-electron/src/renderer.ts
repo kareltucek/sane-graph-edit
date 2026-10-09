@@ -572,13 +572,20 @@ function endEdit(view: client.JsView) {
 /** The editor that is being closed has not told its text yet; no other is opened meanwhile. */
 let closing: Promise<void> | null = null;
 
+/** How many of the screen's pixels the canvas covers, as the page tells it; null until it has. */
+let screenPixels: { width: number; height: number } | null = null;
+
 function draw(view: client.JsView, grid: client.GridMetrics) {
     const dpr = window.devicePixelRatio;
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
-    if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)) {
-        canvas.width = Math.round(width * dpr);
-        canvas.height = Math.round(height * dpr);
+    // One pixel of the canvas for each of the screen's, or the picture is resampled and blurred.
+    // With a pixel ratio that is not whole, rounding does not always come to what the page was given.
+    const pixelWidth = screenPixels?.width ?? Math.round(width * dpr);
+    const pixelHeight = screenPixels?.height ?? Math.round(height * dpr);
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
     }
     view.resize(width, height);
     const dark = !isLight(colours().background);
@@ -661,6 +668,12 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.endEdit = () => current((view) => endEdit(view));
     page.tabs = () => showTabs(app);
     window.addEventListener("resize", repaint);
+    // also when the screen's pixel density changes: the window moved to another screen, or the setting was changed
+    new ResizeObserver((entries) => {
+        const size = entries[0]?.devicePixelContentBoxSize?.[0];
+        if (size !== undefined) screenPixels = { width: size.inlineSize, height: size.blockSize };
+        repaint();
+    }).observe(canvas, { box: "device-pixel-content-box" });
 
     // a neovim of the kind in use is kept started; its colour scheme is the page's theme
     if (useGridEditor) GridEditor.warm();
