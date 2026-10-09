@@ -56,6 +56,10 @@ const NVIM = process.env.SGE_NVIM || "nvim";
 const ATTACH_RETRY_MS = 50;
 const ATTACH_TRIES = 200;
 
+/** How often and for how long to ask neovim whether it has its terminal's new size. */
+const SIZE_RETRY_MS = 5;
+const SIZE_TRIES = 100;
+
 /** How long closing waits for neovim to tell its text. */
 const CLOSE_TIMEOUT_MS = 3000;
 
@@ -226,7 +230,13 @@ export class NodeEditor {
             .then((nvim) =>
                 nvim.command("let g:sge_undolevels = &undolevels | set undolevels=-1")
                     .then(() => nvim.request("nvim_buf_set_lines", [0, 0, -1, false, lines]))
-                    .then(() => nvim.command(`let &undolevels = g:sge_undolevels | set nomodified | call cursor(${row + 1}, ${column + 1})${paint}`)))
+                    // with the window still small the cursor would scroll the text, and it would stay scrolled
+                    .then(() => this.sized(nvim, SIZE_TRIES))
+                    // by character, not by byte: the column is one of the text as drawn
+                    .then(() => nvim.command(
+                        `let &undolevels = g:sge_undolevels | set nomodified | call setcursorcharpos(${row + 1}, ${column + 1})` +
+                        ` | call winrestview({'topline': 1, 'leftcol': 0})${paint}`,
+                    )))
             .catch(() => {
                 // no neovim: the editor shows what the terminal has, and closes with the text unchanged
             })
@@ -284,9 +294,19 @@ export class NodeEditor {
         if (this.terminal.cols !== columns || this.terminal.rows !== rows) {
             this.terminal.resize(columns, rows);
             this.process.resize(columns, rows);
-            // if it did scroll meanwhile: all of the text fits again
-            this.nvim.then((nvim) => nvim.call("winrestview", [{ topline: 1, leftcol: 0 }])).catch(() => {});
+            // if it did scroll meanwhile: all of the text fits again, once neovim has the new size
+            this.nvim.then((nvim) => this.sized(nvim, SIZE_TRIES)).then((nvim) => nvim.call("winrestview", [{ topline: 1, leftcol: 0 }])).catch(() => {});
         }
+    }
+
+    /** Neovim learns of its terminal's size some time after the terminal has it; what depends on the size waits here. */
+    private sized(nvim: NeovimClient, triesLeft: number): Promise<NeovimClient> {
+        return nvim.eval("[&columns, &lines]").then((size) => {
+            const [columns, rows] = size as number[];
+            return (columns === this.terminal.cols && rows === this.terminal.rows) || triesLeft === 0
+                ? nvim
+                : new Promise((resolve) => setTimeout(resolve, SIZE_RETRY_MS)).then(() => this.sized(nvim, triesLeft - 1));
+        });
     }
 
     /** Put the terminal at [place], stretched so that its cells have the size given there. */

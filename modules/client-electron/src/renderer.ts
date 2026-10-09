@@ -407,7 +407,7 @@ function start(view: client.JsView, grid: client.GridMetrics) {
     repaint();
 
     const play = query.get("play");
-    if (play !== null) setTimeout(() => replay(JSON.parse(require("fs").readFileSync(play, "utf8"))), PLAY_DELAY_MS);
+    if (play !== null) setTimeout(() => replay(JSON.parse(require("fs").readFileSync(play, "utf8")), grid), PLAY_DELAY_MS);
 
     const capture = query.get("capture");
     if (capture !== null) {
@@ -427,8 +427,11 @@ interface Played {
     /** `click`: the element of the page to click, as a CSS selector. */
     selector?: string;
     ms?: number;
-    /** x, y are from the middle of the node with this text instead: a test need not know how the window was laid out. */
+    /** x, y are from the middle of the node whose text starts with this instead: a test need not know how the window was laid out. */
     node?: string;
+    /** With [node]: the middle of the character in this row and column of its text (from 0), instead of x, y. */
+    row?: number;
+    column?: number;
     x?: number;
     y?: number;
     button?: number;
@@ -440,14 +443,15 @@ interface Played {
 }
 
 /** Dispatches [events] as the DOM events a user would cause, so that the listeners above are what handles them. */
-async function replay(events: Played[]) {
+async function replay(events: Played[], grid: client.GridMetrics) {
     for (const p of events) {
         // from the middle of the window, whatever size the window manager gave it
-        const node = lastScene?.nodes.find((n) => n.lines.join("\n") === p.node);
+        const node = p.node === undefined ? undefined : lastScene?.nodes.find((n) => n.lines.join("\n").startsWith(p.node!));
         const fromX = node !== undefined && lastScene !== null ? node.x * lastScene.scale + lastScene.offsetX : canvas.clientWidth / 2;
         const fromY = node !== undefined && lastScene !== null ? node.y * lastScene.scale + lastScene.offsetY : canvas.clientHeight / 2;
-        const clientX = fromX + (p.x ?? 0);
-        const clientY = fromY + (p.y ?? 0);
+        const cell = node !== undefined && lastScene !== null && p.row !== undefined && p.column !== undefined ? textPlace(node, lastScene, grid) : null;
+        const clientX = cell !== null ? cell.left + (p.column! + 0.5) * cell.cellWidth : fromX + (p.x ?? 0);
+        const clientY = cell !== null ? cell.top + (p.row! + 0.5) * cell.cellHeight : fromY + (p.y ?? 0);
         const common = { clientX, clientY, button: p.button, buttons: p.buttons, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true };
         if (p.type === "wait") await new Promise((resolve) => setTimeout(resolve, p.ms));
         else if (p.type === "click") document.querySelector<HTMLElement>(p.selector ?? "")?.click();
