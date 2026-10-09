@@ -22,6 +22,11 @@ class PointerInput(private val view: EditorView) {
     private fun workspace(screen: Vector2): Vector2 = view.viewTransform.toWorkspace(screen)
 
     fun pressed(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
+        // nothing starts on a view that waits for its content
+        if (!view.content.isBusy) press(screen, button, control, shift)
+    }
+
+    private fun press(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
         val pos = workspace(screen)
         val starts = gestures.state == null
         if (button == Button.Left && starts) {

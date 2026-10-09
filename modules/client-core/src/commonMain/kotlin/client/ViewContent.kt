@@ -91,7 +91,51 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         }
         doc?.onRejected = { reason -> shell.message("change refused: $reason") }
         doc?.onLost = { document = null }
+        doc?.onAttached = { settled() }
+        doc?.onFailed = { reason ->
+            // only an editor that answers later gets here; one that answers at once has thrown in [EditorClient.open]
+            document = null
+            whenLoaded.clear()
+            val what = currentFile
+            currentFile = null
+            shell.alert("Open error", "Could not open ${what ?: "the document"}:\n$reason")
+            shell.stateChanged()
+            settled()
+        }
         return doc?.graph ?: graph
+    }
+
+    // --- an editor that answers later ---
+
+    /** Saves the editor has not answered yet. */
+    private var saving = 0
+
+    /**
+     * True while the view waits for the editor: its document's
+     * content has not arrived, or a save is not confirmed. What the
+     * user does next is held back until then ([onIdle]), as it
+     * assumes the step before it is done.
+     */
+    val isBusy: Boolean get() = document?.isAttached == false || saving > 0
+
+    /** Told when [isBusy] ends. */
+    var onIdle: () -> Unit = {}
+
+    /** What to do with the content once it is there. */
+    private val whenLoaded = mutableListOf<() -> Unit>()
+
+    /** Do [action] now, or when the document's content has arrived: for what looks at the content right after opening. */
+    fun onceLoaded(action: () -> Unit) {
+        if (document?.isAttached == false) whenLoaded += action else action()
+    }
+
+    private fun settled() {
+        if (document?.isAttached != false) {
+            val actions = whenLoaded.toList()
+            whenLoaded.clear()
+            actions.forEach { it() }
+        }
+        if (!isBusy) onIdle()
     }
 
     /**
@@ -119,30 +163,58 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
 
     // --- saving ---
 
-    /** Save to [currentFile], asking for a file if there is none. False when it was not saved. */
-    fun save(): Boolean = currentFile?.let { writeTo(it) } ?: saveAs()
-
-    /** Ask for a file and save to it. */
-    fun saveAs(): Boolean = shell.chooseSave(currentFile?.name ?: "untitled.dot")?.let { writeTo(it) } ?: false
-
-    /** Write the graph to [path] without making it the view's file. */
-    fun saveCopy(path: Path) {
-        document?.saveCopy(path.toString()) ?: DotGraphLoader.saveToFile(view.g, path.toString())
+    /**
+     * Save to [currentFile], asking for a file if there is none.
+     * [then] is told whether it was saved: before this returns when
+     * the editor answers at once, later when it does not.
+     */
+    fun save(then: (Boolean) -> Unit = {}) {
+        currentFile?.let { writeTo(it, then) } ?: saveAs(then)
     }
 
-    private fun writeTo(path: Path): Boolean =
-        try {
-            document?.save(path.toAbsolutePath().normalize().toString()) ?: DotGraphLoader.saveToFile(view.g, path.toString())
-            currentFile = path
-            dirty(false)
-            shell.stateChanged()
-            // the first save of an untitled view, or a save under a new name
-            shell.sessionChanged()
-            true
-        } catch (t: Throwable) {
-            shell.alert("Save error", "Could not save to $path:\n${t.message}")
-            false
+    /**
+     * [save] for a caller that must know at once (a question to the
+     * user that waits for it): true only if it was saved before this
+     * returns, so false too while an editor that answers later has
+     * not answered.
+     */
+    fun saveNow(): Boolean {
+        var saved = false
+        save { saved = it }
+        return saved
+    }
+
+    /** Ask for a file and save to it; [then] as for [save]. */
+    fun saveAs(then: (Boolean) -> Unit = {}) {
+        shell.chooseSave(currentFile?.name ?: "untitled.dot")?.let { writeTo(it, then) } ?: then(false)
+    }
+
+    /** Write the graph to [path] without making it the view's file; [then] is told when it is done, or why it failed. */
+    fun saveCopy(path: Path, then: (Result<Unit>) -> Unit = {}) {
+        val doc = document
+        if (doc != null) doc.save(path.toString(), copy = true, then = then) else then(runCatching { DotGraphLoader.saveToFile(view.g, path.toString()) })
+    }
+
+    private fun writeTo(path: Path, then: (Boolean) -> Unit) {
+        val done: (Result<Unit>) -> Unit = { result ->
+            saving--
+            result.fold(
+                onSuccess = {
+                    currentFile = path
+                    dirty(false)
+                    shell.stateChanged()
+                    // the first save of an untitled view, or a save under a new name
+                    shell.sessionChanged()
+                },
+                onFailure = { shell.alert("Save error", "Could not save to $path:\n${it.message}") },
+            )
+            then(result.isSuccess)
+            settled()
         }
+        saving++
+        val doc = document
+        if (doc != null) doc.save(path.toAbsolutePath().normalize().toString(), then = done) else done(runCatching { DotGraphLoader.saveToFile(view.g, path.toString()) })
+    }
 
     /** SVG of what is visible, to a file the user chooses. */
     fun exportSvg() {
@@ -186,14 +258,17 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** Replace the graph with the one in [path]. True if the file was loaded. */
     private fun loadInPlace(path: Path): Boolean =
         try {
-            replaceGraph(DotGraphLoader.loadFromFile(path.toString()), path)
+            // with an editor the content is its document's; reading the file here too would only be thrown away
+            replaceGraph(if (client == null) DotGraphLoader.loadFromFile(path.toString()) else Graph(), path)
             currentFile = path
             untitledName = null
             browseDir = null
             sourceView = null
             shell.stateChanged()
-            view.boundScreen()
-            view.repaint()
+            onceLoaded {
+                view.boundScreen()
+                view.repaint()
+            }
             shell.sessionChanged()
             AppState.lastOpenDir = path.toAbsolutePath().getParent()
             true
@@ -367,7 +442,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             }
             loadInPlace(path) -> {
                 jumps.record(from)
-                focusNode(target.nodeId)
+                onceLoaded { focusNode(target.nodeId) }
             }
         }
     }
@@ -466,9 +541,11 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             else -> file?.let { loadInPlace(it) } == true
         }
         if (opened) {
-            view.viewTransform.matrix = loc.transform
-            view.g.cleanSelect(view.g.nodes.filter { nodeKey(it) in loc.selection })
-            view.repaint()
+            onceLoaded {
+                view.viewTransform.matrix = loc.transform
+                view.g.cleanSelect(view.g.nodes.filter { nodeKey(it) in loc.selection })
+                view.repaint()
+            }
         }
         return opened
     }

@@ -399,7 +399,7 @@ class TabManager(
             JOptionPane.WARNING_MESSAGE,
         )
         return when (result) {
-            JOptionPane.YES_OPTION -> gv.content.save()  // false if Save-As was cancelled
+            JOptionPane.YES_OPTION -> gv.content.saveNow()  // false if Save-As was cancelled
             JOptionPane.NO_OPTION -> true
             else -> false
         }

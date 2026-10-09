@@ -89,12 +89,12 @@ class ViewContentTest {
     fun `saving a graph without a file asks where to, and cancelling saves nothing`() {
         val view = EditorView(Graph().also { it.add(Node("n", Vector2(0, 0))) }, NoRenderer, shell)
         view.change()
-        assertFalse(view.content.save())
+        assertFalse(view.content.saveNow())
         assertEquals("*(untitled)", view.content.title)
 
         val target = dir.resolve("new.dot")
         shell.saveTo = target
-        assertTrue(view.content.save())
+        assertTrue(view.content.saveNow())
         assertEquals("new.dot", view.content.title)
         assertTrue("changed" in target.readText())
     }

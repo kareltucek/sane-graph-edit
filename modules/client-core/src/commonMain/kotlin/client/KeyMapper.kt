@@ -251,6 +251,39 @@ class KeyMapper(
      * listener for every keypress.
      */
     fun feedKey(key: String) {
+        val content = activeView?.content
+        val busy = content?.isBusy == true
+        if (held.isEmpty() && !busy) {
+            dispatchKey(key)
+        } else {
+            held.addLast(key to replaying)
+            if (busy) content?.onIdle = ::resume else resume()
+        }
+    }
+
+    /**
+     * Keys that arrived while the view was waiting for the editor
+     * ([ViewContent.isBusy]), each with whether it came from a
+     * macro: a key assumes that what the key before it started is
+     * done (`:wq`, a macro that follows a link and selects there).
+     */
+    private val held = ArrayDeque<Pair<String, Boolean>>()
+
+    private fun resume() {
+        // one of them may start the next wait
+        while (held.isNotEmpty() && activeView?.content?.isBusy != true) {
+            val (key, fromMacro) = held.removeFirst()
+            val before = replaying
+            replaying = fromMacro
+            try {
+                dispatchKey(key)
+            } finally {
+                replaying = before
+            }
+        }
+    }
+
+    private fun dispatchKey(key: String) {
         // --- Transform mode: restricted allowlist ---
         // While a modal gesture (grab / rotate / scale) is live,
         // only the keys in `transformModeBindings` fire. Everything
@@ -681,10 +714,8 @@ class KeyMapper(
         when (cmd) {
             "w" -> {
                 if (args != null) {
-                    try {
-                        gv.content.saveCopy(resolvePath(args).toAbsolutePath().normalize())
-                    } catch (t: Throwable) {
-                        utils.Platform.warn("sane-graph-edit: :w failed: ${t.message}")
+                    gv.content.saveCopy(resolvePath(args).toAbsolutePath().normalize()) { written ->
+                        written.onFailure { utils.Platform.warn("sane-graph-edit: :w failed: ${it.message}") }
                     }
                 } else {
                     commandExecutor?.invoke("save", gv)
@@ -695,9 +726,7 @@ class KeyMapper(
             "qa" -> gv.shell.quit(force = false, all = true)
             "qa!" -> gv.shell.quit(force = true, all = true)
             "wq" -> {
-                if (gv.content.save()) {
-                    gv.shell.quit(force = false, all = false)
-                }
+                gv.content.save { saved -> if (saved) gv.shell.quit(force = false, all = false) }
             }
             "help" -> {
                 val what = args?.trim() ?: ""
