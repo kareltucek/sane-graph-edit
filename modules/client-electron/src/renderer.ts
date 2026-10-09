@@ -16,6 +16,8 @@ interface SceneNode {
     shape: string;
     bg: string | null;
     fg: string | null;
+    /** The colours are from the picker's palette. */
+    palette: boolean;
     fontSize: number;
     selected: boolean;
 }
@@ -59,16 +61,18 @@ const colours = () => (useNvimColours && nvimColours !== null ? nvimColours : PL
 
 const channels = (colour: string) => [1, 3, 5].map((at) => parseInt(colour.slice(at, at + 2), 16));
 
+function isLight(colour: string): boolean {
+    const rgb = channels(colour);
+    return 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127;
+}
+
 /** Behind the graph: a little darker than a light node colour, a little lighter than a dark one. */
 function canvasColour(nodes: string): string {
     const rgb = channels(nodes);
-    const light = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] > 127;
-    const towards = light ? 0 : 255;
+    const towards = isLight(nodes) ? 0 : 255;
     return "#" + rgb.map((c) => Math.round(c + (towards - c) * CANVAS_CONTRAST).toString(16).padStart(2, "0")).join("");
 }
 const CORNER_RADIUS = 2;
-/** Off while the editor is being worked on: a node without a colour of its own is not filled, so the editor's extent shows against it. */
-const PAINT_PLAIN_NODES = false;
 const ARROWHEAD_RADIUS = 3;
 /** Text smaller than this on the screen is not drawn. */
 const MIN_TEXT_PX = 3;
@@ -132,9 +136,11 @@ function hidePicker() {
     picker.style.display = "none";
 }
 
+/** The picker's colour buttons, as the theme shows the palette now. */
 function fillPicker(view: client.JsView) {
     const offered = view.pickerStyles() as { columns: number; styles: { bg: string | null; fg: string | null; label: string }[] };
     pickerColours.style.gridTemplateColumns = `repeat(${offered.columns}, 1fr)`;
+    pickerColours.replaceChildren();
     offered.styles.forEach((style, index) => {
         const button = document.createElement("button");
         button.textContent = style.label;
@@ -144,6 +150,9 @@ function fillPicker(view: client.JsView) {
         button.addEventListener("click", () => view.pickColour(index));
         pickerColours.appendChild(button);
     });
+}
+
+function wirePicker(view: client.JsView) {
     picker.querySelectorAll<HTMLButtonElement>("button[data-size]").forEach((b) => b.addEventListener("click", () => view.pickSize(Number(b.dataset.size))));
     picker.querySelectorAll<HTMLButtonElement>("button[data-shape]").forEach((b) => b.addEventListener("click", () => view.pickShape(b.dataset.shape!)));
 }
@@ -204,10 +213,8 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
     ctx.beginPath();
     if (n.shape === "oval") ctx.ellipse(n.x, n.y, n.width / 2, n.height / 2, 0, 0, 2 * Math.PI);
     else ctx.roundRect(left, top, n.width, n.height, CORNER_RADIUS);
-    if (n.bg !== null || PAINT_PLAIN_NODES) {
-        ctx.fillStyle = n.bg ?? colours().background;
-        ctx.fill();
-    }
+    ctx.fillStyle = n.bg ?? colours().background;
+    ctx.fill();
     ctx.strokeStyle = n.fg ?? colours().foreground;
     // a selected node's outline stays visible however far out the view is zoomed
     ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
@@ -262,6 +269,8 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         text,
         row,
         column,
+        // a node in the palette's colours is edited in them
+        n.palette && n.bg !== null && n.fg !== null ? { background: n.bg, foreground: n.fg } : null,
         (now) => view.textTyped(now),
         () => endEdit(view),
         () => page.repaint(),
@@ -294,6 +303,11 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         canvas.height = Math.round(height * dpr);
     }
     view.resize(width, height);
+    const dark = !isLight(colours().background);
+    if (view.dark !== dark || pickerColours.childElementCount === 0) {
+        view.dark = dark;
+        fillPicker(view);
+    }
     const scene = view.scene() as Scene;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = canvasColour(colours().background);
@@ -380,7 +394,7 @@ function start(view: client.JsView, grid: client.GridMetrics) {
         // while a node is edited the keys are neovim's, and while the line is open they are the line's
         else if (editing === null && !lineOpen() && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
     });
-    fillPicker(view);
+    wirePicker(view);
     lineInput.addEventListener("input", () => view.lineTyped(lineInput.value));
     lineInput.addEventListener("keydown", (e) => {
         if (view.lineKey(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();

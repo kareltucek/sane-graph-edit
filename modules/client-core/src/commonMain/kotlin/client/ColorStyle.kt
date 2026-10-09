@@ -58,18 +58,57 @@ data class ColorStyle(
             Triple(1.2, 0.8, 0.1),
         )
 
-        val colorStyles = listOfNotNull(
+        /**
+         * The same rows for a dark theme: the same hues, stepping
+         * from black towards lighter shades where the light rows
+         * step from white towards darker ones.
+         */
+        val darkSaturationValueMultipliers = listOf(
+            /* background saturation, background value, foreground value */
+            Triple(2.0, 0.20, 0.75),
+            Triple(2.0, 0.28, 0.82),
+            Triple(1.8, 0.36, 0.90),
+            Triple(1.6, 0.44, 0.97),
+        )
+
+        /** Light text on the dark rows is this much less saturated than the hue's own saturation. */
+        const val darkForegroundSaturation = 0.5
+
+        /** What is offered, row by row, and what files hold: the palette of a light theme. */
+        val colorStyles = styles(saturationValueMultipliers) { sm -> sm }
+
+        /** [colorStyles] as a dark theme shows them, entry for entry. */
+        val darkColorStyles = styles(darkSaturationValueMultipliers) { darkForegroundSaturation }
+
+        /**
+         * The colours to show a node in. Files always hold the
+         * light palette: a pair of colours from it is shown as
+         * its dark counterpart when [dark]; any other colours
+         * are shown as they are.
+         */
+        fun shown(background: Rgb?, foreground: Rgb?, dark: Boolean): Pair<Rgb?, Rgb?> {
+            val index = if (dark && (background != null || foreground != null)) entryOf(background, foreground) else -1
+            return if (index >= 0) darkColorStyles[index].let { it.background to it.foreground } else background to foreground
+        }
+
+        /** True when the pair of colours is one of the palette's (not the entry without colours). */
+        fun isOurs(background: Rgb?, foreground: Rgb?): Boolean = (background != null || foreground != null) && entryOf(background, foreground) >= 0
+
+        private fun entryOf(background: Rgb?, foreground: Rgb?): Int = colorStyles.indexOfFirst { it.background == background && it.foreground == foreground }
+
+        /** [foregroundSaturation]: the multiplier for the text's saturation, from the row's for the background. */
+        private fun styles(multipliers: List<Triple<Double, Double, Double>>, foregroundSaturation: (Double) -> Double) = listOfNotNull(
             (0 .. (saturationHue.size - 1)).map {
                 ColorStyle(
                     background = null,
                     foreground = null,
                 )
             },
-            saturationValueMultipliers.flatMap { (sm, bgv, fgv) ->
+            multipliers.flatMap { (sm, bgv, fgv) ->
                 saturationHue.map { (s, h) ->
                     ColorStyle(
-                        background = HSV(h, s * sm, bgv).toColor(),
-                        foreground = HSV(h, s * sm, fgv).toColor(),
+                        background = HSV(h, (s * sm).coerceAtMost(1.0), bgv).toColor(),
+                        foreground = HSV(h, s * foregroundSaturation(sm), fgv).toColor(),
                     )
                 }
             },

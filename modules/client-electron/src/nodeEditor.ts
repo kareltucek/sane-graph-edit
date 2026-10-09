@@ -98,7 +98,7 @@ export class NodeEditor {
     }
 
     /**
-     * Neovim on [text] with the cursor at [row], [column] (from 0).
+     * Neovim on [text] with the cursor at [row], [column] (from 0), plain text in [colours] if given and in its colour scheme's if not.
      * [onText] is told the text whenever it changes; [onExit] when neovim ends by itself (`:q`);
      * [onShown] when the editor takes the text's place on the screen.
      */
@@ -108,6 +108,7 @@ export class NodeEditor {
         text: string,
         row: number,
         column: number,
+        colours: Colours | null,
         onText: (text: string) => void,
         onExit: () => void,
         onShown: () => void,
@@ -118,7 +119,7 @@ export class NodeEditor {
         editor.onText = onText;
         editor.onExit = onExit;
         editor.onShown = onShown;
-        editor.load(text, row, column);
+        editor.load(text, row, column, colours);
         NodeEditor.warm(host, font);
         return editor;
     }
@@ -212,7 +213,11 @@ export class NodeEditor {
     }
 
     /** Give the waiting neovim its text, as if it had been started on it: nothing to undo, the cursor in place. */
-    private load(text: string, row: number, column: number) {
+    private load(text: string, row: number, column: number, colours: Colours | null) {
+        // the empty column on the left is said again: a colour scheme may have painted it since neovim started
+        const paint = colours === null
+            ? " | highlight! link FoldColumn Normal"
+            : ["Normal", "FoldColumn"].map((group) => ` | highlight! ${group} guifg=${colours.foreground} guibg=${colours.background}`).join("");
         this.lines = text.split("\n");
         const lines = [...this.lines];
         this.fit();
@@ -221,7 +226,7 @@ export class NodeEditor {
             .then((nvim) =>
                 nvim.command("let g:sge_undolevels = &undolevels | set undolevels=-1")
                     .then(() => nvim.request("nvim_buf_set_lines", [0, 0, -1, false, lines]))
-                    .then(() => nvim.command(`let &undolevels = g:sge_undolevels | set nomodified | call cursor(${row + 1}, ${column + 1})`)))
+                    .then(() => nvim.command(`let &undolevels = g:sge_undolevels | set nomodified | call cursor(${row + 1}, ${column + 1})${paint}`)))
             .catch(() => {
                 // no neovim: the editor shows what the terminal has, and closes with the text unchanged
             })

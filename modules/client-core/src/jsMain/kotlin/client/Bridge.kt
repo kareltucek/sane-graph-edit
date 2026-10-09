@@ -77,11 +77,18 @@ class JsView internal constructor(private val view: EditorView, private val meas
         status()
     }
 
-    /** The colour styles to offer, row by row: `{columns, styles: [{bg, fg, label}]}`; a colour is `#rrggbb`, or null for the default. */
+    /**
+     * The page is in a dark theme: colours from the picker's palette
+     * are shown as their dark counterparts. Files hold the light ones
+     * whatever the theme.
+     */
+    var dark: Boolean = false
+
+    /** The colour styles to offer as shown now ([dark]), row by row: `{columns, styles: [{bg, fg, label}]}`; a colour is `#rrggbb`, or null for the default. */
     fun pickerStyles(): dynamic {
         val o: dynamic = js("({})")
         o.columns = ColorStyle.PickerSet.saturationHue.size
-        o.styles = ColorStyle.PickerSet.colorStyles.map { s ->
+        o.styles = (if (dark) ColorStyle.PickerSet.darkColorStyles else ColorStyle.PickerSet.colorStyles).map { s ->
             val j: dynamic = js("({})")
             j.bg = s.background?.let(::css)
             j.fg = s.foreground?.let(::css)
@@ -135,9 +142,9 @@ class JsView internal constructor(private val view: EditorView, private val meas
 
     /**
      * What to draw, sizes brought up to date:
-     * `{scale, offsetX, offsetY, nodes: [{id, x, y, width, height, textWidth, textHeight, lines, shape, bg, fg, fontSize, selected}],
+     * `{scale, offsetX, offsetY, nodes: [{id, x, y, width, height, textWidth, textHeight, lines, shape, bg, fg, palette, fontSize, selected}],
      * edges: [{x1, y1, x2, y2}], selectionBox: {x1, y1, x2, y2} or null}`. Node, edge and box coordinates are in workspace units, `screen = workspace * scale + offset`;
-     * a node's x, y is its centre; colours are `#rrggbb` or null.
+     * a node's x, y is its centre; colours are `#rrggbb` or null, as to be shown ([dark]); `palette` says they are from the picker's palette.
      */
     fun scene(): dynamic {
         val scene = view.scene(measurer)
@@ -158,8 +165,10 @@ class JsView internal constructor(private val view: EditorView, private val meas
             j.textHeight = n.textBounds.y
             j.lines = n.lines.toTypedArray()
             j.shape = n.shape
-            j.bg = n.bg?.let(::css)
-            j.fg = n.fg?.let(::css)
+            val (bg, fg) = ColorStyle.PickerSet.shown(n.bg, n.fg, dark)
+            j.bg = bg?.let(::css)
+            j.fg = fg?.let(::css)
+            j.palette = ColorStyle.PickerSet.isOurs(n.bg, n.fg)
             j.fontSize = n.fontSize
             j.selected = n.selected
             j
