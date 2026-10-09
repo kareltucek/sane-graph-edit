@@ -9,6 +9,12 @@ object Constants {
     val wantColorSampler = false
     val maxZoom = 50.0
 
+    /** How far the viewer is from the plane a view speaks of, in screen pixels: what is that far behind the plane appears half its size. */
+    val focalLength = 1000.0
+
+    /** What is so near the viewer that it would appear more than this many times its size is not shown. */
+    val maxPerspective = 50.0
+
     val gravitySpringStrength = 100.0
     val maxOptimizerMove = 10000.0
     val minOptimizeMove = 5.0

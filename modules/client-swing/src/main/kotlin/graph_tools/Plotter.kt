@@ -182,11 +182,25 @@ object Plotter {
         }
 
         fun drawNode(g2d: Graphics2D, n: SceneNode) {
+            if (n.scale == 1.0) drawNode(g2d, n, view.scale)
+            else {
+                // out of the plane: bigger or smaller around where it appears to be
+                val before = g2d.transform
+                g2d.translate(n.position.x, n.position.y)
+                g2d.scale(n.scale, n.scale)
+                g2d.translate(-n.position.x, -n.position.y)
+                drawNode(g2d, n, view.scale * n.scale)
+                g2d.transform = before
+            }
+        }
+
+        /** Draw [n] where the transform of [g2d] makes one workspace unit [scale] pixels. */
+        private fun drawNode(g2d: Graphics2D, n: SceneNode, scale: Double) {
             val textPos = n.position - n.textBounds / 2;
 
             if (n.selected) {
-                if (thickStroke.lineWidth * view.scale < 1.0) {
-                    g2d.stroke = BasicStroke((thickStroke.lineWidth / view.scale * 1.1).toFloat())
+                if (thickStroke.lineWidth * scale < 1.0) {
+                    g2d.stroke = BasicStroke((thickStroke.lineWidth / scale * 1.1).toFloat())
                 } else {
                     g2d.stroke = thickStroke
                 }
@@ -198,7 +212,7 @@ object Plotter {
 
             g2d.paint = n.fg.orElse(Constants.defaultFgColor).toAwt()
 
-            val screenspaceFD = FontData.get(g2d, n.fontSize * view.scale, n.monospace)
+            val screenspaceFD = FontData.get(g2d, n.fontSize * scale, n.monospace)
 
             /**
              * For small fonts (w.r.t. how it is shown on screen), output height is messed up because of integral height.
@@ -218,7 +232,7 @@ object Plotter {
                         g2d.drawString(
                             s.value,
                             (textPos.x).toFloat(),
-                            (textPos.y + screenspaceFD.ascent / view.scale + screenspaceFD.height / view.scale * s.index.toDouble()).toFloat()
+                            (textPos.y + screenspaceFD.ascent / scale + screenspaceFD.height / scale * s.index.toDouble()).toFloat()
                         )
                     }
                 }

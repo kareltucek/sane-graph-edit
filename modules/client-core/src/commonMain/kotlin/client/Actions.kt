@@ -5,6 +5,8 @@ import graph_tools.AddEdgesCommand
 import graph_tools.AddNodeCommand
 import graph_tools.AddNodesCommand
 import graph_tools.CompositeCommand
+import graph_tools.Depth
+import graph_tools.SetDepthCommand
 import graph_tools.Command
 import graph_tools.Edge
 import graph_tools.GraphTools
@@ -92,6 +94,23 @@ object Actions {
             graphView.shell.message("content-type: no node is selected")
         } else {
             g.commit(SetNodeTypeCommand(g, targets.associateWith { it.attributes.other[NodeType.ATTRIBUTE] }, type))
+            graphView.repaint()
+        }
+    }
+
+    /**
+     * Move the selected nodes (or, with none selected, the last
+     * active one) to the depth [z]; with [relative], by [z] from
+     * where each is. One undo step; a message if there is no node.
+     */
+    fun depthSelection(graphView: EditorView, z: Double, relative: Boolean) {
+        val g = graphView.g
+        val targets = g.selectedNodes.toList().ifEmpty { listOfNotNull(g.lastActiveNode?.takeIf { it in g.nodes }) }
+        if (targets.isEmpty()) {
+            graphView.shell.message("z: no node is selected")
+        } else {
+            val before = targets.associateWith { Depth.of(it) }
+            g.commit(SetDepthCommand(g, before, before.mapValues { (_, was) -> if (relative) was + z else z }))
             graphView.repaint()
         }
     }
@@ -656,6 +675,7 @@ object Actions {
             pos = pos,
             style = style,
         )
+        Depth.set(newNode, graphView.viewTransform.depth)
 
         val newEdges = from.map { selectedNode ->
             if (forwardEdge) Edge(selectedNode, newNode) else Edge(newNode, selectedNode)
@@ -675,7 +695,7 @@ object Actions {
     fun drawEdge(graphView: EditorView, forward: Boolean) {
         val g = graphView.g
         val pos = graphView.lastCursorPosition
-        val pointed = Clicker.selectClickedNode(g, pos, graphView.viewTransform.scale)
+        val pointed = Clicker.selectClickedNode(graphView, pos)
         val selected = g.selectedNodes - pointed
 
         val (src, dst) = if (forward) selected to pointed else pointed to selected

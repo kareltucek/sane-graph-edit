@@ -1,6 +1,8 @@
 package client
 
 import graph_tools.DynamicPlacement
+import graph_tools.Edge
+import utils.Constants
 import graph_tools.Node
 import graph_tools.NodeShape
 import graph_tools.NodeText
@@ -9,10 +11,16 @@ import graph_tools.TextMeasurer
 import utils.Rgb
 import utils.Vector2
 
-/** A node as a renderer draws it; coordinates and sizes in workspace units. */
+/**
+ * A node as a renderer draws it; coordinates and sizes in workspace
+ * units. A node that is not in the plane the view speaks of is
+ * drawn [scale] times its sizes around [position], which is where
+ * it appears to be.
+ */
 data class SceneNode(
     val id: String,
     val position: Vector2,
+    val scale: Double,
     val shapeBounds: Vector2,
     val textBounds: Vector2,
     val lines: List<String>,
@@ -54,23 +62,46 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
 
     val visible = g.visibleNodes()
     val selected = g.selectedNodes
+    // how each node appears from where the view looks; none for one behind the viewer or too near
+    val seen = g.nodes.filter { it in visible }.mapNotNull { n -> apparent(n)?.let { n to it } }.toMap()
     return Scene(
-        nodes = g.nodes.filter { it in visible }.map { sceneNode(it, it in selected) },
-        edges = g.edges.filter { it.src in visible && it.dst in visible }.map { SceneEdge(it.cache.srcPt, it.cache.dstPt) },
+        // what is further from the viewer first: what is nearer is drawn over it
+        nodes = seen.entries.sortedBy { it.value.scale }.map { (n, how) -> sceneNode(n, n in selected, how) },
+        edges = g.edges.mapNotNull { e ->
+            val src = seen[e.src]
+            val dst = seen[e.dst]
+            if (src == null || dst == null) null else sceneEdge(e, src, dst)
+        },
         selectionBox = gestures.selectionBoxFrom?.let { Vector2.computeCorners(gestures.lastPosition, it) },
     )
 }
 
-/** The node [id] alone, as [scene] describes it, its size brought up to date with [measurer]. Null when there is none. */
+/** The node [id] alone, as [scene] describes it, its size brought up to date with [measurer]. Null when there is none, or it is not shown. */
 fun EditorView.sceneNode(id: String, measurer: TextMeasurer): SceneNode? {
     g.recompute(measurer)
-    return g.node(id)?.let { sceneNode(it, it in g.selectedNodes) }
+    return g.node(id)?.let { n -> apparent(n)?.let { sceneNode(n, n in g.selectedNodes, it) } }
 }
 
-private fun sceneNode(n: Node, selected: Boolean): SceneNode =
+/** The edge [e] between its nodes as they appear: from border to border of what is seen of them. */
+private fun sceneEdge(e: Edge, src: Apparent, dst: Apparent): SceneEdge =
+    // both in the plane: as the graph has it
+    if (src.scale == 1.0 && dst.scale == 1.0) SceneEdge(e.cache.srcPt, e.cache.dstPt)
+    else {
+        val dir = (dst.position - src.position).toUnit()
+        val out = e.src.cache.shape.connectionPoint(dir, e.src, 0.0) * src.scale
+        val into = e.dst.cache.shape.connectionPoint(dir, e.dst, Constants.arrowheadRadius) * dst.scale
+        listOf(
+            src.position + out to dst.position - into,
+            src.position - out to dst.position - into,
+            src.position + out to dst.position + into,
+        ).minBy { (it.first - it.second).lengthSquared() }.let { SceneEdge(it.first, it.second) }
+    }
+
+private fun sceneNode(n: Node, selected: Boolean, how: Apparent): SceneNode =
     SceneNode(
         id = n.id,
-        position = n.position,
+        position = how.position,
+        scale = how.scale,
         shapeBounds = n.cache.shapeBounds,
         textBounds = n.cache.textBounds,
         lines = n.cache.lines,

@@ -30,7 +30,7 @@ class PointerInput(private val view: EditorView) {
         val pos = workspace(screen)
         val starts = gestures.state == null
         if (button == Button.Left && starts) {
-            val under = Clicker.selectClickedNode(view.g, pos, view.viewTransform.scale)
+            val under = Clicker.selectClickedNode(view, pos)
             when {
                 // move one node, or several
                 !control && under.isNotEmpty() && view.g.selectedNodes.size <= 1 -> gestures.startMoveOrSelectSingleNode(under)
@@ -50,7 +50,7 @@ class PointerInput(private val view: EditorView) {
         view.endStylePicker()
 
         if (button == Button.Right) {
-            gestures.startStylePicker(Clicker.selectClickedNode(view.g, pos, view.viewTransform.scale), screen)
+            gestures.startStylePicker(Clicker.selectClickedNode(view, pos), screen)
         }
         view.repaint()
     }
@@ -93,6 +93,8 @@ class PointerInput(private val view: EditorView) {
         view.endNodeEdit()
         view.endStylePicker()
         val t = view.viewTransform
+        // towards the node under the pointer, or away from it: its plane is what the view speaks of from here on
+        Clicker.selectClickedNode(view, workspace(screen)).firstOrNull()?.let { t.refocus(graph_tools.Depth.of(it), view.size / 2) }
         val factor = Constants.zoomOutStep.pow(steps)
         val max = Constants.maxZoom
         if ((t.scale > 1 / max || factor > 1.0) && (t.scale < max || factor < 1.0)) {

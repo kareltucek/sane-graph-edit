@@ -12,21 +12,22 @@ object Clicker {
         return xMatches && yMatches
     }
 
-    /** The visible node at [clickCoordinates] (workspace), if any; [scale] is the view's zoom, for a tolerance of ten screen pixels. */
-    fun selectClickedNode(g: Graph, clickCoordinates: Vector2, scale: Double): MutableSet<Node> {
+    /** The visible node that seems to be at [clickCoordinates] (workspace, in the plane [view] speaks of), if any; within ten screen pixels. */
+    fun selectClickedNode(view: EditorView, clickCoordinates: Vector2): MutableSet<Node> {
+        val g = view.g
+        val tolerance = 10.0 / view.viewTransform.scale
         return g.nodes
             .filter { g.isVisible(it) }
-            .filter {
-                it.cache?.shapeBounds?.let { bounds ->
-                    clickCoordinates.isInSquare(
-                        it.position - bounds / 2,
-                        it.position + bounds / 2,
-                        10.0 / scale
-                    )
-                }.orElse(false)
+            // where and how big each seems to be; none for one that is not shown
+            .mapNotNull { n -> view.apparent(n)?.let { n to it } }
+            .filter { (n, seen) ->
+                val half = n.cache.shapeBounds * seen.scale / 2
+                clickCoordinates.isInSquare(seen.position - half, seen.position + half, tolerance)
             }
-            .minByOrNull { (it.position - clickCoordinates).lengthSquared() }
-            ?.let { mutableSetOf(it) }
+            // the one nearest the viewer is the one on top
+            .sortedWith(compareByDescending<Pair<Node, Apparent>> { it.second.scale }.thenBy { (it.second.position - clickCoordinates).lengthSquared() })
+            .firstOrNull()
+            ?.let { mutableSetOf(it.first) }
             ?: mutableSetOf()
     }
 }

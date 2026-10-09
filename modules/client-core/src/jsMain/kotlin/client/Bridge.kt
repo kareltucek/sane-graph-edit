@@ -211,6 +211,7 @@ class JsView internal constructor(
             j.type = n.type.kind.id
             j.language = n.type.language
             j.fontSize = n.fontSize
+            j.depthScale = n.scale
             j.selected = n.selected
             j
         }.toTypedArray()

@@ -225,6 +225,28 @@ size of its source text whatever is shown in it; a picture that
 does not fit is scaled down. The Swing client keeps the attribute
 and shows every node as text.
 
+### Depth: `z`
+
+A node can have a third coordinate, the attribute `z`: how far it is
+behind the plane the graph is drawn in, away from you, in the units
+of its position; negative for a node in front of the plane. A node
+without one is in the plane, and a graph without any looks as it
+always did.
+
+The view looks straight at the graph. What is further away is drawn
+smaller and nearer the middle of the view, what is nearer bigger;
+what is behind you is not drawn, nor are its edges. At zoom 1 you
+are 1000 units in front of the plane you look at, so a node 1000
+units behind it is half its size. Zooming is coming closer: the
+wheel over a node goes towards that node, whatever its depth, and
+past the nodes in front of it. `examples/cube.dot` has one to try.
+
+`:z 300` puts the selected nodes at that depth, `:z +50` and `:z -50`
+move them by that much (away from you, towards you), `:z =-300` puts
+them at a negative depth, and
+`:z` alone tells where they are. A new node is made at the depth of
+the plane you look at. Turning the view is not there yet.
+
 ### Keyboard — `z`: view and folding
 
 These act on the selection, or on the last active node when nothing

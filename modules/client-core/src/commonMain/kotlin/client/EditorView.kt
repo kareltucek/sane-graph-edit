@@ -1,6 +1,7 @@
 package client
 
 import Graph
+import graph_tools.Depth
 import graph_tools.EditTextCommand
 import graph_tools.GraphTools
 import graph_tools.Node
@@ -113,8 +114,31 @@ class EditorView(
         textEdit = null
     }
 
-    /** Look at [pos] with zoom [scale]: [pos] goes to the middle of the view. */
-    fun setViewTo(pos: Vector2, scale: Double = 1.0) {
+    /**
+     * How [n] appears in this view: where its middle seems to be in
+     * the plane the view speaks of, and how many times its size it
+     * seems to have. Null for a node that is not shown, being
+     * behind the viewer or too near.
+     */
+    fun apparent(n: Node): Apparent? {
+        val z = Depth.of(n)
+        return if (z == viewTransform.depth) Apparent(n.position, 1.0)
+        else viewTransform.perspective(z)?.let { p -> viewTransform.apparent(n.position, z, size / 2)?.let { Apparent(it, p) } }
+    }
+
+    /**
+     * The depth to look at [nodes] at: the one most of them have,
+     * and of several such the nearest to the viewer, so that none of
+     * those is behind him. The view's own for no nodes.
+     */
+    private fun depthOf(nodes: Collection<Node>): Double =
+        nodes.groupingBy { Depth.of(it) }.eachCount().entries
+            .maxWithOrNull(compareBy<Map.Entry<Double, Int>> { it.value }.thenByDescending { it.key })?.key
+            ?: viewTransform.depth
+
+    /** Look at [pos] with zoom [scale]: [pos] goes to the middle of the view. With [depth], [pos] is in the plane at that depth. */
+    fun setViewTo(pos: Vector2, scale: Double = 1.0, depth: Double? = null) {
+        depth?.let { viewTransform.setDepth(it) }
         viewTransform.setToScale(scale)
         viewTransform.translate(viewTransform.toWorkspace(size / 2) - pos)
         repaint()
@@ -124,7 +148,7 @@ class EditorView(
 
     /** Centre on the selection, or on everything visible, at zoom 1. */
     fun centerScreen() {
-        setViewTo(GraphTools.computeCenterOfMass(focus()), 1.0)
+        setViewTo(GraphTools.computeCenterOfMass(focus()), 1.0, depthOf(focus()))
     }
 
     /** Fit the selection, or everything visible, into the view. */
@@ -132,7 +156,7 @@ class EditorView(
         GraphTools.computeBoundingBox(focus())?.let { box ->
             val scale = size / (box.br - box.ul)
             val targetScale = (minOf(scale.x, scale.y) / 1.1).coerceIn(0.0001, 1.0)
-            setViewTo((box.ul + box.br) / 2, targetScale)
+            setViewTo((box.ul + box.br) / 2, targetScale, depthOf(focus()))
         }
     }
 }

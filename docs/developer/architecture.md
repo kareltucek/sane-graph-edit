@@ -83,6 +83,19 @@ compiled to WebAssembly — and comes back as an SVG, which the page
 only ever uses as an image. A document's text never becomes markup
 of the page, which has Node.
 
+A node's depth is its `z` attribute (`graph_tools.Depth`). A view
+looks straight at one plane of the graph (`ViewTransform.depth`);
+its zoom and pan speak of that plane, and the viewer is
+`Constants.focalLength` screen pixels in front of it, so zooming is
+coming closer. `EditorView.apparent` tells where a node off that
+plane seems to be in it and how many times its size
+(`ViewTransform.perspective`); clicking, dragging and the selection
+box go by that. The scene has every node where it appears, with that
+factor (`SceneNode.scale`), the furthest first, and leaves out what
+is behind the viewer; a renderer only draws a node that much bigger
+or smaller around its position. A graph with no depths goes through
+none of this: every factor is 1.
+
 Only what is in the view is drawn. What a node shows inside its
 outline (text, painting or picture) is kept as a bitmap
 (`bitmaps.ts`), made at the scale of a view that is not zoomed. A

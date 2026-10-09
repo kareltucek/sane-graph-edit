@@ -836,6 +836,22 @@ class KeyMapper(
                     else -> Actions.typeSelection(gv, type)
                 }
             }
+            "z" -> {
+                val text = args?.trim().orEmpty()
+                val z = text.removePrefix("=").toDoubleOrNull()
+                when {
+                    // without an argument: say where the node is
+                    text.isEmpty() -> gv.shell.message(
+                        (gv.g.selectedNodes.toList().ifEmpty { listOfNotNull(gv.g.lastActiveNode) })
+                            .map { graph_tools.Depth.of(it) }.distinct()
+                            .joinToString(", ") { with(utils.Utils) { "z = ${it.toNiceString()}" } }
+                            .ifEmpty { "z: no node is selected" },
+                    )
+                    z == null -> gv.shell.message("z: `$text` is not a number (z 100, z +50, z -50, z =-50)")
+                    // a sign means from where the node is; `z 0`, `z 100` and `z =-100` say where to
+                    else -> Actions.depthSelection(gv, z, relative = text.startsWith("+") || text.startsWith("-"))
+                }
+            }
             "fold", "unfold", "toggle-fold" -> {
                 val how = when (cmd) {
                     "fold" -> ZCommands.Fold.Fold
@@ -1263,7 +1279,7 @@ class KeyMapper(
         val BUILTIN_COMMANDS = listOf(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
             "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
-            "fold", "unfold", "toggle-fold", "content-type",
+            "fold", "unfold", "toggle-fold", "content-type", "z",
         )
 
         /** Commands that take a motion: run from a key they wait for the next command and take it as theirs (`zf` then `t`). */

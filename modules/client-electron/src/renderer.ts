@@ -25,6 +25,8 @@ interface SceneNode {
     type: "plain" | "code" | "markdown";
     language: string | null;
     fontSize: number;
+    /** How many times its sizes the node is drawn, around x, y: other than 1 for a node nearer or further than the plane the view is of. */
+    depthScale: number;
     selected: boolean;
 }
 
@@ -358,7 +360,7 @@ const bitmaps = new Bitmaps();
  * kept drawing of it, which is made if there is none. Closer than
  * the kept drawing is made for: as it is.
  */
-function drawContent(content: Content, scene: Scene, dpr: number) {
+function drawContent(content: Content, scene: View, dpr: number) {
     const needed = scene.scale * dpr;
     const finest = bitmaps.scaleOf(content.width, content.height, dpr);
     // half the finest scale as often as still leaves at least what the view needs
@@ -388,8 +390,23 @@ function inkOf(n: SceneNode): string {
     return n.fg ?? (n.bg === null ? colours().foreground : isLight(n.bg) ? "#000000" : "#ffffff");
 }
 
+/** A zoom and a pan: `screen = workspace * scale + offset`. */
+interface View {
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+}
+
+/** The zoom and pan [n] is drawn with: the scene's, or, for a node out of the scene's plane, what shows it bigger or smaller around where it appears to be. */
+function viewOf(n: SceneNode, scene: View): View {
+    const scale = scene.scale * n.depthScale;
+    return { scale, offsetX: scene.offsetX + n.x * (scene.scale - scale), offsetY: scene.offsetY + n.y * (scene.scale - scale) };
+}
+
 function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number) {
-    const scale = scene.scale;
+    const view = viewOf(n, scene);
+    const scale = view.scale;
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * view.offsetX, dpr * view.offsetY);
     const left = n.x - n.width / 2;
     const top = n.y - n.height / 2;
     ctx.beginPath();
@@ -407,7 +424,7 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
     if (shown) {
         // a markdown node is its picture, once that is made; a code node what neovim painted, once that is
         const picture = pictureOf(n);
-        drawContent(picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n)), scene, dpr);
+        drawContent(picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n)), view, dpr);
     }
 }
 
@@ -467,7 +484,8 @@ function stripColumns(): number {
 let lastScene: Scene | null = null;
 
 /** Where the text of [n] is on the page, and the size of its character cells. */
-function textPlace(n: SceneNode, scene: Scene, grid: client.GridMetrics): Place {
+function textPlace(n: SceneNode, whole: Scene, grid: client.GridMetrics): Place {
+    const scene = viewOf(n, whole);
     const bounds = canvas.getBoundingClientRect();
     return {
         left: bounds.left + (n.x - n.textWidth / 2) * scene.scale + scene.offsetX,
@@ -526,8 +544,9 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
 }
 
 /** Where the cells of the editor of [n] go on the canvas: the cells its text is drawn in, and all of the node to draw on. */
-function cellsOf(n: SceneNode, scene: Scene, grid: client.GridMetrics): Cells {
-    const place = textPlace(n, scene, grid);
+function cellsOf(n: SceneNode, whole: Scene, grid: client.GridMetrics): Cells {
+    const place = textPlace(n, whole, grid);
+    const scene = viewOf(n, whole);
     const bounds = canvas.getBoundingClientRect();
     const fontPx = n.fontSize * scene.scale;
     return {
@@ -613,8 +632,14 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     const outline = Math.max(2, 2.2 / scene.scale);
     scene.edges.filter((e) => inView(scene, width, height, e.x1, e.y1, e.x2, e.y2, ARROWHEAD_RADIUS + 1)).forEach((e) => drawEdge(e, scene.scale));
     scene.nodes
-        .filter((n) => inView(scene, width, height, n.x - n.width / 2, n.y - n.height / 2, n.x + n.width / 2, n.y + n.height / 2, outline))
+        .filter((n) => {
+            const halfWidth = n.width * n.depthScale / 2;
+            const halfHeight = n.height * n.depthScale / 2;
+            return inView(scene, width, height, n.x - halfWidth, n.y - halfHeight, n.x + halfWidth, n.y + halfHeight, outline);
+        })
         .forEach((n) => drawNode(n, grid, scene, dpr));
+    // each node set its own
+    ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     lastScene = scene;
     const edited = scene.nodes.find((n) => n.id === editing?.id);
     const editor = editing?.editor;
@@ -792,8 +817,9 @@ async function replay(events: Played[], grid: client.GridMetrics) {
     for (const p of events) {
         // from the middle of the window, whatever size the window manager gave it
         const node = p.node === undefined ? undefined : lastScene?.nodes.find((n) => n.lines.join("\n").startsWith(p.node!));
-        const fromX = node !== undefined && lastScene !== null ? node.x * lastScene.scale + lastScene.offsetX : canvas.clientWidth / 2;
-        const fromY = node !== undefined && lastScene !== null ? node.y * lastScene.scale + lastScene.offsetY : canvas.clientHeight / 2;
+        const bounds = canvas.getBoundingClientRect();
+        const fromX = bounds.left + (node !== undefined && lastScene !== null ? node.x * lastScene.scale + lastScene.offsetX : canvas.clientWidth / 2);
+        const fromY = bounds.top + (node !== undefined && lastScene !== null ? node.y * lastScene.scale + lastScene.offsetY : canvas.clientHeight / 2);
         const cell = node !== undefined && lastScene !== null && p.row !== undefined && p.column !== undefined ? textPlace(node, lastScene, grid) : null;
         const clientX = cell !== null ? cell.left + (p.column! + 0.5) * cell.cellWidth : fromX + (p.x ?? 0);
         const clientY = cell !== null ? cell.top + (p.row! + 0.5) * cell.cellHeight : fromY + (p.y ?? 0);

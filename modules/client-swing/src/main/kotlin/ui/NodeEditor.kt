@@ -75,12 +75,14 @@ class NodeEditor(
         editedNode?.let { parent.model.sceneNode(it, TextMeasurer.default) }?.let { n ->
             val view = parent.viewTransform
             FontData.cache[n.fontSize to n.monospace]?.let { this.font = it.font }
-            this.font = this.font.deriveFont((n.fontSize * view.scale).toFloat())
+            // a node out of the plane appears bigger or smaller
+            val scale = view.scale * n.scale
+            this.font = this.font.deriveFont((n.fontSize * scale).toFloat())
 
-            val margin = ((n.shapeBounds - n.textBounds) / 4) * view.scale
+            val margin = ((n.shapeBounds - n.textBounds) / 4) * scale
             this.margin = Insets(margin.y.toInt(), margin.x.toInt(), margin.y.toInt(), margin.x.toInt())
             val center = view.toScreen(n.position)
-            val textBounds = n.textBounds / 2 * view.scale
+            val textBounds = n.textBounds / 2 * scale
 
             val textUl = center - textBounds
 

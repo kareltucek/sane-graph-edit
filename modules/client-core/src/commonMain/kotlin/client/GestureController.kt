@@ -1,6 +1,7 @@
 package client
 
 import graph_tools.AddNodeCommand
+import graph_tools.Depth
 import graph_tools.GraphTools
 import graph_tools.LayoutOptimizer
 import graph_tools.MoveNodesCommand
@@ -492,6 +493,9 @@ class GestureController(
         graphView.repaint()
     }
 
+    /** A node nearer the viewer than the plane seems bigger, and has less far to go to stay under the pointer. */
+    private fun apparentScale(n: Node): Double = graphView.apparent(n)?.scale ?: 1.0
+
     fun dragMoveNode(pos: Vector2, restrictOperator: Boolean) {
         val start = moveStartPositions
         val anchor = moveAnchor
@@ -508,7 +512,7 @@ class GestureController(
                 if (lockY) 0.0 else totalRaw.y,
             )
             for ((n, origPos) in start) {
-                n.position = origPos + total
+                n.position = origPos + total / apparentScale(n)
                 graphView.g.needsRecomputing(n)
             }
         } else {
@@ -524,7 +528,7 @@ class GestureController(
                 if (lockY) 0.0 else raw.y,
             )
             graphView.g.movable(graphView.g.selectedNodes).forEach {
-                it.position = it.position + diff
+                it.position = it.position + diff / apparentScale(it)
                 graphView.g.needsRecomputing(it)
             }
         }
@@ -553,7 +557,7 @@ class GestureController(
             }.orElse(false)
 
         if (thisClickMatch && secondClickMatch && secondTimeSatisfied && !control) {
-            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
+            val mouseoverNodes = Clicker.selectClickedNode(graphView, pos)
             val clickScreenCoordinates = screen
 
             when (mouseoverNodes.size) {
@@ -570,7 +574,7 @@ class GestureController(
             singleClickedAt = null
             singleClickedTime = null
         } else if (thisClickMatch && firstTimeSatisfied && !control) {
-            val mouseoverNodes = Clicker.selectClickedNode(graphView.g, pos, graphView.viewTransform.scale)
+            val mouseoverNodes = Clicker.selectClickedNode(graphView, pos)
 
             // reset select in case one node was clicked while multiple were selected - the user could have wanted to move the selected group
             graphView.g.cleanSelect(mouseoverNodes)
@@ -610,7 +614,7 @@ class GestureController(
             val (ul, br) = Vector2.computeCorners(lastPosition, box)
             graphView.g.nodes
                 .filter { graphView.g.isVisible(it) }
-                .filter { ul.lt(it.position) && it.position.lt(br) }
+                .filter { n -> graphView.apparent(n)?.position?.let { ul.lt(it) && it.lt(br) } ?: false }
                 .let {
                     selectionBoxInitial?.let { graphView.g.cleanSelect(it, false) }
                     graphView.g.selectAll(it, saveHistory)
@@ -625,6 +629,8 @@ class GestureController(
             pos = pos,
             style = graphView.defaultNodeStyle,
         )
+        // in the plane the view speaks of: where the pointer is
+        Depth.set(newNode, graphView.viewTransform.depth)
 
         graphView.g.commit(AddNodeCommand(graphView.g, newNode))
         graphView.g.cleanSelect(mutableSetOf(newNode))

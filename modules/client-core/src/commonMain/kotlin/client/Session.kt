@@ -59,7 +59,7 @@ class Session(private val file: Path) {
             .filterKeys { it.startsWith(VIEW_TRANSFORM_PREFIX) && it.length > VIEW_TRANSFORM_PREFIX.length }
             .mapNotNull { (name, value) ->
                 val numbers = value.split(",").mapNotNull { it.trim().toDoubleOrNull() }
-                if (numbers.size == 6) Fs.path(name.removePrefix(VIEW_TRANSFORM_PREFIX)) to numbers else null
+                if (numbers.size in 6..7) Fs.path(name.removePrefix(VIEW_TRANSFORM_PREFIX)) to numbers else null
             }
             .toMap()
         return Snapshot(files, active, transforms)
@@ -80,7 +80,7 @@ class Session(private val file: Path) {
             files.forEachIndexed { i, p -> props["openFiles.$i"] = p.toAbsolutePath().toString() }
             snapshot.activeFile?.let { props["activeFile"] = it.toAbsolutePath().toString() }
             snapshot.viewTransforms
-                .filterValues { it.size == 6 }
+                .filterValues { it.size in 6..7 }
                 .forEach { (path, matrix) -> props[VIEW_TRANSFORM_PREFIX + path.toAbsolutePath().toString()] = matrix.joinToString(",") }
             Fs.writeText(file, PropertiesText.encode(props, "sane-graph-edit session"))
         } catch (_: Exception) {
