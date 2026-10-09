@@ -90,8 +90,10 @@ class Session(private val file: Path) {
         try {
             Files.createDirectories(file.parent)
             val props = Properties()
-            props.setProperty("openFiles.count", snapshot.files.size.toString())
-            snapshot.files.forEachIndexed { i, p ->
+            // a file open in several tabs is restored in one, or the tabs would pile up from run to run
+            val files = snapshot.files.distinctBy { it.toAbsolutePath().normalize() }
+            props.setProperty("openFiles.count", files.size.toString())
+            files.forEachIndexed { i, p ->
                 props.setProperty("openFiles.$i", p.toAbsolutePath().toString())
             }
             snapshot.activeFile?.let {

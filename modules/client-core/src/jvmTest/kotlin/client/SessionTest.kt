@@ -42,6 +42,17 @@ class SessionTest {
     }
 
     @Test
+    fun `a file open in several tabs is saved once`() {
+        val (session, _) = tempSession()
+        val a = Paths.get("/tmp/graphs/a.dot")
+        val b = Paths.get("/tmp/graphs/b.dot")
+
+        session.save(Session.Snapshot(files = listOf(a, b, Paths.get("/tmp/graphs/../graphs/a.dot"), b), activeFile = b))
+
+        assertEquals(listOf(a.toAbsolutePath(), b.toAbsolutePath()), session.load().files)
+    }
+
+    @Test
     fun `round-trip with no active file`() {
         val (session, _) = tempSession()
         val a = Paths.get("/tmp/graphs/a.dot")
