@@ -192,8 +192,9 @@ class Graph(
             edgesById[it.id] = it
             edgeMapRestricted[it.src]!!.add(it)
             edgeMapRestricted[it.dst]!!.add(it)
-            EdgeGeometry.recompute(i)
         }
+        // once for all of them: inside the loop it was every edge again for each edge
+        EdgeGeometry.recompute(i)
     }
 
     fun remove(e: Node) {

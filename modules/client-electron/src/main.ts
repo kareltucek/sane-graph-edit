@@ -16,6 +16,10 @@ import * as path from "path";
 
 const SHOT_INTERVAL_MS = 250;
 
+// An error nobody caught is written where the application was started from; Electron's own way is a dialog on the screen.
+process.on("uncaughtException", (error) => console.error("sane-graph-edit: uncaught in the main process:", error));
+process.on("unhandledRejection", (reason) => console.error("sane-graph-edit: unhandled rejection in the main process:", reason));
+
 interface Args {
     url?: string;
     file?: string;
@@ -74,9 +78,11 @@ app.whenReady().then(() => {
     if (shots !== undefined) {
         fs.mkdirSync(shots, { recursive: true });
         const started = Date.now();
-        setInterval(() => {
+        const timer = setInterval(() => {
             window.webContents.capturePage().then((image) => fs.writeFileSync(path.join(shots, `${Date.now() - started}.png`), image.toPNG()));
         }, SHOT_INTERVAL_MS);
+        // a closed window has no page to take a picture of
+        window.on("closed", () => clearInterval(timer));
     }
     window.setMenuBarVisibility(false);
     const query: Record<string, string> = {};
