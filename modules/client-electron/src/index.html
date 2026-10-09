@@ -9,6 +9,9 @@
     html, body { margin: 0; height: 100%; overflow: hidden; background: var(--canvas, #eee); }
     body { display: flex; flex-direction: column; font: 12px monospace; color: var(--fg, #000); }
     canvas { display: block; flex: 1; min-height: 0; width: 100%; }
+    #tabs { display: flex; overflow: hidden; background: var(--canvas, #eee); border-bottom: 1px solid var(--fg, #000); user-select: none; }
+    .tab { padding: 3px 12px; white-space: nowrap; border-right: 1px solid var(--fg, #000); cursor: pointer; opacity: 0.7; }
+    .tab.current { background: var(--bg, #fff); opacity: 1; }
     #bottom { position: relative; }
     #status { padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
     #line {
@@ -31,6 +34,7 @@
   </style>
 </head>
 <body>
+  <div id="tabs"></div>
   <canvas id="graph"></canvas>
   <div id="bottom">
     <pre id="pane"></pre>

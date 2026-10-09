@@ -7,13 +7,8 @@ fun interface Scheduler {
     fun after(ms: Int, action: () -> Unit): () -> Unit
 }
 
-/**
- * The application around a view (conn1, client → renderer): the
- * questions it puts to the user and the other tabs. Unlike
- * [Renderer], some of these wait for an answer; with the renderer
- * in another process they become a request and its reply.
- */
-interface Shell {
+/** What is said to the user and asked of them; some of these wait for the answer. */
+interface Dialogs {
     /** Show [text] to the user (`:help`, what went wrong with a command). */
     fun message(text: String)
 
@@ -31,6 +26,15 @@ interface Shell {
 
     /** Let the user choose where to write an SVG export. */
     fun chooseExport(defaultName: String): Path?
+}
+
+/**
+ * The application around a view (conn1, client → renderer): the
+ * questions it puts to the user ([Dialogs]) and the other tabs.
+ * Unlike [Renderer], some of these wait for an answer; with the
+ * renderer in another process they become a request and its reply.
+ */
+interface Shell : Dialogs {
 
     /** The view's title, file or unsaved state changed. */
     fun stateChanged()

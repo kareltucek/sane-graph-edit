@@ -1,12 +1,12 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 
-// sane-graph-edit-electron [--url <ws address>] <file>
+// sane-graph-edit-electron [--url <ws address>] [<file or directory>]
 //
-// Shows <file> as a client of the editor session of the window
+// Shows <file>, or the directory it is started in, as a client of the editor session of the window
 // running in this directory, which must have been started with
 // --ws. Without --url the address is read from the file that
 // window keeps beside its session socket.
@@ -54,7 +54,6 @@ function addressFile(workspace: string): string {
 }
 
 function resolve(args: Args): Args {
-    if (args.file === undefined) return { ...args, problem: "no file given" };
     if (args.url !== undefined) return args;
     const file = addressFile(process.cwd());
     try {
@@ -93,6 +92,17 @@ app.whenReady().then(() => {
     if (args.captureAfter !== undefined) query.captureAfter = args.captureAfter;
     if (args.play !== undefined) query.play = args.play;
     window.loadFile(path.join(__dirname, "index.html"), { query });
+});
+
+// The page asks the user for a file and waits for the answer: `kind` is `open`, `save` or `export`, `name` the name suggested.
+ipcMain.on("choose", (event, kind: string, name: string) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const graphs = [{ name: "Graphs", extensions: ["dot", "gv"] }, { name: "All files", extensions: ["*"] }];
+    const pictures = [{ name: "SVG", extensions: ["svg"] }];
+    const chosen = window === null ? undefined
+        : kind === "open" ? dialog.showOpenDialogSync(window, { properties: ["openFile"], filters: graphs })?.[0]
+        : dialog.showSaveDialogSync(window, { defaultPath: name, filters: kind === "export" ? pictures : graphs });
+    event.returnValue = chosen ?? null;
 });
 
 app.on("window-all-closed", () => app.quit());

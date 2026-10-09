@@ -117,6 +117,29 @@ function hideMessage() {
     pane.style.display = "none";
 }
 
+// The strip of tabs above the graph. Which tabs there are and what selecting and closing one does is the client core's business.
+const tabStrip = document.getElementById("tabs") as HTMLDivElement;
+
+function showTabs(app: client.JsApp) {
+    const tabs = app.tabs() as { title: string; current: boolean }[];
+    tabStrip.replaceChildren(...tabs.map((tab, index) => {
+        const element = document.createElement("div");
+        element.className = tab.current ? "tab current" : "tab";
+        element.textContent = tab.title;
+        element.addEventListener("click", () => app.select(index));
+        // the middle button closes, as in a browser
+        element.addEventListener("auxclick", (e) => {
+            if (e.button === 1) app.close(index);
+        });
+        return element;
+    }));
+    const shown = tabs.find((tab) => tab.current);
+    document.title = shown ? `${shown.title} — Sane Graph Edit` : "Sane Graph Edit";
+}
+
+/** The window is closing because the client core said so: nothing more to ask. */
+let leaving = false;
+
 // The style picker: colours, size and shape for the selected nodes. Which styles there are and what picking does is the client core's business.
 const picker = document.getElementById("picker") as HTMLDivElement;
 const pickerColours = document.getElementById("picker-colours") as HTMLDivElement;
@@ -152,9 +175,9 @@ function fillPicker(view: client.JsView) {
     });
 }
 
-function wirePicker(view: client.JsView) {
-    picker.querySelectorAll<HTMLButtonElement>("button[data-size]").forEach((b) => b.addEventListener("click", () => view.pickSize(Number(b.dataset.size))));
-    picker.querySelectorAll<HTMLButtonElement>("button[data-shape]").forEach((b) => b.addEventListener("click", () => view.pickShape(b.dataset.shape!)));
+function wirePicker(current: (action: (view: client.JsView) => void) => void) {
+    picker.querySelectorAll<HTMLButtonElement>("button[data-size]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickSize(Number(b.dataset.size)))));
+    picker.querySelectorAll<HTMLButtonElement>("button[data-shape]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickShape(b.dataset.shape!))));
 }
 
 /** Keys that put a message away and do nothing else; any other key puts it away and means what it always does. */
@@ -213,15 +236,17 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scale: number) {
     ctx.beginPath();
     if (n.shape === "oval") ctx.ellipse(n.x, n.y, n.width / 2, n.height / 2, 0, 0, 2 * Math.PI);
     else ctx.roundRect(left, top, n.width, n.height, CORNER_RADIUS);
+    // a node with a background of its own and no text colour: the theme's text may not show on it
+    const ink = n.fg ?? (n.bg === null ? colours().foreground : isLight(n.bg) ? "#000000" : "#ffffff");
     ctx.fillStyle = n.bg ?? colours().background;
     ctx.fill();
-    ctx.strokeStyle = n.fg ?? colours().foreground;
+    ctx.strokeStyle = ink;
     // a selected node's outline stays visible however far out the view is zoomed
     ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
     ctx.stroke();
     // the node being edited has its editor where the text would be, once that shows
     if (n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown)) {
-        ctx.fillStyle = n.fg ?? colours().foreground;
+        ctx.fillStyle = ink;
         ctx.font = `${n.fontSize}px ${FONT}`;
         const textLeft = n.x - n.textWidth / 2;
         const textTop = n.y - n.textHeight / 2;
@@ -336,19 +361,16 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     }
 }
 
-function start(view: client.JsView, grid: client.GridMetrics) {
+function start(app: client.JsApp, grid: client.GridMetrics) {
     let scheduled = false;
-    let fitted = false;
+    /** Do [action] with the view the page shows now; there is none before the first tab. */
+    const current = (action: (view: client.JsView) => void) => {
+        const view = app.current();
+        if (view) action(view);
+    };
     const paint = () => {
         scheduled = false;
-        if (!fitted && canvas.clientWidth > 0) {
-            fitted = true;
-            view.resize(canvas.clientWidth, canvas.clientHeight);
-            // the sizes of the nodes are known once the scene has been asked for
-            view.scene();
-            view.fit();
-        }
-        draw(view, grid);
+        current((view) => draw(view, grid));
     };
     const repaint = () => {
         if (!scheduled) {
@@ -357,8 +379,9 @@ function start(view: client.JsView, grid: client.GridMetrics) {
         }
     };
     page.repaint = repaint;
-    page.editNode = (id, atClick, x, y) => editNode(view, grid, id, atClick ? { x, y } : null);
-    page.endEdit = () => endEdit(view);
+    page.editNode = (id, atClick, x, y) => current((view) => editNode(view, grid, id, atClick ? { x, y } : null));
+    page.endEdit = () => current((view) => endEdit(view));
+    page.tabs = () => showTabs(app);
     window.addEventListener("resize", repaint);
 
     NodeEditor.warm(document.body, FONT);
@@ -376,34 +399,38 @@ function start(view: client.JsView, grid: client.GridMetrics) {
     const y = (e: MouseEvent) => e.clientY - canvas.getBoundingClientRect().top;
     canvas.addEventListener("wheel", (e) => {
         e.preventDefault();
-        view.wheel(x(e), y(e), e.deltaY);
+        current((view) => view.wheel(x(e), y(e), e.deltaY));
     }, { passive: false });
     canvas.addEventListener("pointerdown", (e) => {
         // a drag goes on when the pointer leaves the window; an event made by a test has no pointer to capture
         if (e.isTrusted) canvas.setPointerCapture(e.pointerId);
-        view.pointerDown(x(e), y(e), e.button, e.ctrlKey, e.shiftKey);
+        current((view) => view.pointerDown(x(e), y(e), e.button, e.ctrlKey, e.shiftKey));
     });
-    canvas.addEventListener("pointermove", (e) => view.pointerMove(x(e), y(e), e.buttons !== 0, e.shiftKey));
-    canvas.addEventListener("pointerup", (e) => view.pointerUp(x(e), y(e), e.button, e.ctrlKey));
+    canvas.addEventListener("pointermove", (e) => current((view) => view.pointerMove(x(e), y(e), e.buttons !== 0, e.shiftKey)));
+    canvas.addEventListener("pointerup", (e) => current((view) => view.pointerUp(x(e), y(e), e.button, e.ctrlKey)));
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-    window.addEventListener("keydown", (e) => {
+    window.addEventListener("keydown", (e) => current((view) => {
         const dismissed = paneOpen() && !lineOpen() && editing === null;
         if (dismissed) hideMessage();
         if (dismissed && DISMISSING_KEYS.includes(e.key)) e.preventDefault();
         else if (pickerOpen() && e.key === "Escape") view.pickerDismissed();
         // while a node is edited the keys are neovim's, and while the line is open they are the line's
         else if (editing === null && !lineOpen() && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
-    });
-    wirePicker(view);
-    lineInput.addEventListener("input", () => view.lineTyped(lineInput.value));
-    lineInput.addEventListener("keydown", (e) => {
+    }));
+    wirePicker(current);
+    lineInput.addEventListener("input", () => current((view) => view.lineTyped(lineInput.value)));
+    lineInput.addEventListener("keydown", (e) => current((view) => {
         if (view.lineKey(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
-    });
+    }));
     // the line keeps the keys for as long as it is open
     lineInput.addEventListener("blur", () => {
         if (lineOpen()) lineInput.focus();
     });
-    document.title = `${view.file} — Sane Graph Edit`;
+    // closing the window is asking to quit: the tabs with unsaved changes have a say
+    window.addEventListener("beforeunload", (e) => {
+        if (!leaving && !app.quit()) e.returnValue = false;
+    });
+    showTabs(app);
     repaint();
 
     const play = query.get("play");
@@ -412,9 +439,11 @@ function start(view: client.JsView, grid: client.GridMetrics) {
     const capture = query.get("capture");
     if (capture !== null) {
         setTimeout(() => {
-            draw(view, grid);
+            current((view) => draw(view, grid));
             const png = canvas.toDataURL("image/png").replace(/^data:image\/png;base64,/, "");
             require("fs").writeFileSync(capture, Buffer.from(png, "base64"));
+            // a test ends here whatever is unsaved: no question to the user
+            leaving = true;
             window.close();
         }, Number(query.get("captureAfter") ?? CAPTURE_DELAY_MS));
     }
@@ -485,6 +514,10 @@ const page: {
     hideMessage: () => void;
     showPicker: (x: number, y: number) => void;
     hidePicker: () => void;
+    tabs: () => void;
+    confirm: (title: string, question: string) => boolean;
+    choose: (kind: string, name: string) => string | null;
+    exit: () => void;
     status: (text: string) => void;
 } = {
     repaint: () => {},
@@ -500,6 +533,13 @@ const page: {
     hideMessage,
     showPicker,
     hidePicker,
+    tabs: () => {},
+    confirm: (title, question) => window.confirm(`${title}\n\n${question}`),
+    choose: (kind, name) => require("electron").ipcRenderer.sendSync("choose", kind, name),
+    exit: () => {
+        leaving = true;
+        window.close();
+    },
     status: (text) => {
         // a space keeps the line's height
         const shown = text === "" ? " " : text;
@@ -511,12 +551,12 @@ const query = new URLSearchParams(window.location.search);
 const problem = query.get("problem");
 const url = query.get("url");
 const file = query.get("file");
-if (problem !== null || url === null || file === null) {
-    say(problem ?? "no file given");
+if (problem !== null || url === null) {
+    say(problem ?? "no editor to connect to");
 } else {
     const grid = measureGrid();
-    client.openView(url, file, grid, page, (view, error) => {
-        if (view) start(view, grid);
-        else say(`cannot open ${file}: ${error}`);
+    client.openApp(url, file, grid, page, (app, error) => {
+        if (app) start(app, grid);
+        else say(`cannot connect to the editor: ${error}`);
     });
 }

@@ -763,6 +763,17 @@ Items currently missing and planned under `tasks/`:
   `client.StatusLine`, shared by the renderers. A renderer supplies
   a text field (`CommandLineWidget`): Swing's `CommandBar`, the
   Electron page's `<input>`.
+- **Which tabs a window has and what opening, closing and quitting
+  do is in `client.Tabs`**; an application shows the strip and the
+  current view (`TabsHost`) and asks the user (`Dialogs`). The
+  Electron client's tabs are these. Swing's `TabManager` is older
+  and still has the same rules of its own.
+- **A client whose connection cannot wait for the editor**
+  (JavaScript) gets documents that are empty at first and fill in
+  when the editor answers (`DocumentSession.isAttached`). A view is
+  busy meanwhile (`ViewContent.isBusy`): keys are held back, and
+  what looks at the content right after opening goes through
+  `ViewContent.onceLoaded`. Saving reports through a callback.
 - **`Graph.testGraph()`** still exists as a seed fixture but no
   longer runs on startup — fresh tabs are empty. Useful for
   manual inspection and for tests.
