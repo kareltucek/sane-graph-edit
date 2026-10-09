@@ -5,7 +5,10 @@ import client.SocketConnection
 import host.EditorHost
 import host.SessionLock
 import host.SocketServer
+import host.WebSocketServer
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import javax.swing.SwingUtilities
 
 /**
@@ -30,10 +33,18 @@ object Editor {
      * Run a session of this process's own. It listens at [socket]
      * for tools (`ctl`) and windows started with `--attach`, unless
      * another process already does: then it is simply not reachable.
+     * With [webSocketPort] it also listens there (0: any free port),
+     * for clients that cannot use the socket; the address they need
+     * is printed and kept in a file next to the socket.
      */
-    fun start(socket: Path? = null) {
+    fun start(socket: Path? = null, webSocketPort: Int? = null) {
         if (client == null) {
             val host = EditorHost()
+            webSocketPort?.let { port ->
+                runCatching { WebSocketServer(host.hub, port) { SwingUtilities.invokeLater(it) }.start() }
+                    .onSuccess { server -> announce(server, socket) }
+                    .onFailure { System.err.println("sane-graph-edit: no WebSocket on port $port: ${it.message}") }
+            }
             // best effort: without the socket the editor still works, alone
             socket?.takeIf { runCatching { SessionLock.acquire(it) }.getOrDefault(false) }?.let { s ->
                 runCatching { SocketServer(host.hub, s) { SwingUtilities.invokeLater(it) }.start() }
@@ -41,6 +52,20 @@ object Editor {
                     .onFailure { System.err.println("sane-graph-edit: no session socket at $s: ${it.message}") }
             }
             client = EditorClient(host.connect())
+        }
+    }
+
+    // the address holds the token: the file is for this user only, as is the directory it is in
+    private fun announce(server: WebSocketServer, socket: Path?) {
+        println(server.url)
+        socket?.resolveSibling(socket.fileName.toString().removeSuffix(".sock") + ".ws")?.let { file ->
+            runCatching {
+                Files.createDirectories(file.parent)
+                Files.deleteIfExists(file)
+                Files.createFile(file, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rw-------")))
+                Files.writeString(file, server.url + "\n")
+                Runtime.getRuntime().addShutdownHook(Thread { runCatching { Files.deleteIfExists(file) } })
+            }.onFailure { System.err.println("sane-graph-edit: cannot write $file: ${it.message}") }
         }
     }
 

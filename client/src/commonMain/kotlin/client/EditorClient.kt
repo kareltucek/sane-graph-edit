@@ -18,8 +18,15 @@ interface EditorConnection {
 
     fun send(request: Request)
 
-    /** Send [request] and wait for the editor's answer to it; null when it has none. */
+    /**
+     * Send [request] and wait for the editor's answer to it; null
+     * when it has none. Not on every connection: JavaScript cannot
+     * wait, and has only [request].
+     */
     fun call(request: Request): Event?
+
+    /** Send [request]; the editor's answer to it (null when it has none) goes to [onAnswer], as events do. */
+    fun request(request: Request, onAnswer: (Event?) -> Unit) = onAnswer(call(request))
 
     fun close()
 }
@@ -46,6 +53,10 @@ class EditorClient(private val connection: EditorConnection) {
     /** Open the file at [path] (an absolute path), sharing the document with the clients that already have it open. */
     fun open(path: String): DocumentSession = attach(OpenFile(path))
 
+    /** [open] without waiting: [then] gets the document, or the reason there is none. */
+    fun open(path: String, then: (Result<DocumentSession>) -> Unit) =
+        connection.request(OpenFile(path)) { answer -> then(runCatching { attached(answer, null) }) }
+
     /** A new document without a file, starting with the content of [graph]; [graph] itself becomes the replica. */
     fun create(graph: Graph, title: String? = null): DocumentSession = attach(CreateDocument(GraphState.of(graph), title), graph)
 
@@ -71,8 +82,9 @@ class EditorClient(private val connection: EditorConnection) {
         }
     }
 
-    private fun attach(request: Request, replica: Graph? = null): DocumentSession {
-        val answer = connection.call(request)
+    private fun attach(request: Request, replica: Graph? = null): DocumentSession = attached(connection.call(request), replica)
+
+    private fun attached(answer: Event?, replica: Graph?): DocumentSession {
         val attached = answer as? Attached ?: throw EditorException((answer as? Failed)?.reason ?: "no answer from the editor")
         val session = sessions.getOrPut(attached.info.document) { DocumentSession(this, attached, replica ?: attached.state.toGraph()) }
         session.attachCount++
@@ -82,6 +94,8 @@ class EditorClient(private val connection: EditorConnection) {
     internal fun send(request: Request) = connection.send(request)
 
     internal fun call(request: Request): Event? = connection.call(request)
+
+    internal fun request(request: Request, onAnswer: (Event?) -> Unit) = connection.request(request, onAnswer)
 
     internal fun newOpId(): String = "${id}:${nextOp++}"
 
@@ -186,9 +200,18 @@ class DocumentSession internal constructor(private val client: EditorClient, att
     /** Write the document to [path]; it keeps its own file and stays as dirty as it was. */
     fun saveCopy(path: String) = save(path, copy = true)
 
+    /** [save] without waiting: [then] is told when it is done, or why it failed. */
+    fun save(path: String? = null, then: (Result<Unit>) -> Unit) {
+        flush()
+        client.request(Save(info.document, path)) { answer -> then(runCatching { saved(answer) }) }
+    }
+
     private fun save(path: String?, copy: Boolean) {
         flush()
-        val answer = client.call(Save(info.document, path, copy))
+        saved(client.call(Save(info.document, path, copy)))
+    }
+
+    private fun saved(answer: Event?) {
         (answer as? Failed)?.let { throw EditorException(it.reason) }
         (answer as? DocumentChanged)?.let { infoChanged(it.info) }
     }

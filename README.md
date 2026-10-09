@@ -342,6 +342,18 @@ messages can be spoken directly over the session's socket (`ctl
 socket` prints its path): JSON, one message per line — see
 `docs/developer/architecture.md`.
 
+### WebSocket (`--ws`)
+
+For clients that cannot open a Unix socket, such as a browser,
+`sane-graph-edit --ws <port>` also listens on a WebSocket (port 0:
+any free one). It is off unless asked for, accepts connections from
+this machine only, and only from clients that know the token in the
+address. The window prints that address
+(`ws://127.0.0.1:<port>/?token=…`) and keeps it, while it runs, in
+the file beside the session's socket with `.ws` in place of
+`.sock`. The messages are the same as on the socket, one per
+WebSocket text message.
+
 ### Session persistence
 
 The set of open file-backed tabs is persisted per workspace to

@@ -10,11 +10,11 @@ import java.awt.*
 
 
 
-fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false) {
+fun createAndShowGUI(initialFile: String? = null, attach: Boolean = false, webSocketPort: Int? = null) {
     graph_tools.AwtTextMeasurer.install()
     val socket = client.SessionSocket.pathFor(Workspace.dir)
     if (!attach) {
-        Editor.start(socket)
+        Editor.start(socket, webSocketPort)
     } else if (!Editor.attach(socket)) {
         System.err.println("sane-graph-edit: --attach: no window is running in ${Workspace.dir}")
         kotlin.system.exitProcess(2)
@@ -39,6 +39,7 @@ data class CliArgs(
     val stayInteractive: Boolean = false,
     val help: Boolean = false,
     val attach: Boolean = false,
+    val webSocketPort: Int? = null,
 )
 
 /** Expand a leading `~/` to the user's home directory. */
@@ -53,6 +54,8 @@ fun expandHome(path: String): String = when {
  * Recognises:
  *   -e <keys>    execute a key sequence (repeatable)
  *   -u           stay open after -e
+ *   --attach     join the session of the window already running here
+ *   --ws <port>  also listen on a WebSocket
  *   -h, --help   print usage and exit
  *   [file]       positional file to load
  */
@@ -62,6 +65,7 @@ fun parseArgs(args: Array<String>): CliArgs {
     var stay = false
     var help = false
     var attach = false
+    var webSocketPort: Int? = null
 
     var i = 0
     while (i < args.size) {
@@ -77,6 +81,14 @@ fun parseArgs(args: Array<String>): CliArgs {
             }
             "-u" -> stay = true
             "--attach" -> attach = true
+            "--ws" -> {
+                i++
+                webSocketPort = args.getOrNull(i)?.toIntOrNull()?.takeIf { it in 0..65535 }
+                if (webSocketPort == null) {
+                    System.err.println("sane-graph-edit: --ws requires a port number (0 for any free one)")
+                    help = true
+                }
+            }
             "-h", "--help" -> help = true
             else -> {
                 if (a.startsWith("-")) {
@@ -92,7 +104,11 @@ fun parseArgs(args: Array<String>): CliArgs {
         }
         i++
     }
-    return CliArgs(file, execs, stay, help, attach)
+    if (attach && webSocketPort != null) {
+        System.err.println("sane-graph-edit: --ws is for the window that owns the session, not for one started with --attach")
+        help = true
+    }
+    return CliArgs(file, execs, stay, help, attach, webSocketPort)
 }
 
 private const val USAGE = """Usage: sane-graph-edit [options] [file]
@@ -104,6 +120,8 @@ Options:
   -u           Stay open with a window after executing -e commands.
   --attach     Share the documents of the window already running in this
                directory instead of working independently of it.
+  --ws <port>  Also accept clients through a WebSocket on this machine
+               (0: any free port). Prints the address they connect to.
   -h, --help   Print this help and exit.
 
 File:
@@ -188,6 +206,6 @@ fun main(args: Array<String>) {
 
     // Interactive path (possibly with initial -e commands to
     // replay after the window is up).
-    EventQueue.invokeLater { createAndShowGUI(cli.file?.let(::expandHome), cli.attach) }
+    EventQueue.invokeLater { createAndShowGUI(cli.file?.let(::expandHome), cli.attach, cli.webSocketPort) }
     // TODO: honour -e -u combination (replay keys after window opens).
 }

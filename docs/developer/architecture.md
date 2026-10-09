@@ -41,8 +41,9 @@ subprojects with two targets, the JVM and JavaScript for Node.js;
 - `client.AppState`: what is remembered between runs.
 
 JVM only, in `client/src/jvmMain`: the Unix-socket connection, the
-session and preferences files, XDG paths. A JavaScript client needs
-its own transport (planned: WebSocket) and its own storage.
+session and preferences files, XDG paths. JavaScript has
+`client.WebSocketConnection` (`client/src/jsMain`) as its transport
+and needs its own storage.
 
 Tests in `commonTest` run on both targets (`./gradlew allTests`;
 the first run downloads Node.js and a test runner). Their names
@@ -525,6 +526,32 @@ line. A client sends `{"id": 1, "request": {"type": "open", "path":
 `detach`, `documents`, `submit`, `undo`, `redo`, `save`, `reload`.
 The socket is at `$XDG_RUNTIME_DIR/sane-graph-edit/<hash of the
 workspace directory>.sock` (`client/SessionSocket.kt`).
+
+**WebSocket** (`host/WebSocketServer.kt`, started by `--ws <port>`):
+the same messages, one per text frame, for clients that cannot open
+a Unix socket. Both servers share `servePeer` (`host/Peer.kt`),
+which is all a further transport would have to call. The server is
+written against the JDK alone (handshake and frames by hand; the
+JDK has a WebSocket client but no server). It listens on
+`127.0.0.1` only and refuses a handshake without the token: any web
+page may connect to a local port, and the protocol can read and
+write files. The address with the token is printed and written to
+`<hash>.ws` beside the socket.
+
+**Clients that cannot wait.** JavaScript has no way to block for an
+answer, so `EditorConnection.call` throws on
+`WebSocketConnection`. `EditorConnection.request(request,
+onAnswer)` is the form that works everywhere, with
+`EditorClient.open(path, then)` and `DocumentSession.save(path,
+then)` built on it. The rest of the client (`ViewContent`'s file
+handling, `EditorClient.create`) still uses `call` and so runs on
+the JVM only for now.
+
+**Testing across the two runtimes.** `client/src/jsTest` runs the
+Kotlin/JS client on Node against a real editor: each test starts
+`host.TestEditor` (in the tests of `:editor-host`) as a JVM process;
+`client/build.gradle.kts` hands it the Java binary and classpath.
+`WebSocketServerTest` checks the server against the JDK's client.
 
 **Without a session.** `ui.Editor.client` is null in unit tests; a
 `GraphView` then edits a plain `Graph` with its own `History`. The
