@@ -96,12 +96,12 @@ class SvgWriterTest {
         val svg = SvgWriter.write(Graph.defaultGraph())
         assertTrue(svg.contains("<svg"))
         assertTrue(svg.contains("</svg>"))
-        // The hub, a node per category and the one that leads to the examples should be present.
+        // The middle, the five around it, and a category with its text for each topic.
         val nodeGroups = Regex("""<g class="node">""").findAll(svg).count()
-        assertEquals(21, nodeGroups)
-        // a star from the hub
+        assertEquals(6 + 2 * utils.Help.topics.size, nodeGroups)
+        // a star: every node but the middle hangs on one
         val edgeLines = Regex("""<line """).findAll(svg).count()
-        assertEquals(20, edgeLines)
+        assertEquals(nodeGroups - 1, edgeLines)
     }
 
     @Test

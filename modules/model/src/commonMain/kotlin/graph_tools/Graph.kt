@@ -345,48 +345,42 @@ class Graph(
          * Holds the in-app keystroke and command reference, so a new
          * user can read it without having to find a manual.
          *
-         * Layout: one node per category ([utils.Help]) in a grid of
-         * rows around the hub, an edge from the hub to each. The
-         * texts are in `utils.Help` (and `Constants.helpTodo` /
-         * `helpAttribution`); this function only places them.
+         * Layout: a star. The node a reader starts with is in the
+         * middle, the rest of the reference above, right, below and
+         * left of it, and between those a small coloured node per
+         * category with what there is to say of it further out. The
+         * texts are markdown, in [utils.Help]; this function only
+         * places them.
          */
         fun defaultGraph(): Graph {
             val g = Graph()
-            val hub = Node(utils.Help.hub, Vector2(0, 0))
-            g.add(hub)
-            // a client writes the examples out when it starts and knows where (`sge:examples`)
-            val examples = Node("examples\n(press gf)", Vector2(0, 0)).also {
-                it.attributes.bg = utils.Rgb(0xF6EFC4)
-                it.attributes.other["link"] = "sge:examples"
+            val markdown = { text: String, at: Vector2 -> Node(text, at).also { it.attributes.other[NodeType.ATTRIBUTE] = NodeType.Markdown.attribute!! } }
+            val root = markdown(utils.Help.commands, Vector2(0, 0)).also(g::add)
+            val around = listOf(
+                markdown(utils.Help.selection, Vector2(0, -720)),
+                markdown(utils.Help.files, Vector2(850, 0)),
+                markdown(utils.Help.todo, Vector2(0, 650)),
+                markdown(utils.Help.attribution, Vector2(-750, -60)),
+                // a client writes the examples out when it starts and knows where (`sge:examples`)
+                Node("examples\n(press gf)", Vector2(-750, 120)).also {
+                    it.attributes.bg = utils.Rgb(0xF6EFC4)
+                    it.attributes.other["link"] = "sge:examples"
+                },
+            )
+            around.forEach { g.add(it); g.add(Edge(root, it)) }
+            utils.Help.topics.zip(helpRays).forEach { (topic, degrees) ->
+                val ray = (degrees * kotlin.math.PI / 180).let { Vector2(kotlin.math.cos(it), -kotlin.math.sin(it)) }
+                val category = Node(topic.name, ray * 480.0).also { it.attributes.bg = utils.Rgb(topic.colour) }
+                val detail = markdown(topic.text.trimIndent(), ray * 1150.0)
+                listOf(category, detail).forEach(g::add)
+                g.add(Edge(root, category))
+                g.add(Edge(category, detail))
             }
-            val rows = utils.Help.run {
-                listOf(
-                    listOf(mouse, structure, selection, folding, view),
-                    listOf(marks, moving, null, text, depth),
-                    listOf(files, links, commandLine, tabs, sessions),
-                    listOf(style, history, macros, Constants.helpTodo, Constants.helpAttribution),
-                )
-            }
-            val placed = rows.mapIndexed { row, texts ->
-                texts.mapIndexed { column, text ->
-                    text?.let { Node(it, Vector2((column - 2) * helpColumn, (row - 1) * helpRow)).also(g::add) }
-                }
-            }
-            // the last row hangs on the one above it: an edge from the hub would cross that
-            placed.forEachIndexed { row, nodes ->
-                nodes.forEachIndexed { column, n ->
-                    if (n != null) g.add(Edge(placed.getOrNull(row - 1)?.get(column).takeIf { row == placed.lastIndex } ?: hub, n))
-                }
-            }
-            val last = placed.last().last()!!
-            examples.position = last.position + Vector2(0.0, 130.0)
-            g.add(examples)
-            g.add(Edge(last, examples))
             return g
         }
 
-        private const val helpColumn = 620.0
-        private const val helpRow = 520.0
+        /** Where the categories of the help graph are, in degrees from the right, anticlockwise. */
+        private val helpRays = listOf(52.0, 28.0, -28.0, -52.0, -128.0, -152.0, 152.0, 128.0)
     }
 }
 

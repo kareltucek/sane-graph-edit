@@ -106,7 +106,8 @@ function render(request: Request): Promise<Answer> {
     const root = document.createElement("div");
     root.className = "md";
     root.style.cssText =
-        `display: inline-block; max-width: ${request.maxWidth}px; font: ${request.fontPx}px ${request.font}; color: ${request.foreground};`;
+        // the line height after the font, which would reset it to the font's own: that one differs between this page and the picture
+        `display: inline-block; max-width: ${request.maxWidth}px; font: ${request.fontPx}px ${request.font}; line-height: 1.2; color: ${request.foreground};`;
     root.innerHTML = DOMPurify.sanitize(marked.parse(request.markdown, { async: false }) as string);
     stage.replaceChildren(root);
     return drawDiagrams(root, request).then(() => {

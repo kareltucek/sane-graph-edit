@@ -55,23 +55,4 @@ object Constants {
      * without obscuring the graph the edge crosses.
      */
     val edgeFadedMaxBrightness: Int = 220
-
-    val helpAttribution = """
-        Created by Karel Tuček.
-
-        Code is freely available at
-        github.com/kareltucek/sane-graph-edit
-    """.trimIndent()
-
-    val helpTodo = """
-        Todo
-        ====
-        - menu bar
-        - port to compose multiplatform
-        - markdown editing in nodes
-        - cfg parser
-        - styles (y,p)
-        - folding?
-        - highlight related to selection (s?)
-    """.trimIndent()
 }
