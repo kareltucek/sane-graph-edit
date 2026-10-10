@@ -398,7 +398,8 @@ function drawContent(content: Content, scene: View, dpr: number) {
     const finest = bitmaps.scaleOf(content.width, content.height, dpr);
     // half the finest scale as often as still leaves at least what the view needs
     const halvings = Math.max(0, Math.floor(Math.log2(finest * SAME_SCALE / needed)));
-    const bitmap = needed <= finest * SAME_SCALE
+    // only for the flat canvas: a picture of a node that is being made is itself what is kept, and needs no drawing kept for it
+    const bitmap = ctx === flat && needed <= finest * SAME_SCALE
         ? bitmaps.get(`${content.key}\n${content.width} ${content.height}`, content.width, content.height, finest / 2 ** halvings, (to) => {
             to.translate(-content.left, -content.top);
             content.draw(to);
@@ -707,7 +708,7 @@ function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
     return [
         `Pictures kept (the graph shown is drawn ${threeD ? "with depth, 3D" : "flat, 2D"}):`,
         "",
-        `Text drawings (the text of a node alone; 2D, and what the 3D ones are made from)`,
+        `2D, text drawings (the text of a node alone, as 2D mode draws it; not used in 3D)`,
         `    ${megabytes(flat.bytes)} of at most ${megabytes(flat.limit)}, ${flat.drawings} drawings   ${share(drawn, nodes.length)}`,
         ...(space === null ? ["3D: nothing yet, no graph was drawn with depth"] : [
             `3D, drawn directly (a node at the size it is seen at: those seen at more than half their size, once the view is still)`,
