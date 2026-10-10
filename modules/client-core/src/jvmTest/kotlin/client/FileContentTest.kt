@@ -91,6 +91,8 @@ class FileContentTest {
     fun `saving the graph writes the edits to the file, and the lines of the nodes below them follow, in every open graph`() {
         edit(first, "top", "line 2\nnew\nnewer\nline 3")
         edit(first, "below", "only")
+        assertEquals(untouched, code.readText())
+        assertEquals("code-kotlin:a.kt:6-7", type(first, "below"))
         assertTrue(first.content.saveNow())
         assertEquals(listOf("line 1", "line 2", "new", "newer", "line 3", "line 4", "line 5", "only", "line 8", "line 9", "line 10", ""), code.readText().lines())
         assertEquals("code-kotlin:a.kt:2-5", type(first, "top"))
@@ -110,14 +112,44 @@ class FileContentTest {
     }
 
     @Test
-    fun `an edit waiting in another graph is written to where its lines went`() {
+    fun `a file is saved whole, with the edits made in another graph, whose lines are found where they went`() {
         edit(second, "last", "line 9\nand a half")
         edit(first, "top", "line 2")
-        assertTrue(first.content.saveNow())
         assertEquals("line 9\nand a half", text(second, "last"))
-        assertTrue(second.content.saveNow())
+        assertTrue(first.content.saveNow())
         assertEquals("line 1\nline 2\nline 4\nline 5\nline 6\nline 7\nline 8\nline 9\nand a half\nline 10\n", code.readText())
         assertEquals("code:a.kt:8-9", type(second, "last"))
+    }
+
+    @Test
+    fun `nodes that hold the same lines show one text, whichever of them is edited, and undo takes it back in both`() {
+        edit(first, "around", "line 1\nline two\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8")
+        assertEquals("line two\nline 3", text(first, "top"))
+        edit(first, "top", "line two\nbetween\nline 3")
+        assertEquals("line 1\nline two\nbetween\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8", text(first, "around"))
+        assertEquals("line 6\nline 7", text(first, "below"))
+        first.g.undo()
+        assertEquals("line two\nline 3", text(first, "top"))
+        assertEquals("line 1\nline two\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8", text(first, "around"))
+        first.g.undo()
+        assertEquals("line 2\nline 3", text(first, "top"))
+        first.g.redo()
+        first.g.redo()
+        assertEquals("line two\nbetween\nline 3", text(first, "top"))
+        assertEquals("line 6\nline 7", text(first, "below"))
+        assertTrue(first.content.saveNow())
+        assertEquals("line 1\nline two\nbetween\nline 3\nline 4", code.readText().lines().take(5).joinToString("\n"))
+        assertEquals("code-kotlin:a.kt:7-8", type(first, "below"))
+    }
+
+    @Test
+    fun `an edit in one graph shows at once in a node of another that holds those lines`() {
+        val third = open("third.dot", "digraph g {\n  twin [label=\"\"; \"content-type\"=\"code-kotlin:a.kt:2-3\"];\n}\n")
+        edit(first, "top", "line 2\nmore\nline 3")
+        assertEquals("line 2\nmore\nline 3", text(third, "twin"))
+        edit(third, "twin", "line 2\nline 3")
+        assertEquals("line 2\nline 3", text(first, "top"))
+        assertEquals("line 9", text(second, "last"))
     }
 
     @Test

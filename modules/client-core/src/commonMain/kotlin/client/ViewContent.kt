@@ -107,7 +107,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         document?.close()
         document = doc
         // our own changes repaint where they are made; these are other clients', undo and reload
-        doc?.onChange = { local -> if (!local) view.repaint() }
+        doc?.onChange = { local ->
+            if (watching) FileContent.reconcile(view)
+            if (!local) view.repaint()
+        }
         doc?.onInfo = {
             dirty(doc.info.dirty)
             view.refreshStatus()
@@ -166,12 +169,18 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
      * undo back to the saved state is not detected.
      */
     private fun watch(g: Graph) {
-        g.history.addListener { dirty(true) }
+        g.history.addListener {
+            dirty(true)
+            if (watching && view.g === g) FileContent.reconcile(view)
+        }
     }
+
+    /** The view is built: its graph's changes are followed ([FileContent]). */
+    var watching = false
 
     /** Show [newGraph] (or the document of [file]) instead of the current graph. */
     private fun replaceGraph(newGraph: Graph, file: Path? = null) {
-        view.fileTexts.clear()
+        FileContent.left(view)
         view.g = adopt(newGraph, file)
         watch(view.g)
         // a file somebody else has open may come with their unsaved changes
@@ -194,7 +203,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
      */
     fun save(then: (Boolean) -> Unit = {}) {
         // the texts kept in other files first: the lines they are in afterwards are part of the graph that is saved
-        val texts = FileContent.save(view, shell.views())
+        val texts = FileContent.save(view)
         when {
             !texts -> then(false)
             // a view of a text file holds nothing but that text
@@ -300,7 +309,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             sourceView = null
             shell.stateChanged()
             onceLoaded {
-                FileContent.refresh(view)
+                FileContent.reconcile(view)
                 view.boundScreen()
                 view.repaint()
             }
@@ -326,10 +335,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         } else if (force || confirmDiscard("reload ${path.name}")) {
             try {
                 // with a document everyone attached gets the file's content; a failure comes back as a message
+                // what is unsaved in the files of its nodes is given up with the rest
+                FileContent.forget(view)
                 document?.reload() ?: reloadOwn(path)
-                // the edits that waited are given up with the rest
-                view.fileTexts.clear()
-                onceLoaded { FileContent.refresh(view) }
+                onceLoaded { FileContent.reload(view) }
                 view.repaint()
             } catch (t: Throwable) {
                 shell.alert("Reload error", "Could not reload $path:\n${t.message}")
@@ -402,7 +411,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             untitledName = SourceView.title(target)
             pendingEdit = edit
             // remembers what the file holds: an edit is told from it
-            FileContent.refresh(view)
+            FileContent.reconcile(view)
             dirty(false)
             shell.stateChanged()
             if (view.size.x > 0) view.setViewTo(startOf(graph), view.viewTransform.scale)

@@ -11,82 +11,126 @@ import graph_tools.SetNodeTypeCommand
  * Nodes whose text is kept in a file ([NodeType.source]): lines of
  * it, a section of it, or all of it.
  *
- * The node's text is a working copy. It is taken from the file when
- * the graph is opened; an edit of it is a change of the graph like
- * any other, undone like any other, and it is written to the file
- * when the graph is saved ([save]). What the file held when the
- * copy was taken, and in which lines, is remembered beside the view
- * ([Kept]): a node whose text differs from that has an edit waiting.
+ * Every such file has one buffer here, shared by all the views of
+ * the application: the file's text with the edits that are not
+ * saved yet. A node is a window on lines of the buffer, and its
+ * text is what the buffer holds there. So nodes that hold the same
+ * lines, or lines of one another, show one text.
  *
- * Lines are told by number, so a save that changes how many lines a
- * range has moves every range below it in that file. The nodes of
- * the open views are corrected for that; a graph that is not open
- * is not, and neither is anything when the file is changed by
- * something else — a save then refuses to write over it. A section
- * named by its heading has no such trouble.
+ * The graphs are what is edited, undone and shared; the buffer
+ * follows them. Whenever a graph changes — an edit, an undo, a
+ * change that came from elsewhere — [reconcile] finds the nodes
+ * whose text is no longer the buffer's, puts their text into the
+ * buffer as an edit of it, moves the windows below, and gives the
+ * new text to the other nodes that see those lines. Saving a graph
+ * writes the buffers of its files ([save]); only then do the line
+ * numbers in the nodes' types change, to what they now are on disk.
+ *
+ * A graph that is not open is not corrected for lines that moved; a
+ * section named by its heading has no such trouble.
  */
 object FileContent {
-    /** What the file held for a node when its text was last the file's: in which lines (from 1), and what. */
-    class Kept(val lines: IntRange, val text: String)
+    /** A node's window: lines of the buffer of [path] (from 1), and the [text] that was there when the node last agreed with it. */
+    class Kept(val path: Path, val lines: IntRange, val text: String)
+
+    /** Lines [old] became [size] lines. */
+    private class Edit(val old: IntRange, val size: Int)
+
+    private class Buffer(val path: Path) {
+        var lines: List<String> = emptyList()
+        private var ended = true
+
+        /** The file's text as it was last read or written. */
+        var disk = ""
+
+        /** What was done to [lines] since: by these, a place in the file is found in the buffer. */
+        val edits = mutableListOf<Edit>()
+
+        val text: String get() = if (lines.isEmpty()) "" else lines.joinToString("\n") + if (ended) "\n" else ""
+
+        fun read() {
+            disk = Fs.readText(path)
+            ended = disk.endsWith("\n")
+            lines = if (disk.isEmpty()) emptyList() else disk.removeSuffix("\n").split("\n")
+            edits.clear()
+        }
+
+        fun written() {
+            disk = text
+            edits.clear()
+        }
+    }
+
+    private val buffers = mutableMapOf<String, Buffer>()
+
+    /** The windows of the nodes, by document ([key]) and node id. */
+    private val kept = mutableMapOf<Any, MutableMap<String, Kept>>()
+
+    /** While this changes graphs itself, their changes are not news to it. */
+    private var busy = false
+
+    /** Views of one shared document are replicas of it and have its windows in common; a view without one is its own. */
+    private fun key(view: EditorView): Any =
+        view.content.currentFile?.takeIf { view.content.document != null }?.toAbsolutePath()?.normalize()?.toString() ?: view
+
+    /** One view of every open document, [view] for its own. */
+    private fun documents(view: EditorView): List<EditorView> = (listOf(view) + view.shell.views()).distinctBy { key(it) }
+
+    private fun bufferOf(path: Path): Buffer? =
+        buffers[path.toString()] ?: try {
+            Buffer(path).also {
+                it.read()
+                buffers[path.toString()] = it
+            }
+        } catch (e: Exception) {
+            null
+        }
 
     /** Where the text of [node] is kept, when in a file; [file] is the file of the node's graph. */
     fun of(node: Node, file: Path?): FileLink.Target? =
         NodeType.of(node).source?.let { FileLink.resolve(it, file) }?.takeIf { it.path != null && it.nodeId == null && !it.help }
 
-    /** All the lines of [path] and whether the last of them ends with a line break. */
-    private fun linesOf(path: Path): Pair<List<String>, Boolean> {
-        val text = Fs.readText(path)
-        return text.removeSuffix("\n").split("\n").let { if (text.isEmpty()) emptyList() else it } to text.endsWith("\n")
+    private fun nodesOf(view: EditorView): List<Pair<Node, FileLink.Target>> =
+        view.g.nodes.mapNotNull { n -> of(n, view.content.currentFile)?.let { n to it } }
+
+    private fun textOf(lines: List<String>, range: IntRange): String =
+        lines.subList((range.first - 1).coerceIn(0, lines.size), range.last.coerceIn((range.first - 1).coerceIn(0, lines.size), lines.size)).joinToString("\n")
+
+    /** Where the lines [was] are after [edit]: below it they move, around it they grow or shrink with it, and what was within it stays within. */
+    private fun moved(was: IntRange, edit: Edit): IntRange {
+        val old = edit.old
+        val by = edit.size - (old.last - old.first + 1)
+        val first = when {
+            was.first > old.last -> was.first + by
+            was.first > old.first -> minOf(was.first, old.first + edit.size)
+            else -> was.first
+        }
+        val last = when {
+            was.last >= old.last -> was.last + by
+            was.last >= old.first -> minOf(was.last, old.first + edit.size - 1)
+            else -> was.last
+        }
+        return first..maxOf(last, first - 1)
     }
 
-    /** The first and last line [source] speaks of in a file of [size] lines, from 1; null for a section the file does not have. */
-    private fun range(source: FileLink.Target, size: Int): IntRange? {
-        val lines = source.lines
+    /** The lines [source] speaks of, as they are in [buffer] now; null for a section it does not have. */
+    private fun window(source: FileLink.Target, buffer: Buffer): IntRange? {
+        val size = buffer.lines.size
+        val named = source.lines
         return when {
-            lines != null -> lines.from.coerceIn(1, size + 1).let { first -> first..(lines.to ?: lines.from).coerceIn(first - 1, size) }
-            source.section != null -> null
+            source.section != null -> Sections.find(buffer.lines, source.section)?.let { it.from..(it.to ?: it.from) }
+            // the type names them as they are in the file
+            named != null -> buffer.edits.fold(named.from..(named.to ?: named.from)) { range, edit -> moved(range, edit) }
+                .let { now -> now.first.coerceIn(1, size + 1).let { first -> first..now.last.coerceIn(first - 1, size) } }
             else -> 1..size
         }
     }
 
-    private fun textOf(lines: List<String>, range: IntRange): String =
-        lines.subList((range.first - 1).coerceIn(0, lines.size), range.last.coerceIn(range.first - 1, lines.size)).joinToString("\n")
+    private fun windowOf(source: FileLink.Target): Kept? =
+        source.path?.let { path -> bufferOf(path)?.let { buffer -> window(source, buffer)?.let { Kept(path, it, textOf(buffer.lines, it)) } } }
 
-    /** What the file holds where [source] says, or null when it cannot be had. */
-    private fun held(source: FileLink.Target): Kept? =
-        try {
-            val (lines, _) = linesOf(source.path!!)
-            range(source, lines.size)?.let { Kept(it, textOf(lines, it)) }
-        } catch (e: Exception) {
-            null
-        }
-
-    /** The text [source] speaks of, or null when it cannot be had. */
-    fun read(source: FileLink.Target): String? = held(source)?.text
-
-    private fun nodesOf(view: EditorView): List<Pair<Node, FileLink.Target>> =
-        view.g.nodes.mapNotNull { n -> of(n, view.content.currentFile)?.let { n to it } }
-
-    /** Whether [node] of [view] has an edit that is not in its file yet. */
-    fun isWaiting(view: EditorView, node: Node): Boolean = view.fileTexts[node.id]?.let { it.text != node.attributes.text } ?: false
-
-    /**
-     * Take the text of [nodes] of [view] (all of them by default) from
-     * their files, where the files can be read. A node with an edit
-     * waiting keeps it.
-     */
-    fun refresh(view: EditorView, nodes: Collection<Node>? = null) {
-        val changes = nodesOf(view).filter { (n, _) -> (nodes == null || n in nodes) && !isWaiting(view, n) }.mapNotNull { (n, source) ->
-            held(source)?.let { now ->
-                view.fileTexts[n.id] = now
-                now.text.takeIf { it != n.attributes.text }?.let { EditTextCommand(view.g, n, n.attributes.text, it, coalesceWindowMs = 0) }
-            }
-        }
-        commit(view, changes)
-    }
-
-    /** [nodes] of [view] were told to keep their text elsewhere: what is remembered of them is of no use. */
-    fun forget(view: EditorView, nodes: Collection<Node>) = nodes.forEach { view.fileTexts.remove(it.id) }
+    /** The text [source] speaks of, unsaved edits included, or null when it cannot be had. */
+    fun read(source: FileLink.Target): String? = windowOf(source)?.text
 
     private fun commit(view: EditorView, commands: List<Command>) {
         when (commands.size) {
@@ -96,76 +140,174 @@ object FileContent {
         }
     }
 
-    /** One node's edit of a file: the lines it replaces and the lines it puts there. */
-    private class Edit(val old: IntRange, val now: List<String>) {
-        val by: Int get() = now.size - (old.last - old.first + 1)
-    }
-
-    /** Where the lines [was] are after [edits]: moved by those above them, longer or shorter by those within them. */
-    private fun moved(was: IntRange, edits: List<Edit>): IntRange {
-        val above = edits.filter { it.old.last < was.first }.sumOf { it.by }
-        val within = edits.filter { it.old.first >= was.first && it.old.last <= was.last }.sumOf { it.by }
-        return was.first + above..was.last + above + within
+    private fun quietly(action: () -> Unit) {
+        if (!busy) {
+            busy = true
+            try {
+                action()
+            } finally {
+                busy = false
+            }
+        }
     }
 
     /**
-     * Write the edits waiting in [view] to their files, and correct
-     * every open view ([views]) for the lines that moved by it: what
-     * is remembered of each node of those files, the lines its type
-     * names, and the text of the nodes that had no edit of their own.
-     * A file that no longer holds what an edit was made of is not
-     * written, with a message. True when nothing was left unwritten.
+     * A graph of [view] changed, or may have: make the buffers and
+     * the nodes of every open view agree again. A node that has no
+     * window yet gets one and the buffer's text; a node of [view]
+     * whose text is not what its window had has been changed, and
+     * its text goes into the buffer.
      */
-    fun save(view: EditorView, views: List<EditorView>): Boolean {
-        val waiting = nodesOf(view).filter { isWaiting(view, it.first) }.groupBy { it.second.path!! }
-        return waiting.map { (path, nodes) -> saveFile(view, path, nodes.map { it.first }, (listOf(view) + views).distinct()) }.all { it }
-    }
-
-    private fun saveFile(view: EditorView, path: Path, nodes: List<Node>, views: List<EditorView>): Boolean {
-        val problem = try {
-            val (lines, ended) = linesOf(path)
-            val edits = nodes.map { n -> Edit(view.fileTexts.getValue(n.id).lines, n.attributes.text.split("\n")) }.sortedBy { it.old.first }
-            val changedOutside = nodes.any { n -> view.fileTexts.getValue(n.id).let { textOf(lines, it.lines) != it.text } }
-            val overlap = edits.zipWithNext().any { (a, b) -> b.old.first <= a.old.last }
-            when {
-                changedOutside -> "it was changed by something else; `:e` takes its text again"
-                overlap -> "two edited nodes hold the same lines"
-                else -> {
-                    val written = edits.reversed().fold(lines) { now, edit -> now.subList(0, edit.old.first - 1) + edit.now + now.subList(edit.old.last, now.size) }
-                    Fs.writeText(path, written.joinToString("\n") + if (ended) "\n" else "")
-                    corrected(path, edits, written, views)
-                    null
+    fun reconcile(view: EditorView) = quietly {
+        documents(view).forEach { v ->
+            val windows = kept.getOrPut(key(v)) { mutableMapOf() }
+            val taken = nodesOf(v).filter { (n, source) -> windows[n.id]?.path != source.path }.mapNotNull { (n, source) ->
+                windowOf(source)?.let { window ->
+                    windows[n.id] = window
+                    window.text.takeIf { it != n.attributes.text && n !== v.editing }?.let { EditTextCommand(v.g, n, n.attributes.text, it, coalesceWindowMs = 0) }
                 }
             }
-        } catch (e: Exception) {
-            e.message ?: "it cannot be written"
+            commit(v, taken)
         }
-        problem?.let { view.shell.message("${path.name} was not written: $it") }
-        return problem == null
+        val windows = kept.getValue(key(view))
+        val size = { n: Node -> windows.getValue(n.id).lines.let { it.last - it.first } }
+        // the smallest first: a node within another is then the edit, and the other one follows from it
+        nodesOf(view).map { it.first }.filter { n -> n !== view.editing && windows[n.id]?.let { it.text != n.attributes.text } == true }.sortedBy(size).forEach { n ->
+            val window = windows.getValue(n.id)
+            val buffer = buffers.getValue(window.path.toString())
+            if (textOf(buffer.lines, window.lines) == n.attributes.text) windows[n.id] = Kept(window.path, window.lines, n.attributes.text)
+            else change(view, n, window, n.attributes.text, null)
+        }
     }
 
-    /** After [edits] made [path] hold [lines]: see [save]. */
-    private fun corrected(path: Path, edits: List<Edit>, lines: List<String>, views: List<EditorView>) {
-        // views of one shared document are replicas of it: a change of the graph made in one of them reaches the others
-        val first = views.distinctBy { v -> v.content.currentFile?.takeIf { v.content.document != null }?.toAbsolutePath()?.normalize()?.toString() ?: v }
-        views.forEach { other ->
-            val changes = nodesOf(other).filter { it.second.path == path }.flatMap { (n, source) ->
-                val kept = other.fileTexts[n.id]
-                val unedited = kept != null && kept.text == n.attributes.text
-                val now = kept?.let { moved(it.lines, edits) }?.let { Kept(it, textOf(lines, it)) }
-                now?.let { other.fileTexts[n.id] = it }
-                val type = NodeType.of(n)
-                val named = range(source, Int.MAX_VALUE - 1)?.takeIf { source.section == null && source.lines != null }
-                listOfNotNull(
-                    now?.takeIf { named != null && named != it.lines }?.let {
-                        val there = type.copy(source = type.source!!.substringBeforeLast(':') + ":${it.lines.first}-${it.lines.last}")
-                        SetNodeTypeCommand(other.g, mapOf(n to n.attributes.other[NodeType.ATTRIBUTE]), there)
-                    },
-                    now?.takeIf { unedited && it.text != n.attributes.text }?.let { EditTextCommand(other.g, n, n.attributes.text, it.text, coalesceWindowMs = 0) },
-                )
+    /**
+     * The text of [node] of [view], which has the window [window],
+     * is or becomes [text]: put it into the buffer, move the windows
+     * and give the other nodes that see those lines their new text.
+     * [own] is the command that changes [node] itself, when that is
+     * still to be done; it is one undo step with what follows from
+     * it in the same graph.
+     */
+    private fun change(view: EditorView, node: Node, window: Kept, text: String, own: Command?) {
+        val buffer = buffers.getValue(window.path.toString())
+        val now = text.split("\n")
+        val edit = Edit(window.lines, now.size)
+        buffer.lines = buffer.lines.subList(0, window.lines.first - 1) + now + buffer.lines.subList(window.lines.last, buffer.lines.size)
+        buffer.edits += edit
+        kept.values.forEach { windows ->
+            windows.keys.toList().forEach { id ->
+                windows.getValue(id).takeIf { it.path == window.path }?.let { windows[id] = Kept(it.path, moved(it.lines, edit), it.text) }
             }
-            if (other in first) commit(other, changes)
-            other.repaint()
+        }
+        kept.getValue(key(view)).let { windows -> windows[node.id] = Kept(window.path, windows.getValue(node.id).lines, text) }
+        documents(view).forEach { v ->
+            val windows = kept[key(v)].orEmpty().toMutableMap()
+            val follows = nodesOf(v).map { it.first }.filter { o -> windows[o.id]?.path == window.path && !(v === view && o === node) }.mapNotNull { o ->
+                val was = windows.getValue(o.id)
+                val seen = textOf(buffer.lines, was.lines)
+                // one with a change of its own keeps it: its turn comes
+                val unchanged = o.attributes.text == was.text
+                if (unchanged) kept.getValue(key(v))[o.id] = Kept(was.path, was.lines, seen)
+                seen.takeIf { unchanged && it != o.attributes.text && o !== v.editing }?.let { EditTextCommand(v.g, o, o.attributes.text, it, coalesceWindowMs = 0) }
+            }
+            commit(v, listOfNotNull(own.takeIf { v === view }) + follows)
+        }
+        (listOf(view) + view.shell.views()).distinct().forEach { it.repaint() }
+    }
+
+    /** The user edited [node] of [view] from [before] to [text]: one undo step, with what follows from it in the same graph. */
+    fun edited(view: EditorView, node: Node, before: String, text: String) {
+        val window = kept[key(view)]?.get(node.id)
+        val command = EditTextCommand(view.g, node, before, text)
+        // a node whose text is its own, or one that did not agree with its buffer: the change is found afterwards
+        if (busy || window == null || window.text != before) view.g.commit(command) else quietly { change(view, node, window, text, command) }
+    }
+
+    /**
+     * [node] of [view] is about to be edited: it gets what its
+     * buffer holds, and the buffer what the file holds if that was
+     * changed by something else while nothing here was unsaved.
+     */
+    fun entering(view: EditorView, node: Node) {
+        reconcile(view)
+        val buffer = kept[key(view)]?.get(node.id)?.let { buffers[it.path.toString()] }
+        val stale = buffer != null && buffer.text == buffer.disk && try {
+            Fs.readText(buffer.path) != buffer.disk
+        } catch (e: Exception) {
+            false
+        }
+        if (buffer != null && stale) reread(view, listOf(buffer.path))
+    }
+
+    /** The windows of [nodes] of [view] (of all its nodes by default) are of no use: they were told to keep their text elsewhere, or their graph is read again. */
+    fun forget(view: EditorView, nodes: Collection<Node>? = null) {
+        if (nodes == null) kept.remove(key(view)) else nodes.forEach { kept[key(view)]?.remove(it.id) }
+    }
+
+    /** [view] shows another graph: a view that is its own document starts anew. */
+    fun left(view: EditorView) {
+        kept.remove(view)
+    }
+
+    /** Give up what is unsaved in the files of the nodes of [view], and take their text from the files again; in every open view. */
+    fun reload(view: EditorView) = reread(view, nodesOf(view).mapNotNull { it.second.path }.distinct())
+
+    private fun reread(view: EditorView, paths: List<Path>) {
+        paths.forEach { path ->
+            try {
+                buffers[path.toString()]?.read()
+            } catch (e: Exception) {
+                buffers.remove(path.toString())
+            }
+            kept.values.forEach { windows -> windows.keys.toList().forEach { id -> if (windows.getValue(id).path == path) windows.remove(id) } }
+        }
+        reconcile(view)
+    }
+
+    /**
+     * Write the buffers of the files of the nodes of [view], and
+     * make the types of the nodes of every open view name the lines
+     * as they now are in the files. A file that something else
+     * changed meanwhile is not written, with a message. True when
+     * nothing was left unwritten.
+     */
+    fun save(view: EditorView): Boolean {
+        reconcile(view)
+        return nodesOf(view).mapNotNull { it.second.path }.distinct().mapNotNull { buffers[it.toString()] }.map { buffer ->
+            val problem = try {
+                when {
+                    buffer.text == buffer.disk -> null
+                    Fs.readText(buffer.path) != buffer.disk -> "it was changed by something else; `:e` takes its text again"
+                    else -> {
+                        Fs.writeText(buffer.path, buffer.text)
+                        null
+                    }
+                }
+            } catch (e: Exception) {
+                e.message ?: "it cannot be written"
+            }
+            if (problem == null) {
+                buffer.written()
+                quietly { renumber(view, buffer.path) }
+            } else {
+                view.shell.message("${buffer.path.name} was not written: $problem")
+            }
+            problem == null
+        }.all { it }
+    }
+
+    /** The buffer of [path] is the file: the types that name lines of it name the lines of the windows. */
+    private fun renumber(view: EditorView, path: Path) {
+        documents(view).forEach { v ->
+            val windows = kept[key(v)].orEmpty()
+            val named = nodesOf(v).mapNotNull { (n, source) ->
+                val lines = source.lines?.takeIf { source.section == null && source.path == path }?.let { it.from..(it.to ?: it.from) }
+                windows[n.id]?.lines?.takeIf { lines != null && lines != it }?.let { now ->
+                    val type = NodeType.of(n)
+                    SetNodeTypeCommand(v.g, mapOf(n to n.attributes.other[NodeType.ATTRIBUTE]), type.copy(source = type.source!!.substringBeforeLast(':') + ":${now.first}-${now.last}"))
+                }
+            }
+            commit(v, named)
         }
     }
 }

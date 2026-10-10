@@ -86,19 +86,20 @@ class EditorView(
     /** Told when a transform gesture (grab, rotate, scale) starts (true) and ends (false): keys then mean something else. */
     var onTransformMode: (Boolean) -> Unit = {}
 
-    /** What the files held for the nodes whose text is kept in one, by node id ([FileContent]). */
-    val fileTexts: MutableMap<String, FileContent.Kept> = mutableMapOf()
-
     fun startNodeEdit(n: Node, screenClick: Vector2?) {
-        // what is edited is what the file holds now, unless the node has an edit of its own waiting
-        FileContent.refresh(this, listOf(n))
+        // a node whose text is kept in a file is edited as its buffer has it
+        FileContent.entering(this, n)
         g.ensureCachesFresh()
         startNodeEdit(n.id, screenClick)
     }
 
     init {
-        content.onceLoaded { FileContent.refresh(this) }
+        content.watching = true
+        content.onceLoaded { FileContent.reconcile(this) }
     }
+
+    /** The node whose text the user is editing in place, if any. */
+    val editing: Node? get() = textEdit?.first
 
     // --- text of a node being edited in place (renderer → client) ---
 
@@ -123,7 +124,8 @@ class EditorView(
         textEdit?.let { (n, before) ->
             // back to the text before the edit, so that the command's redo is what applies the change
             n.attributes.text = before
-            if (before != text) g.commit(EditTextCommand(g, n, before, text))
+            textEdit = null
+            if (before != text) FileContent.edited(this, n, before, text)
             g.needsRecomputing(n)
         }
         textEdit = null

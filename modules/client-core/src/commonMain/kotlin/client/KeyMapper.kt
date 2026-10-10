@@ -834,9 +834,9 @@ class KeyMapper(
                     )
                     type == null -> gv.shell.message("content-type: `${args.trim()}` is not one (plain, markdown, code, code-<language>; each may be followed by :<file>)")
                     else -> {
-                        Actions.typeSelection(gv, type)
                         FileContent.forget(gv, gv.g.selectedNodes.toList().ifEmpty { listOfNotNull(gv.g.lastActiveNode) })
-                        FileContent.refresh(gv)
+                        Actions.typeSelection(gv, type)
+                        FileContent.reconcile(gv)
                     }
                 }
             }

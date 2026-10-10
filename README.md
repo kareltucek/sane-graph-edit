@@ -233,14 +233,17 @@ and shows every node as text.
 text is, written as a link is: `code-kotlin:src/A.kt:10-20` (lines),
 `markdown:README.md#Depth` (a section of a markdown file),
 `plain:notes.txt` (all of it). The node then shows what the file
-holds, read when the graph is opened. An edit of the node is a change
-of the graph like any other: it is undone like any other, and saving
-the graph (`:w`) writes it to the file. When a save changes how many
-lines there are, the line numbers of the nodes below them in that
-file follow, in every graph that is open. A graph that is not open
-is not corrected: name a section where you can. A file that another
-program changed under an edit is not written over; `:e` takes its
-text again. `gf` on a text file opens such a node, and `:w` there
+holds, read when the graph is opened. All the nodes of all the open
+graphs that speak of one file share one unsaved copy of it: nodes
+that hold the same lines, or lines of one another, show one text,
+and an edit of one is seen in the others when the editor is left. An
+edit is a change of the graph like any other: it is undone like any
+other, and saving the graph (`:w`) writes the file — all of it, with
+what other open graphs changed in it. When a save changes how many
+lines there are, the line numbers of the nodes below them follow, in
+every graph that is open. A graph that is not open is not corrected:
+name a section where you can. A file that another program changed
+under an edit is not written over; `:e` takes its text again. `gf` on a text file opens such a node, and `:w` there
 writes the file. This is a first version.
 
 A node being edited in the Electron client is never bigger than the
