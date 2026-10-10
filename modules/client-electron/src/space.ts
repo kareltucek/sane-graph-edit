@@ -150,6 +150,119 @@ class Triangles {
     }
 }
 
+/** One side of a page of the atlas, in pixels. */
+const PAGE = 2048;
+/** A picture wider or higher than this many pixels is not put on a page: it would take too much of it. */
+const MAX_ON_PAGE = 512;
+/** While pictures are being put on a page, the graphics card is given the page no more often than this. */
+const PAGE_UPLOAD_MS = 300;
+/** Pictures are made for the atlas for at most this many milliseconds of a frame. */
+const ATLAS_BUDGET_MS = 6;
+
+/** Where the picture of a node is in the atlas, and what it is a picture of. */
+interface Slot {
+    page: Page;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    key: string;
+    /** As [Kept]: how fine the picture is and where in it the middle of the node is. */
+    pixelsPerUnit: number;
+    middleX: number;
+    middleY: number;
+}
+
+/**
+ * A page of the atlas: many small pictures of nodes in one big
+ * picture, so that the nodes shown small, which on a big graph are
+ * nearly all of them, are drawn at once and not one by one.
+ */
+class Page {
+    readonly canvas = new OffscreenCanvas(PAGE, PAGE);
+    readonly ctx = this.canvas.getContext("2d")!;
+    readonly texture = new THREE.CanvasTexture(this.canvas);
+    readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+    private positions = new Float32Array(3 * 4 * 256);
+    private places = new Float32Array(2 * 4 * 256);
+    private indices = new Uint32Array(6 * 256);
+    private quads = 0;
+    private room = 0;
+    /** Pictures are put in rows, each as high as its highest: where the next one goes. */
+    private nextX = 0;
+    private rowY = 0;
+    private rowHeight = 0;
+    /** The page has pictures the graphics card has not been given yet; when it last was given the page. */
+    dirty = false;
+    uploadedAt = 0;
+
+    constructor(anisotropy: number) {
+        this.texture.colorSpace = THREE.SRGBColorSpace;
+        this.texture.anisotropy = anisotropy;
+        this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ map: this.texture, transparent: true, depthTest: false }));
+        this.mesh.renderOrder = -1;
+        this.mesh.frustumCulled = false;
+    }
+
+    /** Room for a picture of [width] by [height] pixels, a pixel free around it; null when the page is full. */
+    place(width: number, height: number): { x: number; y: number } | null {
+        if (this.nextX + width + 1 > PAGE) {
+            this.rowY += this.rowHeight + 1;
+            this.nextX = 0;
+            this.rowHeight = 0;
+        }
+        const fits = this.rowY + height + 1 <= PAGE && width + 1 <= PAGE;
+        const at = fits ? { x: this.nextX, y: this.rowY } : null;
+        if (fits) {
+            this.nextX += width + 1;
+            this.rowHeight = Math.max(this.rowHeight, height);
+        }
+        return at;
+    }
+
+    begin() {
+        this.quads = 0;
+    }
+
+    /** The picture in [slot], shown with its middle [shiftX], [shiftY] from x, y (y down), z away. */
+    quad(slot: Slot, x: number, y: number, z: number) {
+        if ((this.quads + 1) * 12 > this.positions.length) {
+            this.positions = grown(this.positions);
+            this.places = grown(this.places);
+            this.indices = grown(this.indices);
+        }
+        const left = x - slot.middleX / slot.pixelsPerUnit;
+        const top = y - slot.middleY / slot.pixelsPerUnit;
+        const right = left + slot.width / slot.pixelsPerUnit;
+        const bottom = top + slot.height / slot.pixelsPerUnit;
+        // the picture's own y is down, the texture's up
+        const u1 = slot.x / PAGE;
+        const u2 = (slot.x + slot.width) / PAGE;
+        const v1 = 1 - slot.y / PAGE;
+        const v2 = 1 - (slot.y + slot.height) / PAGE;
+        this.positions.set([left, -top, -z, right, -top, -z, left, -bottom, -z, right, -bottom, -z], this.quads * 12);
+        this.places.set([u1, v1, u2, v1, u1, v2, u2, v2], this.quads * 8);
+        const first = this.quads * 4;
+        this.indices.set([first, first + 2, first + 1, first + 1, first + 2, first + 3], this.quads * 6);
+        this.quads++;
+    }
+
+    end() {
+        const geometry = this.mesh.geometry;
+        if (this.room < this.indices.length) {
+            geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+            geometry.setAttribute("uv", new THREE.BufferAttribute(this.places, 2).setUsage(THREE.DynamicDrawUsage));
+            geometry.setIndex(new THREE.BufferAttribute(this.indices, 1).setUsage(THREE.DynamicDrawUsage));
+            this.room = this.indices.length;
+        } else {
+            geometry.getAttribute("position").needsUpdate = true;
+            geometry.getAttribute("uv").needsUpdate = true;
+            geometry.getIndex()!.needsUpdate = true;
+        }
+        geometry.setDrawRange(0, this.quads * 6);
+    }
+}
+
 function grown<T extends Float32Array | Uint32Array>(array: T): T {
     const bigger = new (array.constructor as { new(length: number): T })(array.length * 2);
     bigger.set(array);
@@ -168,8 +281,11 @@ export class SpaceRenderer<N extends SpaceNode> {
     private readonly kept = new Map<string, Kept>();
     // Before the nodes with pictures, which are drawn from the furthest to the nearest: an edge is never over a node,
     // and the nodes too small for a picture, which are the far ones, are under the others.
-    private readonly edges = new Triangles(-2);
-    private readonly small = new Triangles(-1);
+    private readonly edges = new Triangles(-3);
+    private readonly small = new Triangles(-2);
+    /** The pictures of the nodes that are shown small: all those of a page are drawn at once. */
+    private readonly pages: Page[] = [];
+    private readonly slots = new Map<string, Slot>();
     private frame = 0;
     /** For tests: how many milliseconds the parts of the last drawing took, how many pictures it made and how many draw calls. */
     spent = { nodes: 0, edges: 0, render: 0, made: 0, calls: 0 };
@@ -190,10 +306,9 @@ export class SpaceRenderer<N extends SpaceNode> {
      * node's picture depends on, [paint] makes one. An edge is in
      * [ink], [radius] the size of its head, and fainter the longer
      * it is on the screen ([fade]: how much is taken away at most).
-     * [flatOf] tells of a node seen so small that its text does not
-     * show (given how many pixels a unit of it is seen with) how to
-     * draw it without a picture: filled, with an outline; null for
-     * one that gets its picture.
+     * [flatOf] tells how to draw a node (seen with that many pixels
+     * to a unit) while its picture is not made yet: filled, with an
+     * outline.
      * True if some pictures are still to be made: draw again.
      */
     draw(
@@ -209,7 +324,7 @@ export class SpaceRenderer<N extends SpaceNode> {
         fade: number,
         keyOf: (n: N) => string,
         paint: (n: N, pixelsPerUnit: number) => NodePicture,
-        flatOf: (n: N, pixelsPerUnit: number) => { fill: string; ink: string; outline: number } | null,
+        flatOf: (n: N, pixelsPerUnit: number) => { fill: string; ink: string; outline: number },
     ): boolean {
         this.frame++;
         // one pixel of the canvas for each of the screen's, as the flat canvas has it, or all of it is resampled
@@ -245,6 +360,11 @@ export class SpaceRenderer<N extends SpaceNode> {
         /** As many of the screen's pixels to a unit as [n] is seen with. */
         const seenWith = (n: SpaceNode) => space.distance / away(n) * space.scale * dpr;
         this.small.begin();
+        this.pages.forEach((page) => page.begin());
+        /** Milliseconds of this frame spent making pictures for the atlas. */
+        let painting = 0;
+        // A node seen at no more than half its size at zoom 1 is shown from the atlas, where its picture is at half that size.
+        const atlasScale = dpr * EXACT_FROM;
         const pictured = order.filter((index) => {
             const n = space.nodes[index];
             const seen = seenWith(n);
@@ -252,14 +372,27 @@ export class SpaceRenderer<N extends SpaceNode> {
             const x = (n.x - space.middleX) * seen;
             const y = (n.y - space.middleY) * seen;
             const inView = Math.abs(x) - n.width * seen / 2 < pixelWidth / 2 + seen * 4 && Math.abs(y) - n.height * seen / 2 < pixelHeight / 2 + seen * 4;
-            const flat = inView ? flatOf(n, seen) : null;
-            if (flat !== null) {
-                // too small for its text to show: an outline and a filling, drawn with all the others like it
-                const hw = n.width / 2;
-                const hh = n.height / 2;
-                const inset = Math.min(flat.outline, hw, hh);
-                this.small.rectangle(n.x - hw, n.y - hh, n.x + hw, n.y + hh, n.z, ...rgb(flat.ink));
-                this.small.rectangle(n.x - hw + inset, n.y - hh + inset, n.x + hw - inset, n.y + hh - inset, n.z, ...rgb(flat.fill));
+            const small = inView && seen <= atlasScale && Math.max(n.width, n.height) * atlasScale <= MAX_ON_PAGE;
+            if (small) {
+                const key = keyOf(n);
+                let slot = this.slots.get(n.id);
+                if ((slot === undefined || slot.key !== key) && painting < ATLAS_BUDGET_MS) {
+                    made++;
+                    const before = performance.now();
+                    slot = this.put(n, key, paint(n, atlasScale), slot);
+                    painting += performance.now() - before;
+                }
+                if (slot === undefined || slot.key !== key) pending = true;
+                if (slot !== undefined) slot.page.quad(slot, n.x, n.y, n.z);
+                else {
+                    // until its picture is made: an outline and a filling
+                    const flat = flatOf(n, seen);
+                    const hw = n.width / 2;
+                    const hh = n.height / 2;
+                    const inset = Math.min(flat.outline, hw, hh);
+                    this.small.rectangle(n.x - hw, n.y - hh, n.x + hw, n.y + hh, n.z, ...rgb(flat.ink));
+                    this.small.rectangle(n.x - hw + inset, n.y - hh + inset, n.x + hw - inset, n.y + hh - inset, n.z, ...rgb(flat.fill));
+                }
             } else if (!inView) {
                 // not seen: nothing is worked out for it, and the picture it has is kept for when it is seen again
                 const kept = this.kept.get(n.id);
@@ -268,9 +401,19 @@ export class SpaceRenderer<N extends SpaceNode> {
                     kept.mesh.visible = false;
                 }
             }
-            return inView && flat === null;
+            return inView && !small;
         });
         this.small.end();
+        this.pages.forEach((page) => {
+            page.end();
+            // the graphics card gets all of a page each time: not for every picture while they are being made
+            if (page.dirty && (!pending || now - page.uploadedAt > PAGE_UPLOAD_MS)) {
+                page.texture.needsUpdate = true;
+                page.dirty = false;
+                page.uploadedAt = now;
+            }
+            if (page.dirty) pending = true;
+        });
         pictured.forEach((index, rank) => {
             const n = space.nodes[index];
             // as many pixels to a unit as the node is seen with, and as it would be at zoom 1
@@ -346,6 +489,31 @@ export class SpaceRenderer<N extends SpaceNode> {
         const t3 = performance.now();
         this.spent = { nodes: t1 - now, edges: t2 - t1, render: t3 - t2, made, calls: this.renderer.info.render.calls };
         return pending;
+    }
+
+    /** Put [picture], which is of [n] and of what [key] tells, on a page of the atlas: where [old] is if it has the same size, else in a new place. */
+    private put(n: N, key: string, picture: NodePicture, old: Slot | undefined): Slot {
+        const width = picture.image.width;
+        const height = picture.image.height;
+        const reuse = old !== undefined && old.width === width && old.height === height;
+        let page = reuse ? old.page : this.pages[this.pages.length - 1];
+        let at = reuse ? { x: old.x, y: old.y } : page?.place(width, height) ?? null;
+        if (at === null) {
+            page = new Page(this.renderer.capabilities.getMaxAnisotropy());
+            this.pages.push(page);
+            this.scene.add(page.mesh);
+            at = page.place(width, height)!;
+        }
+        page.ctx.clearRect(at.x, at.y, width, height);
+        page.ctx.drawImage(picture.image, at.x, at.y);
+        page.dirty = true;
+        const slot = {
+            page, x: at.x, y: at.y, width, height, key, pixelsPerUnit: picture.pixelsPerUnit,
+            middleX: (n.width / 2 + picture.margin) * picture.pixelsPerUnit,
+            middleY: (n.height / 2 + picture.margin) * picture.pixelsPerUnit,
+        };
+        this.slots.set(n.id, slot);
+        return slot;
     }
 
     /** The edges, as strips a unit wide from border to border of their nodes, each with a disc for a head. */

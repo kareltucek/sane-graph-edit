@@ -430,7 +430,8 @@ function viewOf(n: SceneNode, scene: View): View {
     return { scale, offsetX: scene.offsetX + n.x * (scene.scale - scale), offsetY: scene.offsetY + n.y * (scene.scale - scale) };
 }
 
-function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number) {
+/** Draw [n]. Text too small to read is left out, unless [smallText]: a picture that is kept is not made again for being small. */
+function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number, smallText = false) {
     const view = viewOf(n, scene);
     const scale = view.scale;
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * view.offsetX, dpr * view.offsetY);
@@ -447,7 +448,7 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
     ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
     ctx.stroke();
     // the node being edited has its editor where the text would be, once that shows
-    const shown = n.fontSize * scale >= MIN_TEXT_PX && !(n.id === editing?.id && editing.editor.shown);
+    const shown = (smallText || n.fontSize * scale >= MIN_TEXT_PX) && !(n.id === editing?.id && editing.editor.shown);
     if (shown) {
         // a markdown node is its picture, once that is made; a code node what neovim painted, once that is
         const picture = pictureOf(n);
@@ -473,7 +474,7 @@ function pictureOfNode(n: SpaceSceneNode, grid: client.GridMetrics, pixelsPerUni
         // the node alone, in the middle, as a view at that zoom would show it
         const offsetX = (n.width / 2 + PICTURE_MARGIN) * pixelsPerUnit;
         const offsetY = (n.height / 2 + PICTURE_MARGIN) * pixelsPerUnit;
-        drawNode({ ...n, x: 0, y: 0, depthScale: 1 }, grid, { scale: pixelsPerUnit, offsetX, offsetY, nodes: [], edges: [], selectionBox: null }, 1);
+        drawNode({ ...n, x: 0, y: 0, depthScale: 1 }, grid, { scale: pixelsPerUnit, offsetX, offsetY, nodes: [], edges: [], selectionBox: null }, 1, true);
     } finally {
         ctx = was;
     }
@@ -730,10 +731,8 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         const pending = spaceRenderer.draw(
             spaceNow, width, height, canvas.width, canvas.height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
             pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit),
-            // as the flat drawing leaves out text that small; a selected node's outline stays visible however small it is
-            (n, pixelsPerUnit) => n.fontSize * pixelsPerUnit / dpr >= MIN_TEXT_PX || n.id === editing?.id
-                ? null
-                : { fill: n.bg ?? colours().background, ink: inkOf(n), outline: n.selected ? Math.max(2, 2.2 * dpr / pixelsPerUnit) : 1 },
+            // a selected node's outline stays visible however small it is
+            (n, pixelsPerUnit) => ({ fill: n.bg ?? colours().background, ink: inkOf(n), outline: n.selected ? Math.max(2, 2.2 * dpr / pixelsPerUnit) : 1 }),
         );
         if (STAGE_TIMES !== undefined) {
             const s = spaceRenderer.spent;
