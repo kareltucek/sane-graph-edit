@@ -40,7 +40,7 @@ export class Recent<V> {
     }
 }
 
-/** All kept drawings together hold at most this many pixels (four bytes each). */
+/** All kept drawings together hold at most this many pixels (four bytes each), unless the page knows better ([Bitmaps.limit]). */
 const MAX_PIXELS = 64e6;
 
 /** A drawing of more pixels than this is kept at a lower scale. */
@@ -52,6 +52,13 @@ export class Bitmaps {
     private pixels = 0;
     private frame = 0;
 
+    private maxPixels = MAX_PIXELS;
+
+    /** Keep at most [bytes] of drawings from now on. */
+    set limit(bytes: number) {
+        this.maxPixels = bytes / 4;
+    }
+
     /** Whether a drawing is kept as [key]. */
     has(key: string): boolean {
         return this.kept.has(key);
@@ -59,7 +66,7 @@ export class Bitmaps {
 
     /** How many drawings are kept, how many bytes they take, and how many they may take. */
     get stats(): { drawings: number; bytes: number; limit: number } {
-        return { drawings: this.kept.size, bytes: this.pixels * 4, limit: MAX_PIXELS * 4 };
+        return { drawings: this.kept.size, bytes: this.pixels * 4, limit: this.maxPixels * 4 };
     }
 
     /** A new drawing of the view begins: what it uses is not let go of before the next one. */
@@ -106,12 +113,12 @@ export class Bitmaps {
     /** Let go of the drawings used longest ago until [pixels] more fit; false if they cannot. */
     private makeRoom(pixels: number): boolean {
         let stuck = false;
-        while (this.pixels + pixels > MAX_PIXELS && !stuck) {
+        while (this.pixels + pixels > this.maxPixels && !stuck) {
             const oldest = this.kept.entries().next().value;
             stuck = oldest === undefined || oldest[1].frame === this.frame;
             if (oldest !== undefined && !stuck) this.drop(oldest[0]);
         }
-        return this.pixels + pixels <= MAX_PIXELS;
+        return this.pixels + pixels <= this.maxPixels;
     }
 
     private drop(key: string) {
