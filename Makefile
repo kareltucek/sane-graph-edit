@@ -7,8 +7,10 @@
 #
 # Targets:
 #   make            - compile + test
-#   make run        - launch the editor (via Gradle)
-#   make run-jar    - build fat jar + launch it directly (faster startup)
+#   make run        - build + launch the editor (the Electron client); ARGS="file.dot" is passed on
+#   make electron   - build the Electron client without launching it
+#   make run-swing  - launch the Swing client (via Gradle)
+#   make run-jar    - build fat jar + launch it directly (the Swing client, faster startup)
 #   make test       - run unit tests
 #   make jar        - build the fat jar (~2 MB, needs JDK 21+ to run)
 #   make package    - build a native app-image via jpackage (~160 MB, no Java needed)
@@ -26,8 +28,10 @@ BINLINK    := $(PREFIX)/bin/sane-graph-edit
 GRADLE     := ./gradlew
 BUILD_DIST := build/dist/sane-graph-edit
 FAT_JAR    := build/libs/sane-graph-edit-*-all.jar
+ELECTRON   := modules/client-electron
+ARGS       ?=
 
-.PHONY: all compile run run-jar test jar package appimage deb rpm install uninstall release clean
+.PHONY: all compile run electron run-swing run-jar test jar package appimage deb rpm install uninstall release clean
 
 # --- primary targets ---
 
@@ -37,7 +41,16 @@ all: test
 compile:
 	$(GRADLE) compileKotlin
 
-run:
+# started from here, not from the client's directory: the working directory is the workspace
+run: electron
+	$(ELECTRON)/node_modules/.bin/electron --no-sandbox $(ELECTRON) $(ARGS)
+
+# the client core (Kotlin, built for Node) first: the client's packages include it
+electron:
+	$(GRADLE) :editor-host:jsNodeDevelopmentLibraryDistribution
+	cd $(ELECTRON) && npm install && npm run build
+
+run-swing:
 	$(GRADLE) run
 
 run-jar: jar
