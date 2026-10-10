@@ -183,7 +183,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         FileContent.left(view)
         view.g = adopt(newGraph, file)
         // a graph with depth in it is shown with it
-        if (view.g.nodes.any { graph_tools.Depth.of(it) != 0.0 }) graph_tools.ViewModes.threeD = true
+        onceLoaded { view.showDepth() }
         watch(view.g)
         // a file somebody else has open may come with their unsaved changes
         dirty(document?.info?.dirty ?: false)

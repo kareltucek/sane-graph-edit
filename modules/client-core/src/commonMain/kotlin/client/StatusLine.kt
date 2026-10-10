@@ -32,7 +32,7 @@ object StatusLine {
             "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
             "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
             "[discard]".takeIf { graph_tools.ViewModes.discard },
-            "[3d]".takeIf { graph_tools.ViewModes.threeD },
+            "[3d]".takeIf { view.viewTransform.threeD },
             // somebody else is attached to this document too
             "[shared]".takeIf { (view.content.document?.info?.clients ?: 0) > 1 },
         ).joinToString(" ")

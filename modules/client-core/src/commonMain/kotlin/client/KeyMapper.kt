@@ -870,7 +870,7 @@ class KeyMapper(
                     else -> {
                         Actions.depthSelection(gv, z, relative = text.startsWith("+") || text.startsWith("-"))
                         // a graph with depth in it is shown with it
-                        if (gv.g.nodes.any { graph_tools.Depth.of(it) != 0.0 }) graph_tools.ViewModes.threeD = true
+                        if (gv.g.nodes.any { graph_tools.Depth.of(it) != 0.0 }) gv.viewTransform.threeD = true
                     }
                 }
             }
@@ -935,7 +935,8 @@ class KeyMapper(
             "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
-            "3d" -> graph_tools.ViewModes.threeD = change(graph_tools.ViewModes.threeD)
+            // of the graph shown, not of all of them
+            "3d" -> activeView?.let { it.viewTransform.threeD = change(it.viewTransform.threeD) }
             else -> utils.Platform.warn("sane-graph-edit: unknown setting '$spec'")
         }
         activeView?.shell?.modesChanged()

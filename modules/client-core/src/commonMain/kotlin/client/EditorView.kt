@@ -95,7 +95,20 @@ class EditorView(
 
     init {
         content.watching = true
-        content.onceLoaded { FileContent.reconcile(this) }
+        content.onceLoaded {
+            FileContent.reconcile(this)
+            showDepth()
+        }
+    }
+
+    /** A graph with depth in it is shown in 3D mode, one without in 2D: for a graph that was just opened. */
+    fun showDepth() {
+        val deep = g.nodes.any { Depth.of(it) != 0.0 }
+        if (deep != viewTransform.threeD) {
+            viewTransform.threeD = deep
+            shell.modesChanged()
+            repaint()
+        }
     }
 
     /** The node whose text the user is editing in place, if any. */

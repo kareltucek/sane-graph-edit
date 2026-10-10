@@ -494,13 +494,13 @@ class GestureController(
 
     /** Turning the view starts, the pointer being at [screen]. Only in 3D mode: in 2D nothing turns a view. */
     fun startOrbit(screen: Vector2): Boolean {
-        if (ViewModes.threeD) {
+        if (graphView.viewTransform.threeD) {
             state = States.Orbiting
             orbitedFrom = screen
             // around the selection, or everything shown, not around the plane the view happened to be of
             graphView.orbitDepth()?.let { graphView.viewTransform.refocus(it, graphView.size / 2) }
         }
-        return ViewModes.threeD
+        return graphView.viewTransform.threeD
     }
 
     private var orbitedFrom: Vector2 = Vector2.Zero

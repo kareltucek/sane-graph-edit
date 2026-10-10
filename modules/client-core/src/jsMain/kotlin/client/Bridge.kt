@@ -184,36 +184,14 @@ class JsView internal constructor(
     fun scene(): dynamic {
         place()
         val scene = view.scene(measurer)
+        showEdited()
         // the links shown there follow the selection
         status()
         val o: dynamic = js("({})")
         o.scale = view.viewTransform.scale
         o.offsetX = view.viewTransform.offset.x
         o.offsetY = view.viewTransform.offset.y
-        o.nodes = scene.nodes.map { n ->
-            val j: dynamic = js("({})")
-            j.id = n.id
-            j.x = n.position.x
-            j.y = n.position.y
-            val shape = if (n.id == view.editing?.id) edited(n.shapeBounds, n.scale) else n.shapeBounds
-            val text = (n.textBounds - (n.shapeBounds - shape)).max(Vector2.Zero)
-            j.width = shape.x
-            j.height = shape.y
-            j.textWidth = text.x
-            j.textHeight = text.y
-            j.lines = n.lines.toTypedArray()
-            j.shape = n.shape
-            val (bg, fg) = ColorStyle.PickerSet.shown(n.bg, n.fg, dark)
-            j.bg = bg?.let(::css)
-            j.fg = fg?.let(::css)
-            j.palette = ColorStyle.PickerSet.isOurs(n.bg, n.fg)
-            j.type = n.type.kind.id
-            j.language = n.type.language
-            j.fontSize = n.fontSize
-            j.depthScale = n.scale
-            j.selected = n.selected
-            j
-        }.toTypedArray()
+        o.nodes = scene.nodes.map(::node).toTypedArray()
         o.selectionBox = scene.selectionBox?.let { (a, b) ->
             val j: dynamic = js("({})")
             j.x1 = a.x
@@ -232,6 +210,63 @@ class JsView internal constructor(
             j.headScale = e.headScale
             j
         }.toTypedArray()
+        return o
+    }
+
+    /** A node as [scene] and [space] tell of it. */
+    private fun node(n: SceneNode): dynamic {
+        val j: dynamic = js("({})")
+        j.id = n.id
+        j.x = n.position.x
+        j.y = n.position.y
+        val shape = if (n.id == view.editing?.id) edited(n.shapeBounds, n.scale) else n.shapeBounds
+        val text = (n.textBounds - (n.shapeBounds - shape)).max(Vector2.Zero)
+        j.width = shape.x
+        j.height = shape.y
+        j.textWidth = text.x
+        j.textHeight = text.y
+        j.lines = n.lines.toTypedArray()
+        j.shape = n.shape
+        val (bg, fg) = ColorStyle.PickerSet.shown(n.bg, n.fg, dark)
+        j.bg = bg?.let(::css)
+        j.fg = fg?.let(::css)
+        j.palette = ColorStyle.PickerSet.isOurs(n.bg, n.fg)
+        j.type = n.type.kind.id
+        j.language = n.type.language
+        j.fontSize = n.fontSize
+        j.depthScale = n.scale
+        j.selected = n.selected
+        return j
+    }
+
+    /** Whether the view is to be drawn with depth ([space]) rather than flat ([scene]). */
+    val threeD: Boolean get() = view.viewTransform.threeD
+
+    /**
+     * What to draw, not projected, for a renderer with perspective of its own:
+     * `{nodes: [as in scene, x, y where the view sees the node, and z, how far away], edges: [{from, to}] (indices into nodes),
+     * middleX, middleY, depth, distance, scale}`: the viewer is `distance` in front of the plane at `depth`, before its point
+     * `middleX, middleY`, which is in the middle of the screen, and a unit of that plane is `scale` pixels. Nodes face the viewer.
+     */
+    fun space(): dynamic {
+        val scene = view.spaceScene(measurer)
+        val o: dynamic = js("({})")
+        o.nodes = scene.nodes.mapIndexed { i, n ->
+            val j = node(n)
+            j.z = scene.depths[i]
+            j
+        }.toTypedArray()
+        o.edges = scene.edges.map { (from, to) ->
+            val j: dynamic = js("({})")
+            j.from = from
+            j.to = to
+            j
+        }.toTypedArray()
+        o.middleX = scene.middle.x
+        o.middleY = scene.middle.y
+        o.depth = scene.depth
+        o.distance = scene.distance
+        o.scale = scene.scale
         return o
     }
 
@@ -254,8 +289,16 @@ class JsView internal constructor(
     /** The renderer opened its editor on the node [id]. */
     fun textEditStarted(id: String) {
         view.textEditStarted(id)
-        // all of the node as it is shown while it is edited is in the view, a margin around it
-        view.g.node(id)?.let { n -> view.apparent(n)?.let { n to it } }?.let { (n, how) ->
+        showEdited()
+    }
+
+    /**
+     * Move the view so that all of the node being edited, as it is
+     * shown meanwhile, is in it, a margin around it. Also while it
+     * is edited: it grows with its text, up and down from its middle.
+     */
+    private fun showEdited() {
+        view.editing?.let { n -> view.apparent(n)?.let { n to it } }?.let { (n, how) ->
             val half = edited(n.cache.shapeBounds, how.scale) * (view.viewTransform.scale * how.scale / 2)
             val at = view.viewTransform.toScreen(how.position)
             val low = Vector2(EDIT_MARGIN, EDIT_MARGIN) + half

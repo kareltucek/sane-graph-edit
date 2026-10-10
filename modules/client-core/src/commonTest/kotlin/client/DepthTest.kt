@@ -31,11 +31,6 @@ class DepthTest {
     private val near = Node("near", Vector2(-100, -50)).also { Depth.set(it, -500.0) }
     private val behind = Node("behind", Vector2(300, 0)).also { Depth.set(it, -2000.0) }
 
-    init {
-        // depth shows in 3D mode only
-        ViewModes.threeD = true
-    }
-
     private val messages = mutableListOf<String>()
     private val shell = object : Shell by NoShell {
         override fun message(text: String) {
@@ -52,6 +47,8 @@ class DepthTest {
         shell,
     ).also {
         it.size = Vector2(800, 600)
+        // depth shows in 3D mode only
+        it.viewTransform.threeD = true
         it.viewTransform.translate(Vector2(400, 300))
         it.g.ensureCachesFresh()
         it.g.unselectAll(it.g.nodes.toList())
@@ -80,7 +77,7 @@ class DepthTest {
 
     @Test
     fun `in 2D mode there is no perspective, every node is shown where it is, and the wheel only zooms`() {
-        ViewModes.threeD = false
+        view.viewTransform.threeD = false
         listOf(flat, far, near, behind).forEach { assertEquals(Apparent(it.position, 1.0), view.apparent(it)) }
         val scene = view.scene(TextMeasurer.default)
         assertEquals(4, scene.nodes.size)
@@ -91,10 +88,10 @@ class DepthTest {
 
     @Test
     fun `giving a node a depth turns 3D mode on`() {
-        ViewModes.threeD = false
+        view.viewTransform.threeD = false
         view.g.cleanSelect(setOf(flat))
         keys.executeCommandLine("z 300")
-        assertTrue(ViewModes.threeD)
+        assertTrue(view.viewTransform.threeD)
     }
 
     @Test
@@ -215,7 +212,7 @@ class DepthTest {
 
     @AfterTest
     fun backTo2D() {
-        ViewModes.threeD = false
+        view.viewTransform.threeD = false
     }
 
     private fun dragMiddle(from: Vector2, to: Vector2) {
@@ -226,10 +223,10 @@ class DepthTest {
 
     @Test
     fun `in 2D mode the middle button turns nothing, in 3D mode it turns the view around the selection in its middle`() {
-        ViewModes.threeD = false
+        view.viewTransform.threeD = false
         dragMiddle(Vector2(400, 300), Vector2(500, 300))
         assertEquals(0.0, view.viewTransform.yaw)
-        ViewModes.threeD = true
+        view.viewTransform.threeD = true
         view.g.cleanSelect(setOf(flat))
         val was = screen(far)
         dragMiddle(Vector2(400, 300), Vector2(500, 320))
@@ -242,17 +239,17 @@ class DepthTest {
 
     @Test
     fun `a view that is turned is from the front again in 2D mode`() {
-        ViewModes.threeD = true
+        view.viewTransform.threeD = true
         view.viewTransform.turnTo(PI / 2, 0.0, view.size / 2)
         // from the side: what was away is across
         assertNear(Vector2(1000, 100), view.viewPoint(far).xy)
-        ViewModes.threeD = false
+        view.viewTransform.threeD = false
         assertNear(Vector2(200, 100), view.viewPoint(far).xy)
     }
 
     @Test
     fun `a node dragged in a turned view goes across the view, which is into the graph, and undo puts it back`() {
-        ViewModes.threeD = true
+        view.viewTransform.threeD = true
         view.viewTransform.turnTo(PI / 2, 0.0, view.size / 2)
         view.pointer.pressed(Vector2(400, 300), Button.Left, false, false)
         view.pointer.moved(Vector2(440, 300), true, false)
@@ -267,7 +264,7 @@ class DepthTest {
 
     @Test
     fun `the view turns back to the front around its middle, and a session remembers how it was turned`() {
-        ViewModes.threeD = true
+        view.viewTransform.threeD = true
         view.viewTransform.orbit(0.4, -0.2, view.size / 2)
         val kept = ViewTransform().also { it.matrix = view.viewTransform.matrix }
         assertEquals(listOf(0.4, -0.2, view.viewTransform.depth), listOf(kept.yaw, kept.pitch, kept.depth))

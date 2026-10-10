@@ -3,6 +3,7 @@ import { Bitmaps, Recent } from "./bitmaps";
 import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor";
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
+import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -89,7 +90,12 @@ const ARROWHEAD_RADIUS = 3;
 const MIN_TEXT_PX = 3;
 
 const canvas = document.getElementById("graph") as HTMLCanvasElement;
-const ctx = canvas.getContext("2d")!;
+const flat = canvas.getContext("2d")!;
+/** What is drawn on: the canvas, or for a while the picture of a node that is being made ([pictureOfNode]). */
+let ctx: Canvas2D = flat;
+/** The graph drawn with depth, below the canvas; made when 3D mode is first used. */
+const spaceCanvas = document.getElementById("space") as HTMLCanvasElement;
+let spaceRenderer: SpaceRenderer<SpaceSceneNode> | null = null;
 const message = document.getElementById("message") as HTMLDivElement;
 
 function say(text: string) {
@@ -449,6 +455,41 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
     }
 }
 
+/** A node of the graph drawn with depth: where the view sees it, and how far away. */
+type SpaceSceneNode = SceneNode & { z: number };
+
+/** Units of the graph around a node in its picture: room for the outline of a selected one. */
+const PICTURE_MARGIN = 3;
+
+/** A picture of [n] as [drawNode] draws it, [pixelsPerUnit] pixels to a unit: what the graph drawn with depth shows of it. */
+function pictureOfNode(n: SpaceSceneNode, grid: client.GridMetrics, pixelsPerUnit: number): NodePicture {
+    const image = new OffscreenCanvas(
+        Math.max(1, Math.ceil((n.width + 2 * PICTURE_MARGIN) * pixelsPerUnit)),
+        Math.max(1, Math.ceil((n.height + 2 * PICTURE_MARGIN) * pixelsPerUnit)),
+    );
+    const was = ctx;
+    ctx = image.getContext("2d")!;
+    try {
+        // the node alone, in the middle, as a view at that zoom would show it
+        const offsetX = (n.width / 2 + PICTURE_MARGIN) * pixelsPerUnit;
+        const offsetY = (n.height / 2 + PICTURE_MARGIN) * pixelsPerUnit;
+        drawNode({ ...n, x: 0, y: 0, depthScale: 1 }, grid, { scale: pixelsPerUnit, offsetX, offsetY, nodes: [], edges: [], selectionBox: null }, 1);
+    } finally {
+        ctx = was;
+    }
+    return { image, pixelsPerUnit, margin: PICTURE_MARGIN };
+}
+
+/** What the picture of [n] depends on: when this changes, it is made anew. */
+function pictureKey(n: SpaceSceneNode): string {
+    const picture = pictureOf(n);
+    const painting = paintingOf(n);
+    return JSON.stringify([
+        n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.selected, n.type, n.language, colours().background, colours().foreground,
+        picture === null ? 0 : nameOf(picture), painting === null ? 0 : nameOf(painting), n.id === editing?.id && editing.editor.shown,
+    ]);
+}
+
 /** Whether the rectangle between two corners, given in the graph's units, and widened by [margin], is at least partly in the view of [width] by [height]. */
 function inView(scene: Scene, width: number, height: number, x1: number, y1: number, x2: number, y2: number, margin: number): boolean {
     const left = -scene.offsetX / scene.scale - margin;
@@ -661,9 +702,14 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         fillPicker(view);
     }
     const scene = view.scene() as Scene;
+    // In 3D mode the graph is drawn with depth on the canvas below, and this one, clear, has only what is laid over the graph:
+    // the node being edited with its editor, and the selection box.
+    const threeD = view.threeD;
+    spaceCanvas.style.display = threeD ? "block" : "none";
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = canvasColour(colours().background);
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (threeD) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    else ctx.fillRect(0, 0, canvas.width, canvas.height);
     // the lines below the graph are in its colours
     const style = document.documentElement.style;
     style.setProperty("--fg", colours().foreground);
@@ -676,10 +722,27 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     // a kept drawing shown smaller is averaged, not sampled
     ctx.imageSmoothingQuality = "high";
     bitmaps.nextFrame();
+    if (threeD) {
+        spaceRenderer ??= new SpaceRenderer(spaceCanvas);
+        const pending = spaceRenderer.draw(
+            view.space() as SpaceScene<SpaceSceneNode>, width, height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
+            pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit),
+        );
+        // the pictures that were not made for this frame
+        if (pending) page.repaint();
+        ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
+        ctx.strokeStyle = colours().foreground;
+        ctx.fillStyle = colours().foreground;
+    }
     // only what is in the view; a selected node's outline is the widest thing drawn around one
     const outline = Math.max(2, 2.2 / scene.scale);
-    scene.edges.filter((e) => inView(scene, width, height, e.x1, e.y1, e.x2, e.y2, ARROWHEAD_RADIUS + 1)).forEach((e) => drawEdge(e, scene.scale, width, height));
+    (threeD ? [] : scene.edges)
+        .filter((e) => inView(scene, width, height, e.x1, e.y1, e.x2, e.y2, ARROWHEAD_RADIUS + 1))
+        .forEach((e) => drawEdge(e, scene.scale, width, height));
     scene.nodes
+        .filter((n) => !threeD || n.id === editing?.id)
+        // the node being edited last: over the others
+        .sort((a, b) => Number(a.id === editing?.id) - Number(b.id === editing?.id))
         .filter((n) => {
             const halfWidth = n.width * n.depthScale / 2;
             const halfHeight = n.height * n.depthScale / 2;
@@ -698,7 +761,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         const cells = cellsOf(edited, scene, grid);
         const room = roomOf(cells);
         editor.limit(room.columns, room.rows);
-        editor.draw(ctx, cells);
+        editor.draw(flat, cells);
         ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     }
     const box = scene.selectionBox;

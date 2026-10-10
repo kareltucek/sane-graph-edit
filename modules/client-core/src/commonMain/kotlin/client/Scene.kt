@@ -56,6 +56,46 @@ data class Scene(
 )
 
 /**
+ * What a view shows, not projected: for a renderer that has
+ * perspective of its own (conn1, client → renderer). The nodes are
+ * where the view sees them ([EditorView.viewPoint]: across, down
+ * and [depths] away), each as big as it is, facing the viewer; the
+ * edges are between nodes, by index into [nodes]. The viewer is
+ * [distance] in front of the plane at [depth], before the point
+ * [middle] of it, which is in the middle of the screen; a unit of
+ * that plane is [scale] pixels.
+ */
+data class SpaceScene(
+    val nodes: List<SceneNode>,
+    val depths: List<Double>,
+    val edges: List<Pair<Int, Int>>,
+    val middle: Vector2,
+    val depth: Double,
+    val distance: Double,
+    val scale: Double,
+)
+
+/** Bring the node sizes up to date, as [scene] does, and describe what the view shows without projecting it. */
+fun EditorView.spaceScene(measurer: TextMeasurer): SpaceScene {
+    g.recompute(measurer)
+    DynamicPlacement.place(g)
+    g.recompute(measurer)
+    val visible = g.nodes.filter { it in g.visibleNodes() }
+    val index = visible.withIndex().associate { (i, n) -> n to i }
+    val selected = g.selectedNodes
+    val points = visible.map { viewPoint(it) }
+    return SpaceScene(
+        nodes = visible.zip(points).map { (n, at) -> sceneNode(n, n in selected, Apparent(at.xy, 1.0)) },
+        depths = points.map { it.z },
+        edges = g.edges.mapNotNull { e -> index[e.src]?.let { from -> index[e.dst]?.let { from to it } } },
+        middle = viewTransform.toWorkspace(size / 2),
+        depth = viewTransform.depth,
+        distance = viewTransform.distance,
+        scale = viewTransform.scale,
+    )
+}
+
+/**
  * Bring the node sizes up to date, measuring text with [measurer],
  * and describe what the view shows.
  */

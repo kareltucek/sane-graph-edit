@@ -78,7 +78,7 @@ class ViewTransform {
         // depth grows away from the viewer
         val away = distance + (z - depth)
         return when {
-            !ViewModes.threeD || z == depth -> 1.0
+            !threeD || z == depth -> 1.0
             away <= 0.0 || distance / away > Constants.maxPerspective -> null
             else -> distance / away
         }
@@ -96,7 +96,7 @@ class ViewTransform {
     fun refocus(z: Double, middle: Vector2): Boolean {
         val p = perspective(z)
         // in 2D mode there are no planes to speak of
-        if (p != null && ViewModes.threeD) {
+        if (p != null && threeD) {
             offset = middle + (offset - middle) * p
             scale *= p
             depth = z
@@ -109,15 +109,22 @@ class ViewTransform {
      * axis, then [pitch] around the horizontal one. Everything else
      * here speaks of the graph as seen so turned ([toView]): the
      * plane the view is of is the one at [depth] from that side.
-     * Only in 3D mode ([ViewModes.threeD]); in 2D the view is from
-     * the front whatever these say.
+     * Only in 3D mode ([threeD]); in 2D the view is from the front
+     * whatever these say.
      */
     var yaw: Double = 0.0
         private set
     var pitch: Double = 0.0
         private set
 
-    val isTurned: Boolean get() = ViewModes.threeD && (yaw != 0.0 || pitch != 0.0)
+    val isTurned: Boolean get() = threeD && (yaw != 0.0 || pitch != 0.0)
+
+    /**
+     * 3D mode (`:set 3d`), of this view alone: depth shows, and the
+     * view can be turned. Turns itself on for a graph with depth in
+     * it. Not kept in a session.
+     */
+    var threeD: Boolean = false
 
     /** A point of the graph (position and depth) as the view sees it: across, down and away from the viewer. */
     fun toView(p: Point3): Point3 =
