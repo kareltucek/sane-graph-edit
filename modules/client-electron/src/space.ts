@@ -56,6 +56,8 @@ const MAX_PERSPECTIVE = 50;
  * made for zoom 1, scaled down.
  */
 const EXACT_FROM = 0.5;
+/** The view is still when it has not moved for this long. */
+const SETTLE_MS = 150;
 /** Two sizes no further apart than this are the same one. */
 const SAME = 1.001;
 /** No picture is wider or higher than this many pixels. */
@@ -71,6 +73,9 @@ export class SpaceRenderer<N extends SpaceNode> {
     private readonly kept = new Map<string, Kept>();
     private readonly edges = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthTest: false }));
     private frame = 0;
+    /** Where the view looked from when it was last drawn, and when that last changed. */
+    private lookedFrom = "";
+    private movedAt = 0;
 
     constructor(private readonly canvas: HTMLCanvasElement) {
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -121,6 +126,15 @@ export class SpaceRenderer<N extends SpaceNode> {
 
         /** How far in front of the viewer [n] is. */
         const away = (n: SpaceNode) => space.distance + n.z - space.depth;
+        // While the view moves (pan, zoom, turn) the pictures there are are shown, whatever size they were made for;
+        // those of the right size are made once it has been still for a moment.
+        const from = [space.scale, space.middleX, space.middleY, space.depth, space.distance, space.nodes.reduce((sum, n) => sum + n.z, 0)].join(" ");
+        const now = performance.now();
+        if (from !== this.lookedFrom) {
+            this.lookedFrom = from;
+            this.movedAt = now;
+        }
+        const moving = now - this.movedAt < SETTLE_MS;
         let made = 0;
         let pending = false;
         // the furthest first: what is nearer is drawn over it
@@ -135,8 +149,9 @@ export class SpaceRenderer<N extends SpaceNode> {
             const wanted = exact ? seen : whole;
             const key = keyOf(n);
             let kept = this.kept.get(n.id);
-            const stale = kept === undefined || kept.key !== key || kept.pixelsPerUnit > wanted * SAME || kept.pixelsPerUnit < wanted / SAME;
-            if (stale && (kept === undefined || made < PICTURES_PER_FRAME)) {
+            const changed = kept === undefined || kept.key !== key;
+            const stale = changed || kept!.pixelsPerUnit > wanted * SAME || kept!.pixelsPerUnit < wanted / SAME;
+            if (stale && (kept === undefined || (made < PICTURES_PER_FRAME && (changed || !moving)))) {
                 made++;
                 const picture = paint(n, wanted);
                 const texture = new THREE.CanvasTexture(picture.image);
