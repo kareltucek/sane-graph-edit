@@ -2,11 +2,14 @@ package ui
 
 import client.*
 import DotGraphLoader
+import graph_tools.NodeType
 import java.nio.file.Files
 import java.nio.file.Paths
+import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SourceViewTest {
@@ -30,59 +33,59 @@ class SourceViewTest {
     }
 
     private fun source(lines: Int) =
-        Files.createTempFile("src", ".scala").also { f -> f.writeText((1..lines).joinToString("\n") { "line $it\tx" }) }
-
-    private fun nodes(f: java.nio.file.Path, lines: FileLink.Lines) =
-        SourceView.build(f, lines).nodes.associateBy { it.attributes.name }
-
-    private fun textLines(n: graph_tools.Node?) = n?.attributes?.text?.lines()?.map { it.trimEnd() }.orEmpty()
+        Files.createTempFile("src", ".scala").also { f -> f.writeText((1..lines).joinToString("\n", postfix = "\n") { "line $it" }) }
 
     @Test
-    fun `a single line is a one-line range with 500 lines of context attached above and below`() {
-        val f = source(1200)
-        val ns = nodes(f, FileLink.Lines(600, null))
-        val main = textLines(ns[SourceView.NODE_ID]).drop(2)  // header + rule
-        assertEquals(listOf(" 600 │ line 600    x"), main)  // tab expanded, no marker
-        val before = textLines(ns[SourceView.BEFORE_ID])
-        val after = textLines(ns[SourceView.AFTER_ID])
-        assertEquals(500, before.size)
-        assertEquals(" 100 │ line 100    x", before.first())
-        assertEquals(" 599 │ line 599    x", before.last())
-        assertEquals(500, after.size)
-        assertEquals("1100 │ line 1100    x", after.last())
-        assertEquals("above", ns[SourceView.BEFORE_ID]?.attributes?.other?.get("attachSide"))
-        assertEquals(SourceView.NODE_ID, ns[SourceView.AFTER_ID]?.attributes?.other?.get("attachTo"))
-        assertEquals("monospace", ns[SourceView.AFTER_ID]?.attributes?.other?.get("fontname"))
-        // every line padded to one width, so the centred nodes line up
-        val widths = ns.values.flatMap { it.attributes.text.lines() }.map { it.length }.toSet()
-        assertEquals(1, widths.size)
-    }
-
-    @Test
-    fun `context is clipped at the file's ends`() {
+    fun `the graph of a link to lines is one node whose text is kept in those lines`() {
         val f = source(30)
-        val ns = nodes(f, FileLink.Lines(5, 7))
-        assertEquals(listOf(" 5 │ line 5    x", " 6 │ line 6    x", " 7 │ line 7    x"), textLines(ns[SourceView.NODE_ID]).drop(2))
-        assertEquals(4, textLines(ns[SourceView.BEFORE_ID]).size)
-        assertEquals(23, textLines(ns[SourceView.AFTER_ID]).size)
-        assertEquals(null, nodes(f, FileLink.Lines(1, 30))[SourceView.BEFORE_ID])  // nothing before line 1
+        val node = SourceView.build(FileLink.Target(f, null, FileLink.Lines(5, 7))).nodes.single()
+        assertEquals("line 5\nline 6\nline 7", node.attributes.text)
+        assertEquals("code-scala:$f:5-7", node.attributes.other[NodeType.ATTRIBUTE])
+        assertEquals(NodeType.Kind.Plain, SourceView.typeOf(FileLink.Target(Paths.get("/src/notes.txt"), null)).kind)
+        assertEquals("markdown:/src/R.md#Depth", SourceView.typeOf(FileLink.Target(Paths.get("/src/R.md"), null, FileLink.Lines(3, 9), section = "Depth")).attribute)
     }
 
     @Test
-    fun `gf on a line link shows the source, Ctrl+O and Ctrl+I go back and forth`() {
+    fun `gf on a line link opens the lines to be edited, Ctrl+O and Ctrl+I go back and forth`() {
         val src = source(80)
         val dir = Files.createTempDirectory("sv")
         val g = dir.resolve("g.dot").also { it.writeText("digraph g {\n  m [ link=\"$src:40\" ];\n}\n") }
         val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(g.toString()), initialFile = g)
         gv.g.cleanSelect(gv.g.nodes)
+        val title = SourceView.title(FileLink.Target(src, null, FileLink.Lines(40, null)))
 
         gv.content.followFileLink()
         assertEquals(null, gv.currentFile)
-        assertEquals(SourceView.title(src, FileLink.Lines(40, null)), gv.content.untitledName)
+        assertEquals(title, gv.content.untitledName)
+        assertTrue(gv.content.pendingEdit)
 
         gv.content.jumpBack()
         assertEquals("g.dot", gv.currentFile?.fileName.toString())
         gv.content.jumpForward()
-        assertEquals(SourceView.title(src, FileLink.Lines(40, null)), gv.content.untitledName)
+        assertEquals(title, gv.content.untitledName)
+    }
+
+    @Test
+    fun `an edit of the opened lines is in the file, and the view has nothing unsaved`() {
+        val src = source(10)
+        val gv = GraphView()
+        assertTrue(gv.content.showSourceInPlace(FileLink.Target(src, null, FileLink.Lines(2, 3))))
+        val node = gv.g.nodes.single()
+        gv.model.textEditStarted(node.id)
+        gv.model.textEditEnded("line 2\nmore\nline 3")
+        assertEquals("line 1\nline 2\nmore\nline 3\nline 4", src.readText().lines().take(5).joinToString("\n"))
+        assertEquals("code-scala:$src:2-4", node.attributes.other[NodeType.ATTRIBUTE])
+        assertFalse(gv.content.isDirty)
+    }
+
+    @Test
+    fun `gf on a text file opens all of it`() {
+        val src = source(4)
+        val dir = Files.createTempDirectory("sv")
+        val g = dir.resolve("g.dot").also { it.writeText("digraph g {\n  m [ link=\"$src\" ];\n}\n") }
+        val gv = GraphView(initialGraph = DotGraphLoader.loadFromFile(g.toString()), initialFile = g)
+        gv.g.cleanSelect(gv.g.nodes)
+        gv.content.followFileLink()
+        assertEquals("line 1\nline 2\nline 3\nline 4", gv.g.nodes.single().attributes.text)
     }
 }

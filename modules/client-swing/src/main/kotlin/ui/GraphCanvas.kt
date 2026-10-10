@@ -47,10 +47,10 @@ class GraphCanvas(
             if (parent.viewTransform.isIdentity) {
                 parent.viewTransform.translate(Vector2(this.width, this.height) / 2)
             }
-            // a link into this new tab asked to focus a node; only now is the size known
-            parent.content.pendingFocus?.let { parent.content.pendingFocus = null; parent.content.focusNode(it) }
             this.requestFocus()
         }
+        // a link into this view asked to focus or to edit a node; only now is the size known
+        if (initialized) parent.content.painted()
 
         val panning = this.parent.mouseListener.controller.state != null
 

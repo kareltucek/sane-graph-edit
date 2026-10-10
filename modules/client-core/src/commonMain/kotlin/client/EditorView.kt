@@ -123,7 +123,7 @@ class EditorView(
             val source = FileContent.of(n, content.currentFile)
             when {
                 // the node's text follows from the file's
-                source != null -> if (FileContent.read(source) != text) FileContent.write(this, n, source, text, shell.views())
+                source != null -> if (FileContent.read(source) != text && FileContent.write(this, n, source, text, shell.views())) content.fileWritten()
                 before != text -> g.commit(EditTextCommand(g, n, before, text))
             }
             g.needsRecomputing(n)

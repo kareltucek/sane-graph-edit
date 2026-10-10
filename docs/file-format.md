@@ -128,11 +128,12 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     reloaded then, the node is just focused.
   - **Lines of a text file**: when `<path>` is not a `.dot` file and
     the suffix is a number or a range — `src/Billing.scala:42`,
-    `src/Billing.scala:40-60` — the link opens a graph with a
-    monospaced node holding those lines, numbered (a single line is a
-    one-line range), plus grey context nodes with up to 500 lines
-    before and after it, attached above and below. (In a `.dot` file a
-    number is a node id.)
+    `src/Billing.scala:40-60` — the link opens a graph with one node
+    holding those lines (a single line is a one-line range), being
+    edited: what is changed there is written to the file. (In a `.dot`
+    file a number is a node id.) A path to a file that is not a `.dot`
+    file opens all of it the same way. The node's `content-type` names
+    the file (see the README).
   - **A section of a markdown file**: `<path>#<heading>` —
     `README.md#Depth` — is the lines from that heading to the next
     one of its level or above, so the link stays right when the file

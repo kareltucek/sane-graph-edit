@@ -60,11 +60,8 @@ class JsView internal constructor(
             if (view.viewTransform.isIdentity) {
                 if (view.content.currentFile != null) view.boundScreen() else view.viewTransform.translate(view.size / 2)
             }
-            view.content.pendingFocus?.let {
-                view.content.pendingFocus = null
-                view.content.focusNode(it)
-            }
         }
+        if (placed) view.content.painted()
     }
 
     /** The view stops being the one the page shows: what it had open on the page goes. */

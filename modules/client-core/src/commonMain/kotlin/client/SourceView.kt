@@ -1,76 +1,59 @@
 package client
 
 import Graph
-import graph_tools.Attachments
 import graph_tools.Node
-import utils.Rgb
+import graph_tools.NodeType
 import utils.Vector2
 
 /**
- * Graph for a `<file>:<line>` / `<file>:<from>-<to>` link
- * ([FileLink.Lines]; a single line is a one-line range): a monospaced
- * node with the numbered lines of the range under a header naming the
- * file, and grey context nodes with up to [CONTEXT] lines before and
- * after it, attached above and below ([Attachments]). All lines are
- * padded to one width, so the centred nodes line up column for column.
- * The range node sits at the origin, so a fresh tab centres it.
+ * Graph for a link to a text file — all of it, `<file>:<line>`,
+ * `<file>:<from>-<to>` or `<file>#<section>`: one node whose text is
+ * kept in that file ([FileContent]), so that it is edited there. The
+ * view opens with the node being edited. The node sits at the origin.
  */
 object SourceView {
-    const val CONTEXT = 500
-
-    /** DOT ids of the nodes. */
+    /** DOT id of the node. */
     const val NODE_ID = "source"
-    const val BEFORE_ID = "source-before"
-    const val AFTER_ID = "source-after"
 
-    private const val TAB = "    "
-    private val contextFill = Rgb(0xEEEEEE)
-    private val contextText = Rgb(0x666666)
+    /** What neovim calls the kind of file, by the end of its name; the others are told by the name itself or are plain text. */
+    private val languages = mapOf(
+        "kt" to "kotlin", "kts" to "kotlin", "py" to "python", "js" to "javascript", "ts" to "typescript", "rs" to "rust", "rb" to "ruby",
+        "sh" to "sh", "bash" to "sh", "h" to "c", "hpp" to "cpp", "cc" to "cpp", "yml" to "yaml", "gv" to "dot", "tex" to "tex", "pl" to "perl",
+    )
+    private val asNamed = setOf("scala", "java", "c", "cpp", "go", "json", "yaml", "xml", "html", "css", "sql", "lua", "vim", "toml", "dot", "sbt")
 
-    fun title(path: Path, lines: FileLink.Lines): String = "view: ${path.name}:$lines"
+    /** After the path, what of the file is meant, as a link says it. */
+    private fun part(target: FileLink.Target): String =
+        target.section?.let { "#$it" } ?: target.lines?.let { ":$it" }.orEmpty()
 
-    fun build(path: Path, lines: FileLink.Lines): Graph {
-        val (from, to) = range(lines)
-        val first = (from - CONTEXT).coerceAtLeast(1)
-        val file = Fs.readLines(path, to + CONTEXT)
-        val numberWidth = file.size.coerceAtLeast(to).toString().length
-        val numbered = { range: IntRange ->
-            range.filter { it <= file.size }.map { no ->
-                "${no.toString().padStart(numberWidth)} │ ${file[no - 1].replace("\t", TAB)}"
-            }
+    fun title(target: FileLink.Target): String = "${target.path?.name}${part(target)}"
+
+    /** The type of a node that holds [target]: what the file's name says it is, kept where [target] says. */
+    fun typeOf(target: FileLink.Target): NodeType {
+        val path = target.path!!.toAbsolutePath().normalize()
+        val extension = path.name.substringAfterLast('.', "").lowercase()
+        val source = "$path${part(target)}"
+        return when {
+            extension == "md" || extension == "markdown" -> NodeType(NodeType.Kind.Markdown, null, source)
+            extension in asNamed -> NodeType(NodeType.Kind.Code, extension, source)
+            extension in languages -> NodeType(NodeType.Kind.Code, languages[extension], source)
+            else -> NodeType(NodeType.Kind.Plain, null, source)
         }
-        val header = "$path:$lines"
-        val body = numbered(from..to).ifEmpty { listOf("(the file has fewer than $from lines)") }
-        val before = numbered(first until from)
-        val after = numbered(to + 1..to + CONTEXT)
-        val width = (listOf(header) + body + before + after).maxOf { it.length }
-        val block = { ls: List<String> -> ls.joinToString("\n") { it.padEnd(width) } }
-
-        val g = Graph()
-        val main = sourceNode(NODE_ID, block(listOf(header, "─".repeat(width)) + body))
-        g.add(main)
-        listOf(BEFORE_ID to before, AFTER_ID to after).filter { it.second.isNotEmpty() }.forEach { (id, ls) ->
-            g.add(sourceNode(id, block(ls)).also {
-                it.attributes.bg = contextFill
-                it.attributes.fg = contextText
-                it.attributes.other[Attachments.ATTACH_TO] = NODE_ID
-                it.attributes.other[Attachments.ATTACH_SIDE] = if (id == BEFORE_ID) "above" else "below"
-            })
-        }
-        return g
     }
 
-    private fun sourceNode(id: String, text: String): Node =
-        Node(name = id).also {
-            it.attributes.text = text
-            it.attributes.other["fontname"] = "monospace"
-            it.position = Vector2(0, 0)
+    /** The graph; throws when the file cannot be read. */
+    fun build(target: FileLink.Target): Graph {
+        val type = typeOf(target)
+        val text = FileContent.read(FileLink.Target(target.path, null, target.lines)) ?: throw IllegalStateException("it cannot be read")
+        return Graph().also { g ->
+            g.add(
+                Node(name = NODE_ID).also {
+                    it.attributes.text = text
+                    it.attributes.other[NodeType.ATTRIBUTE] = type.attribute!!
+                    it.attributes.other["fontname"] = "monospace"
+                    it.position = Vector2(0, 0)
+                },
+            )
         }
-
-    /** First and last line of the range, 1-based, inclusive; a single line is a one-line range. */
-    private fun range(lines: FileLink.Lines): Pair<Int, Int> {
-        val to = lines.to ?: lines.from
-        val from = minOf(lines.from, to).coerceAtLeast(1)
-        return from to maxOf(lines.from, to, from)
     }
 }

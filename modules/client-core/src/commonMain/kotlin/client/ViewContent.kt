@@ -45,8 +45,35 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** Directory shown when the view is a [FileTree] (`:browse`, `gf` on a directory). */
     var browseDir: Path? = null
 
-    /** Lines shown when the view is a [SourceView] (a `<file>:<line>` link). */
+    /** What of which text file is shown when the view is a [SourceView] (a link to one). */
     var sourceView: FileLink.Target? = null
+
+    /** The view was opened to edit its [SourceView] node; that starts once the view is painted. */
+    var pendingEdit: Boolean = false
+
+    /** Do what waited for the view to be painted with a size: [pendingFocus], [pendingEdit]. */
+    fun painted() {
+        pendingFocus?.let {
+            pendingFocus = null
+            focusNode(it)
+        }
+        if (pendingEdit) {
+            pendingEdit = false
+            view.g.nodes.firstOrNull { it.attributes.name == SourceView.NODE_ID }?.let { view.startNodeEdit(it, null) }
+        }
+    }
+
+    /** A node of this view wrote its text to its file: a [SourceView] holds nothing else, so nothing is unsaved. */
+    fun fileWritten() {
+        if (sourceView != null) dirty(false)
+    }
+
+    /** Whether [target] is a text file, or part of one, to show as a [SourceView]: not a graph, not a directory. */
+    private fun isText(target: FileLink.Target): Boolean {
+        val path = target.path
+        val whole = path != null && target.nodeId == null && target.section == null && !path.name.endsWith(".dot") && Fs.exists(path) && !Fs.isDirectory(path)
+        return path != null && (target.lines != null || whole)
+    }
 
     /** This view's jump history (`Ctrl+O` / `Ctrl+I`). */
     var jumps: JumpList = JumpList()
@@ -311,7 +338,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** What the view shows: the file's full path, the browsed directory, the source lines, or its name. */
     val filePath: String
         get() {
-            val shown = sourceView?.let { "${it.path}:${it.lines}" }
+            val shown = sourceView?.let { "${it.path?.getParent()}/${SourceView.title(it)}" }
                 ?: currentFile?.toAbsolutePath()?.normalize()?.toString()
                 ?: browseDir?.toString()
                 ?: untitledName
@@ -346,20 +373,26 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         shell.sessionChanged()
     }
 
-    /** Replace the graph with a [SourceView] of [lines] of [path]. False (and a message) if the file can't be read. */
-    fun showSourceInPlace(path: Path, lines: FileLink.Lines): Boolean {
+    /**
+     * Replace the graph with a [SourceView] of [target], and with
+     * [edit] start editing it once it is painted. False (and a
+     * message) if the file can't be read.
+     */
+    fun showSourceInPlace(target: FileLink.Target, edit: Boolean = true): Boolean {
         val graph = try {
-            SourceView.build(path, lines)
+            SourceView.build(target)
         } catch (e: Exception) {
-            shell.message("cannot read $path: ${e.message}")
+            shell.message("cannot read ${target.path}: ${e.message}")
             null
         }
         if (graph != null) {
             replaceGraph(graph)
             currentFile = null
             browseDir = null
-            sourceView = FileLink.Target(path, null, lines)
-            untitledName = SourceView.title(path, lines)
+            sourceView = target
+            untitledName = SourceView.title(target)
+            pendingEdit = edit
+            dirty(false)
             shell.stateChanged()
             if (view.size.x > 0) view.setViewTo(startOf(graph), view.viewTransform.scale)
             shell.sessionChanged()
@@ -445,8 +478,8 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 showHelpInPlace()
             }
             target.section != null && lines == null -> shell.message("no section `${target.section}` in ${path?.name}")
-            path != null && lines != null -> if (confirmDiscard("open ${path.name}:$lines")) {
-                if (showSourceInPlace(path, lines)) jumps.record(from)
+            isText(target) -> if (confirmDiscard("open ${SourceView.title(target)}")) {
+                if (showSourceInPlace(target)) jumps.record(from)
             }
             inThisGraph -> if (target.nodeId != null) {
                 jumps.record(from)
@@ -483,7 +516,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 shell.message("no section `${target.section}` in ${path.name}")
                 null
             }
-            lines != null -> shell.newTab()?.takeIf { it.content.showSourceInPlace(path, lines) }
+            isText(target) -> shell.newTab()?.takeIf { it.content.showSourceInPlace(target) }
             Fs.isDirectory(path) -> shell.browse(path)
             // the new tab has no size yet; its first paint does the focusing
             else -> editInTab(path)?.also { it.content.pendingFocus = target.nodeId }
@@ -552,12 +585,11 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val dir = loc.browseDir
         val source = loc.sourceView
         val sourcePath = source?.path
-        val sourceLines = source?.lines
         val opened = when {
             loc.sameGraph(here) -> true
             file == null && dir == null && source == null -> false  // an untitled graph that is gone
             !confirmDiscard("go back to ${(file ?: dir ?: sourcePath)?.name}") -> false
-            sourcePath != null && sourceLines != null -> showSourceInPlace(sourcePath, sourceLines)
+            source != null -> showSourceInPlace(source, edit = false)
             dir != null -> Fs.isDirectory(dir).also { if (it) browseInPlace(dir) }
             else -> file?.let { loadInPlace(it) } == true
         }
