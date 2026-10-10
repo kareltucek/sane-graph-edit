@@ -88,7 +88,16 @@ object FileContent {
 
     /** Where the text of [node] is kept, when in a file; [file] is the file of the node's graph. */
     fun of(node: Node, file: Path?): FileLink.Target? =
-        NodeType.of(node).source?.let { FileLink.resolve(it, file) }?.takeIf { it.path != null && it.nodeId == null && !it.help }
+        NodeType.of(node).source?.let { source -> resolved.getOrPut("$file\n$source") { FileLink.resolve(source, file) } }
+            ?.takeIf { it.path != null && it.nodeId == null && !it.help }
+
+    /**
+     * What a source written in a graph's file came to. Finding that
+     * out looks at the file system (is the whole of it a path, where
+     * is the section), and it is asked of every node after every
+     * change of a graph; the answer does not change with the graph.
+     */
+    private val resolved = mutableMapOf<String, FileLink.Target>()
 
     private fun nodesOf(view: EditorView): List<Pair<Node, FileLink.Target>> =
         view.g.nodes.mapNotNull { n -> of(n, view.content.currentFile)?.let { n to it } }
@@ -253,6 +262,7 @@ object FileContent {
     fun reload(view: EditorView) = reread(view, nodesOf(view).mapNotNull { it.second.path }.distinct())
 
     private fun reread(view: EditorView, paths: List<Path>) {
+        resolved.clear()
         paths.forEach { path ->
             try {
                 buffers[path.toString()]?.read()
@@ -280,6 +290,7 @@ object FileContent {
     internal fun dropAll() {
         buffers.clear()
         kept.clear()
+        resolved.clear()
     }
 
     /** The names of the files that have something unsaved in their buffers. */
