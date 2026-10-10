@@ -10,6 +10,22 @@ plugins {
     kotlin("multiplatform")
 }
 
+// The examples and the documentation they lead to, as Kotlin source: the application carries them and
+// writes them out when it starts (`client.HelpFiles`), so that the built-in help can lead to them.
+val helpFiles = tasks.register("generateHelpFiles") {
+    val root = rootProject.projectDir
+    val sources = rootProject.fileTree("examples") { include("*.dot") } + rootProject.files("README.md", "docs/file-format.md")
+    val out = layout.buildDirectory.dir("generated/helpFiles")
+    inputs.files(sources)
+    outputs.dir(out)
+    doLast {
+        val literal = { text: String -> "\"" + text.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$").replace("\n", "\\n") + "\"" }
+        val entries = sources.files.sortedBy { it.path }.joinToString("\n") { "        ${literal(it.relativeTo(root).invariantSeparatorsPath)} to ${literal(it.readText())}," }
+        out.get().file("client/HelpFilesContent.kt").asFile.also { it.parentFile.mkdirs() }
+            .writeText("package client\n\n/** Generated from the repository's files; see build.gradle.kts. */\ninternal object HelpFilesContent {\n    val files: Map<String, String> = mapOf(\n$entries\n    )\n}\n")
+    }
+}
+
 kotlin {
     jvmToolchain(21)
     jvm()
@@ -31,8 +47,11 @@ kotlin {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
     sourceSets {
-        commonMain.dependencies {
-            api(project(":model"))
+        commonMain {
+            kotlin.srcDir(helpFiles)
+            dependencies {
+                api(project(":model"))
+            }
         }
         commonTest.dependencies {
             implementation(project(":editor-core"))

@@ -25,6 +25,9 @@ object FileLink {
     /** Link value of the built-in help graph (`Graph.defaultGraph`). */
     const val HELP = "sge:help"
 
+    /** Link value of the index of the examples the application carries ([HelpFiles]). */
+    const val EXAMPLES = "sge:examples"
+
     /** Tab title of the help graph. */
     const val HELP_TITLE = "help"
 
@@ -78,6 +81,7 @@ object FileLink {
             ?.let { m -> Lines(m.groupValues[1].toInt(), m.groupValues[2].takeIf { it.isNotEmpty() }?.toInt()) }
         return when {
             link == HELP -> Target(null, null, help = true)
+            link == EXAMPLES -> Target(HelpFiles.index, null)
             !split -> Target(whole, null)
             pathPart.isEmpty() -> Target(null, nodeId)
             lines != null -> Target(resolvePath(pathPart, baseDir), null, lines)

@@ -1,11 +1,13 @@
 package client
 
 import DotGraphLoader
+import Graph
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.extension
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
+import kotlin.io.path.readText
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -35,6 +37,16 @@ class ExampleLinksTest {
             }.map { "${file.name} -> ${it.path}:${it.nodeId}" }
         }
         assertEquals(emptyList(), broken)
+    }
+
+    @Test
+    fun `the application writes the examples out, and its help leads to them`() {
+        HelpFiles.install()
+        val link = Graph.defaultGraph().nodes.mapNotNull { FileLink.of(it, 'f') }.single()
+        val index = FileLink.resolve(link, null).path!!
+        assertEquals(examples.resolve("index.dot").readText(), index.readText())
+        // with what the index leads to beside it
+        assertTrue(Files.exists(index.resolve("../../README.md").normalize()) && Files.exists(index.resolve("../../docs/file-format.md").normalize()))
     }
 
     @Test

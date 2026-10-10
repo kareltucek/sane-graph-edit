@@ -372,6 +372,13 @@ class Graph(
             g.add(Edge(commands, files))
             g.add(Edge(commands, todo))
             g.add(Edge(commands, attribution))
+            // a client writes the examples out when it starts and knows where (`sge:examples`)
+            val examples = Node("examples\n(gf opens them)", Vector2(-700, 250)).also {
+                it.attributes.bg = utils.Rgb(0xF6EFC4)
+                it.attributes.other["link"] = "sge:examples"
+            }
+            g.add(examples)
+            g.add(Edge(commands, examples))
             return g
         }
     }

@@ -75,6 +75,7 @@ class Tabs(
      * window always has a tab.
      */
     fun restore() {
+        HelpFiles.install()
         val snapshot = session?.load() ?: Session.EMPTY
         restoring = true
         try {

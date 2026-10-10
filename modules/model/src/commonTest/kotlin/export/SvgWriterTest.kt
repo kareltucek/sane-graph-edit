@@ -96,11 +96,11 @@ class SvgWriterTest {
         val svg = SvgWriter.write(Graph.defaultGraph())
         assertTrue(svg.contains("<svg"))
         assertTrue(svg.contains("</svg>"))
-        // All 5 help nodes should be present.
+        // All 5 help nodes and the one that leads to the examples should be present.
         val nodeGroups = Regex("""<g class="node">""").findAll(svg).count()
-        assertEquals(5, nodeGroups)
-        // 4 edges (star from commands hub).
+        assertEquals(6, nodeGroups)
+        // 5 edges (star from commands hub).
         val edgeLines = Regex("""<line """).findAll(svg).count()
-        assertEquals(4, edgeLines)
+        assertEquals(5, edgeLines)
     }
 }
