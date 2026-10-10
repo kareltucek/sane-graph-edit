@@ -447,15 +447,25 @@ let editing: { id: string; editor: NodeEditor | GridEditor } | null = null;
  */
 let useGridEditor = true;
 
-/** Neovim's own line while a node is edited: the command line being typed, or the mode. Above the status line. */
+/** Neovim's own line while a node is edited: the command line being typed, or the mode. In the place of the page's status line. */
 const editorLine = document.getElementById("editor-line") as HTMLDivElement;
 
-function showEditorLine(text: string | null) {
-    editorLine.textContent = text ?? "";
-    editorLine.style.display = text === null ? "none" : "block";
+/** Whose lines are below the graph, told in the middle of them. */
+const which = document.getElementById("which") as HTMLDivElement;
+
+/** While a node is edited in neovim, its lines are shown and the page's status line is not. */
+function showEditorLines(on: boolean) {
+    editorLine.style.display = on ? "block" : "none";
+    which.textContent = on ? "nvim" : "graph";
+    if (!on) showEditorStatus(null);
 }
 
-/** Neovim's status line while a node is edited, in its colours; above its own line and the page's status line. */
+function showEditorLine(text: string | null) {
+    // never empty: it covers the page's status line as long as it is shown
+    editorLine.textContent = text ?? " ";
+}
+
+/** Neovim's status line while a node is edited, in its colours; above its own line. */
 const editorStatus = document.getElementById("editor-status") as HTMLDivElement;
 
 function showEditorStatus(pieces: StatusPiece[] | null) {
@@ -466,7 +476,9 @@ function showEditorStatus(pieces: StatusPiece[] | null) {
         if (piece.background !== undefined) span.style.background = piece.background;
         return span;
     }));
-    editorStatus.style.display = pieces === null || pieces.length === 0 ? "none" : "block";
+    const shown = pieces !== null && pieces.length > 0;
+    editorStatus.style.display = shown ? "block" : "none";
+    editorLine.classList.toggle("alone", !shown);
 }
 
 /** How many characters fit in the strips below the graph: one is measured. */
@@ -525,6 +537,8 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         });
         editor.statusColumns = stripColumns();
         editing = { id, editor };
+        if (editorLine.style.display !== "block") showEditorLine(null);
+        showEditorLines(true);
     } else {
         const editor = NodeEditor.open(
             document.body,
@@ -593,7 +607,7 @@ function endEdit(view: client.JsView) {
     const was = editing;
     if (was !== null) {
         editing = null;
-        showEditorStatus(null);
+        showEditorLines(false);
         closing = was.editor.close().then((text) => {
             closing = null;
             view.textEditEnded(text);

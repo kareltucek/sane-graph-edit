@@ -15,9 +15,17 @@
     #bottom { position: relative; }
     #status { padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
     #editor-status { display: none; padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
-    #editor-line { display: none; padding: 2px 6px; white-space: pre; overflow: hidden; background: var(--bg, #fff); border-top: 1px solid var(--fg, #000); }
-    /* over the bottom of the graph, not below it: the graph does not move when the lines of an editor come and go */
+    /* While a node is edited, neovim's two lines are shown and the page's status line is not: neovim's own line in its place, */
+    /* its status line above that, over the bottom of the graph, so that the graph does not move when they come and go. */
+    /* No line between the two: the border of the lower one is in the background's colour unless it is alone. */
+    #editor-line {
+      position: absolute; left: 0; right: 0; top: 0; bottom: 0; box-sizing: border-box; display: none; padding: 2px 6px; white-space: pre; overflow: hidden;
+      background: var(--bg, #fff); border-top: 1px solid var(--bg, #fff);
+    }
+    #editor-line.alone { border-top-color: var(--fg, #000); }
     #editor-lines { position: absolute; left: 0; right: 0; bottom: 100%; }
+    /* whose lines these are: the graph's or neovim's */
+    #which { position: absolute; left: 50%; top: 1px; transform: translateX(-50%); padding: 2px 6px; opacity: 0.5; pointer-events: none; }
     #line {
       position: absolute; left: 0; right: 0; bottom: 0; top: 0; box-sizing: border-box; width: 100%; padding: 2px 6px; display: none;
       font: inherit; color: inherit; background: var(--bg, #fff); border: none; border-top: 1px solid var(--fg, #000); outline: none;
@@ -43,10 +51,11 @@
   <div id="bottom">
     <div id="editor-lines">
       <div id="editor-status"></div>
-      <div id="editor-line"></div>
     </div>
     <pre id="pane"></pre>
     <div id="status">&nbsp;</div>
+    <div id="editor-line"></div>
+    <div id="which">graph</div>
     <input id="line" spellcheck="false" autocomplete="off">
   </div>
   <div id="picker">
