@@ -96,9 +96,9 @@ class SvgWriterTest {
         val svg = SvgWriter.write(Graph.defaultGraph())
         assertTrue(svg.contains("<svg"))
         assertTrue(svg.contains("</svg>"))
-        // The middle, a category with its text for each topic, the marks and the examples.
+        // The middle, and for each topic its category, its text and what hangs on that.
         val nodeGroups = Regex("""<g class="node">""").findAll(svg).count()
-        assertEquals(3 + 2 * utils.Help.topics.size, nodeGroups)
+        assertEquals(1 + utils.Help.topics.sumOf { 2 + it.entry.children.size }, nodeGroups)
         // a star: every node but the middle hangs on one
         val edgeLines = Regex("""<line """).findAll(svg).count()
         assertEquals(nodeGroups - 1, edgeLines)
@@ -110,7 +110,7 @@ class SvgWriterTest {
         g.recompute(graph_tools.TextMeasurer.default)
         val nodes = g.nodes.toList()
         val overlapping = nodes.flatMap { a -> nodes.filter { b -> a.id < b.id && overlap(a, b) }.map { a.attributes.text.lines().first() to it.attributes.text.lines().first() } }
-        assertEquals(emptyList(), overlapping)    }
+        assertTrue(overlapping.isEmpty(), "overlapping: $overlapping")    }
 
     private fun overlap(a: graph_tools.Node, b: graph_tools.Node): Boolean {
         val reach = (a.cache.shapeBounds + b.cache.shapeBounds) / 2.0
