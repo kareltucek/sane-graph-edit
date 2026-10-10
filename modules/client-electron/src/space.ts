@@ -337,6 +337,15 @@ export class SpaceRenderer<N extends SpaceNode> {
     private fillNext = 0;
     private toldAt = 0;
 
+    /** Go through all the nodes again, from the first, making the pictures that are missing or out of date. */
+    private refill() {
+        this.fillNext = 0;
+        if (!this.filling) {
+            this.filling = true;
+            setTimeout(() => this.fill(), 0);
+        }
+    }
+
     private fill() {
         const work = this.toFill;
         const start = performance.now();
@@ -426,12 +435,10 @@ export class SpaceRenderer<N extends SpaceNode> {
         const graph = `${space.nodes.length} ${space.nodes[0]?.id} ${space.nodes[space.nodes.length - 1]?.id} ${dpr}`;
         if (graph !== this.filledFor) {
             this.filledFor = graph;
-            this.fillNext = 0;
-            if (!this.filling) {
-                this.filling = true;
-                setTimeout(() => this.fill(), 0);
-            }
+            this.refill();
         }
+        /** More pictures for the atlas were out of date than this frame had time to make: the background work makes them. */
+        let behind = false;
         this.small.begin();
         this.pages.forEach((page) => page.begin());
         /** Milliseconds of this frame spent making pictures for the atlas. */
@@ -468,7 +475,7 @@ export class SpaceRenderer<N extends SpaceNode> {
                         const before = performance.now();
                         slot = this.put(n, key, paint(n, dpr), slot);
                         painting += performance.now() - before;
-                    } else pending = true;
+                    } else behind = true;
                 }
                 // at exactly the atlas's size the atlas is as good as a picture of its own
                 const exact = seen > whole * EXACT_FROM && seen <= finest && !(onPage && same(seen, dpr));
@@ -539,6 +546,8 @@ export class SpaceRenderer<N extends SpaceNode> {
             }
         });
         this.small.end();
+        // e.g. after the colours changed: every picture is out of date at once
+        if (behind && !this.filling) this.refill();
         this.pages.forEach((page) => {
             page.end();
             // the graphics card gets all of a page each time: not for every picture while they are being made
