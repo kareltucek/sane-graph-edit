@@ -50,10 +50,10 @@ interface Kept {
 /** What is nearer the viewer than this many times its size is not drawn: as the client does not find it under the pointer either. */
 const MAX_PERSPECTIVE = 50;
 /**
- * A node seen at more than this part of its size at zoom 1 gets a
- * picture made for exactly the size it is seen at, pixel for pixel,
- * so that its text is sharp; a smaller one is shown from the picture
- * made for zoom 1, scaled down.
+ * Once the view is still, a node seen at more than this part of its
+ * size at zoom 1 gets a picture made for exactly the size it is seen
+ * at, pixel for pixel, so that its text is sharp; a smaller one is
+ * shown from its picture in the atlas, made for zoom 1, scaled down.
  */
 const EXACT_FROM = 0.5;
 /** The view is still when it has not moved for this long. */
@@ -155,7 +155,7 @@ const PAGE = 2048;
 /** The rows of a page are whole multiples of this many pixels high. */
 const ROW_STEP = 8;
 /** A picture wider or higher than this many pixels is not put on a page: it would take too much of it. */
-const MAX_ON_PAGE = 512;
+const MAX_ON_PAGE = 1024;
 /** While pictures are being put on a page, the graphics card is given the page no more often than this. */
 const PAGE_UPLOAD_MS = 300;
 /** Pictures are made for the atlas for at most this many milliseconds of a frame. */
@@ -363,28 +363,98 @@ export class SpaceRenderer<N extends SpaceNode> {
         this.pages.forEach((page) => page.begin());
         /** Milliseconds of this frame spent making pictures for the atlas. */
         let painting = 0;
-        // A node seen at no more than half its size at zoom 1 is shown from the atlas, where its picture is at half that size.
-        const atlasScale = dpr * EXACT_FROM;
-        const pictured = order.filter((index) => {
+        // Every node has a picture in the atlas, made for zoom 1, and can always be shown from that: while the view moves all are.
+        // Once it is still, a node seen at more than half that size gets a picture of its own, made for exactly the size it is
+        // seen at, so that its text is sharp; the smaller ones stay with the atlas, which the graphics card scales down well.
+        const same = (a: number, b: number) => a <= b * SAME && a >= b / SAME;
+        let ownMade = 0;
+        order.forEach((index, rank) => {
             const n = space.nodes[index];
             const seen = seenWith(n);
             // in pixels from the middle of the screen
             const x = (n.x - space.middleX) * seen;
             const y = (n.y - space.middleY) * seen;
             const inView = Math.abs(x) - n.width * seen / 2 < pixelWidth / 2 + seen * 4 && Math.abs(y) - n.height * seen / 2 < pixelHeight / 2 + seen * 4;
-            const small = inView && seen <= atlasScale && Math.max(n.width, n.height) * atlasScale <= MAX_ON_PAGE;
-            if (small) {
-                const key = keyOf(n);
-                let slot = this.slots.get(n.id);
-                if ((slot === undefined || slot.key !== key) && painting < ATLAS_BUDGET_MS) {
-                    made++;
-                    const before = performance.now();
-                    slot = this.put(n, key, paint(n, atlasScale), slot);
-                    painting += performance.now() - before;
+            let kept = this.kept.get(n.id);
+            if (!inView) {
+                // not seen: nothing is worked out for it, and the picture of its own that it has is kept for when it is seen again
+                if (kept !== undefined) {
+                    kept.frame = this.frame;
+                    kept.mesh.visible = false;
                 }
-                if (slot === undefined || slot.key !== key) pending = true;
-                if (slot !== undefined) slot.page.quad(slot, n.x, n.y, n.z);
-                else {
+            } else {
+                const key = keyOf(n);
+                const finest = MAX_PICTURE_SIDE / Math.max(n.width, n.height, 1);
+                const whole = Math.min(dpr, finest);
+                // a very big node has no place on a page: it has a picture of its own always
+                const onPage = Math.max(n.width, n.height) * dpr <= MAX_ON_PAGE;
+                let slot = onPage ? this.slots.get(n.id) : undefined;
+                if (onPage && (slot === undefined || slot.key !== key)) {
+                    if (painting < ATLAS_BUDGET_MS) {
+                        made++;
+                        const before = performance.now();
+                        slot = this.put(n, key, paint(n, dpr), slot);
+                        painting += performance.now() - before;
+                    } else pending = true;
+                }
+                // at exactly the atlas's size the atlas is as good as a picture of its own
+                const exact = seen > whole * EXACT_FROM && seen <= finest && !(onPage && same(seen, dpr));
+                const wantsOwn = !onPage || exact;
+                const wanted = exact ? seen : whole;
+                const fits = kept !== undefined && kept.key === key && same(kept.pixelsPerUnit, wanted);
+                // one that has no other picture gets its own at once; the others when the view is still, a few for each frame
+                const mayMake = onPage ? !moving && ownMade < PICTURES_PER_FRAME : kept === undefined || (ownMade < PICTURES_PER_FRAME && (!moving || kept.key !== key));
+                if (wantsOwn && !fits && mayMake) {
+                    ownMade++;
+                    made++;
+                    const picture = paint(n, wanted);
+                    const texture = new THREE.CanvasTexture(picture.image);
+                    texture.colorSpace = THREE.SRGBColorSpace;
+                    if (exact) {
+                        // shown pixel for pixel: nothing to scale
+                        texture.generateMipmaps = false;
+                        texture.minFilter = THREE.LinearFilter;
+                    } else texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+                    const sizes = {
+                        pixelsPerUnit: wanted,
+                        pixelWidth: picture.image.width,
+                        pixelHeight: picture.image.height,
+                        middleX: (n.width / 2 + picture.margin) * wanted,
+                        middleY: (n.height / 2 + picture.margin) * wanted,
+                    };
+                    if (kept === undefined) {
+                        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false }));
+                        kept = { mesh, key, frame: this.frame, ...sizes };
+                        this.kept.set(n.id, kept);
+                        this.scene.add(mesh);
+                    } else {
+                        kept.mesh.material.map?.dispose();
+                        kept.mesh.material.map = texture;
+                        Object.assign(kept, { key, ...sizes });
+                    }
+                    // as big as the picture is, which is a little more than the node: whole pixels
+                    kept.mesh.scale.set(kept.pixelWidth / wanted, kept.pixelHeight / wanted, 1);
+                } else if (wantsOwn && !fits) pending = true;
+                const own = wantsOwn && kept !== undefined && (!onPage || (kept.key === key && same(kept.pixelsPerUnit, wanted))) ? kept : undefined;
+                /** How far to move a picture made with [pixelsPerUnit], its corner [left], [top] pixels from the screen's, to put that on a corner of a pixel: shown pixel for pixel, its text is blurred otherwise. */
+                const snap = (pixelsPerUnit: number, middleX: number, middleY: number) => {
+                    const left = pixelWidth / 2 + (n.x - space.middleX) * seen - middleX;
+                    const top = pixelHeight / 2 + (n.y - space.middleY) * seen - middleY;
+                    return same(pixelsPerUnit, seen) ? { x: (Math.round(left) - left) / seen, y: (Math.round(top) - top) / seen } : { x: 0, y: 0 };
+                };
+                if (own !== undefined) {
+                    own.frame = this.frame;
+                    own.mesh.visible = true;
+                    const by = snap(own.pixelsPerUnit, own.middleX, own.middleY);
+                    // the middle of the picture, in units from the middle of the node: across and down
+                    const shiftX = (own.pixelWidth / 2 - own.middleX) / own.pixelsPerUnit + by.x;
+                    const shiftY = (own.pixelHeight / 2 - own.middleY) / own.pixelsPerUnit + by.y;
+                    own.mesh.position.set(n.x + shiftX, -(n.y + shiftY), -n.z);
+                    own.mesh.renderOrder = rank;
+                } else if (slot !== undefined) {
+                    const by = snap(slot.pixelsPerUnit, slot.middleX, slot.middleY);
+                    slot.page.quad(slot, n.x + by.x, n.y + by.y, n.z);
+                } else {
                     // until its picture is made: an outline and a filling
                     const flat = flatOf(n, seen);
                     const hw = n.width / 2;
@@ -393,15 +463,7 @@ export class SpaceRenderer<N extends SpaceNode> {
                     this.small.rectangle(n.x - hw, n.y - hh, n.x + hw, n.y + hh, n.z, ...rgb(flat.ink));
                     this.small.rectangle(n.x - hw + inset, n.y - hh + inset, n.x + hw - inset, n.y + hh - inset, n.z, ...rgb(flat.fill));
                 }
-            } else if (!inView) {
-                // not seen: nothing is worked out for it, and the picture it has is kept for when it is seen again
-                const kept = this.kept.get(n.id);
-                if (kept !== undefined) {
-                    kept.frame = this.frame;
-                    kept.mesh.visible = false;
-                }
             }
-            return inView && !small;
         });
         this.small.end();
         this.pages.forEach((page) => {
@@ -414,65 +476,7 @@ export class SpaceRenderer<N extends SpaceNode> {
             }
             if (page.dirty) pending = true;
         });
-        pictured.forEach((index, rank) => {
-            const n = space.nodes[index];
-            // as many pixels to a unit as the node is seen with, and as it would be at zoom 1
-            const finest = MAX_PICTURE_SIDE / Math.max(n.width, n.height, 1);
-            const seen = seenWith(n);
-            const whole = Math.min(dpr, finest);
-            const exact = seen > whole * EXACT_FROM && seen <= finest;
-            const wanted = exact ? seen : whole;
-            const key = keyOf(n);
-            let kept = this.kept.get(n.id);
-            const changed = kept === undefined || kept.key !== key;
-            const stale = changed || kept!.pixelsPerUnit > wanted * SAME || kept!.pixelsPerUnit < wanted / SAME;
-            if (stale && (kept === undefined || (made < PICTURES_PER_FRAME && (changed || !moving)))) {
-                made++;
-                const picture = paint(n, wanted);
-                const texture = new THREE.CanvasTexture(picture.image);
-                texture.colorSpace = THREE.SRGBColorSpace;
-                if (exact) {
-                    // shown pixel for pixel: nothing to scale
-                    texture.generateMipmaps = false;
-                    texture.minFilter = THREE.LinearFilter;
-                } else texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
-                const sizes = {
-                    pixelsPerUnit: wanted,
-                    pixelWidth: picture.image.width,
-                    pixelHeight: picture.image.height,
-                    middleX: (n.width / 2 + picture.margin) * wanted,
-                    middleY: (n.height / 2 + picture.margin) * wanted,
-                };
-                if (kept === undefined) {
-                    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false }));
-                    kept = { mesh, key, frame: this.frame, ...sizes };
-                    this.kept.set(n.id, kept);
-                    this.scene.add(mesh);
-                } else {
-                    kept.mesh.material.map?.dispose();
-                    kept.mesh.material.map = texture;
-                    Object.assign(kept, { key, ...sizes });
-                }
-                // as big as the picture is, which is a little more than the node: whole pixels
-                kept.mesh.scale.set(kept.pixelWidth / wanted, kept.pixelHeight / wanted, 1);
-            } else if (stale) pending = true;
-            const it = kept!;
-            it.frame = this.frame;
-            it.mesh.visible = true;
-            // the middle of the picture, in units from the middle of the node: across and down
-            let shiftX = (it.pixelWidth / 2 - it.middleX) / it.pixelsPerUnit;
-            let shiftY = (it.pixelHeight / 2 - it.middleY) / it.pixelsPerUnit;
-            if (it.pixelsPerUnit <= seen * SAME && it.pixelsPerUnit >= seen / SAME) {
-                // pixel for pixel: the picture's corner on a corner of a pixel, or its text is blurred
-                const left = pixelWidth / 2 + (n.x - space.middleX) * seen - it.middleX;
-                const top = pixelHeight / 2 + (n.y - space.middleY) * seen - it.middleY;
-                shiftX += (Math.round(left) - left) / seen;
-                shiftY += (Math.round(top) - top) / seen;
-            }
-            it.mesh.position.set(n.x + shiftX, -(n.y + shiftY), -n.z);
-            it.mesh.renderOrder = rank;
-        });
-        // what is no longer there, or behind the viewer
+        // what is no longer there, is behind the viewer, or is shown from the atlas now
         this.kept.forEach((it, id) => {
             if (it.frame !== this.frame) {
                 this.scene.remove(it.mesh);
