@@ -205,16 +205,30 @@ class EditorView(
                 Vector2(seen.maxOf { it.first.x + it.second.x }, seen.maxOf { it.first.y + it.second.y })
         }
 
-    /** How far away the middle of what a turn of the view goes around is: of the selection, or of everything visible. Null when there is nothing. */
-    fun orbitDepth(): Double? = focus().takeIf { it.isNotEmpty() }?.let { nodes -> nodes.sumOf { viewPoint(it).z } / nodes.size }
+    /** A point of a node: where on the screen it is seen, and how far away it is. */
+    data class Cursor(val node: Node, val screen: Vector2, val depth: Double)
 
     /**
-     * Where on the screen the middle of what a turn of the view goes
-     * around is, once the view is of the plane at [orbitDepth]: the
-     * middle of the selection, or of everything visible. It stays
-     * there while the view turns. Null when there is nothing.
+     * The 3D cursor: what a turn of the view goes around and what the
+     * wheel goes towards. A ray from the viewer through [screen]
+     * (where the pointer is) picks the node it comes nearest to, by
+     * the node's box as it is seen: one it goes through before any it
+     * misses, and of several of those the nearest to the viewer. The
+     * cursor is where the ray meets that node, or the point of its
+     * box nearest to the ray. Null when no node is shown.
      */
-    fun orbitMiddle(): Vector2? = middleOf(focus())?.let { viewTransform.toScreen(it) }
+    fun cursor(screen: Vector2): Cursor? {
+        val at = viewTransform.toWorkspace(screen)
+        return g.visibleNodes().mapNotNull { n ->
+            apparent(n)?.let { how ->
+                val half = n.cache.shapeBounds * how.scale / 2
+                val by = at - how.position
+                val nearest = how.position + Vector2(by.x.coerceIn(-half.x, half.x), by.y.coerceIn(-half.y, half.y))
+                Triple(n, nearest, how.scale)
+            }
+        }.minWithOrNull(compareBy<Triple<Node, Vector2, Double>> { (it.second - at).lengthSquared() }.thenByDescending { it.third })
+            ?.let { (n, nearest, _) -> Cursor(n, viewTransform.toScreen(nearest), viewPoint(n).z) }
+    }
 
     /** The middle of [nodes] across the view: of the box around them in the graph, or, in a turned view, around where they are seen. Null for none. */
     fun middleOf(nodes: Collection<Node>): Vector2? = boxOf(nodes)?.let { (ul, br) -> (ul + br) / 2 }

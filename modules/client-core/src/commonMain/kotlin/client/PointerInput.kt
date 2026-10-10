@@ -97,19 +97,19 @@ class PointerInput(private val view: EditorView) {
     /**
      * The wheel turned by [steps] (positive: towards the user) at
      * [screen]: zoom, keeping what is under the pointer where it is.
-     * In 3D mode with a selection: towards the selection, which is
-     * what the view turns around too, and that stays where it is.
-     * How far one can zoom in is then how near one can come to it.
+     * In 3D mode: towards the 3D cursor ([EditorView.cursor]), the
+     * node the pointer is on or nearest to, which is what the view
+     * turns around too; that stays where it is. How far one can zoom
+     * in is then how near one can come to that node.
      */
     fun wheel(screen: Vector2, steps: Double) {
         view.endNodeEdit()
         view.endStylePicker()
         val t = view.viewTransform
-        val toSelection = t.threeD && view.g.selectedNodes.isNotEmpty()
-        // the plane of what one goes towards is what the view speaks of from here on
-        val plane = if (toSelection) view.orbitDepth() else Clicker.selectClickedNode(view, workspace(screen)).firstOrNull()?.let { view.viewPoint(it).z }
-        plane?.let { t.refocus(it, view.size / 2) }
-        val around = (if (toSelection) view.orbitMiddle() else null) ?: screen
+        val cursor = if (t.threeD) view.cursor(screen) else null
+        // the plane of what one goes towards is what the view speaks of from here on; what is seen stays as it is
+        cursor?.let { t.refocus(it.depth, view.size / 2) }
+        val around = cursor?.screen ?: screen
         val factor = Constants.zoomOutStep.pow(steps)
         val max = Constants.maxZoom
         if ((t.scale > 1 / max || factor > 1.0) && (t.scale < max || factor < 1.0)) {

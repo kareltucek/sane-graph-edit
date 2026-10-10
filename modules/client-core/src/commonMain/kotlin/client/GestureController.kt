@@ -497,10 +497,10 @@ class GestureController(
         if (graphView.viewTransform.threeD) {
             state = States.Orbiting
             orbitedFrom = screen
-            // around the selection, or everything shown, not around the plane the view happened to be of
-            graphView.orbitDepth()?.let { graphView.viewTransform.refocus(it, graphView.size / 2) }
-            // and around its middle, wherever on the screen that is, not around the middle of the screen
-            orbitAround = graphView.orbitMiddle() ?: (graphView.size / 2)
+            // around the node the pointer is on or nearest to ([EditorView.cursor]), which stays where it is on the screen
+            val cursor = graphView.cursor(screen)
+            cursor?.let { graphView.viewTransform.refocus(it.depth, graphView.size / 2) }
+            orbitAround = cursor?.screen ?: (graphView.size / 2)
         }
         return graphView.viewTransform.threeD
     }
@@ -510,7 +510,7 @@ class GestureController(
     /** Where on the screen the point is that the view turns around: it stays there. */
     private var orbitAround: Vector2 = Vector2.Zero
 
-    /** The pointer went to [screen] while turning the view: the view turns around the middle of the selection, as far as the pointer went. */
+    /** The pointer went to [screen] while turning the view: the view turns around the 3D cursor, as far as the pointer went. */
     fun dragOrbit(screen: Vector2) {
         val by = (screen - orbitedFrom) * ORBIT_RADIANS_PER_PIXEL
         // the graph follows the pointer: dragged right, its near side goes right

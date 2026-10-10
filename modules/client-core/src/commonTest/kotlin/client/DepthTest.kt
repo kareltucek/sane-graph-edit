@@ -222,43 +222,53 @@ class DepthTest {
     }
 
     @Test
-    fun `in 2D mode the middle button pans and turns nothing, in 3D mode it turns the view around the selection`() {
+    fun `in 2D mode the middle button pans and turns nothing, in 3D mode it turns the view around the node it is pressed on`() {
         view.viewTransform.threeD = false
         dragMiddle(Vector2(400, 300), Vector2(500, 300))
         assertEquals(0.0, view.viewTransform.yaw)
         // the graph went with the pointer
         assertNear(Vector2(500, 300), screen(flat))
         view.viewTransform.threeD = true
-        view.g.cleanSelect(setOf(flat))
         val was = screen(far)
-        dragMiddle(Vector2(400, 300), Vector2(500, 320))
+        dragMiddle(Vector2(500, 300), Vector2(600, 320))
         assertEquals(-0.5, view.viewTransform.yaw)
         assertEquals(0.1, view.viewTransform.pitch)
-        // the selection is still where it was; what is not selected, is not
+        // the node it was pressed on is still where it was; another is not
         assertNear(Vector2(500, 300), screen(flat))
         assertTrue((screen(far) - was).length() > 10)
     }
 
     @Test
-    fun `the view turns around the selection wherever on the screen it is, and that stays where it was`() {
-        view.g.cleanSelect(setOf(far))
+    fun `the 3D cursor is the node the pointer is on, or the one its ray comes nearest to, at the point of it nearest the ray`() {
+        // on a node: that node, where the pointer is
+        assertEquals(far to Vector2(500, 350), view.cursor(Vector2(500, 350))?.let { it.node to it.screen })
+        assertEquals(1000.0, view.cursor(Vector2(500, 350))?.depth)
+        // beside it, over nothing: still that node, at its border
+        val beside = view.cursor(Vector2(560, 350))!!
+        assertEquals(far, beside.node)
+        assertTrue(beside.screen.x > 500 && beside.screen.x < 560 && beside.screen.y == 350.0, "at ${beside.screen}")
+        // whatever is selected
+        view.g.cleanSelect(setOf(near))
+        assertEquals(far, view.cursor(Vector2(560, 350))?.node)
+    }
+
+    @Test
+    fun `the view turns around the node the pointer is on when the turning starts, and that stays where it was`() {
         val was = screen(far)
         val other = screen(flat)
-        assertTrue((was - Vector2(400, 300)).length() > 50, "the selection is not in the middle of the screen")
-        dragMiddle(Vector2(400, 300), Vector2(500, 320))
+        dragMiddle(was, was + Vector2(100, 20))
         assertNear(was, screen(far))
         assertTrue((screen(flat) - other).length() > 10)
     }
 
     @Test
-    fun `the wheel goes towards the selection wherever the pointer is, and the selection stays where it was`() {
-        view.g.cleanSelect(setOf(far))
-        val was = screen(far)
-        // over nothing, far from the node
-        view.pointer.wheel(Vector2(100, 500), -1.0)
+    fun `the wheel beside a node goes towards that node, and the point of it nearest the pointer stays where it was`() {
+        val cursor = view.cursor(Vector2(560, 350))!!
+        view.pointer.wheel(Vector2(560, 350), -1.0)
         assertEquals(1000.0, view.viewTransform.depth)
-        assertNear(was, screen(far))
         assertEquals(1.0, view.apparent(far)?.scale)
+        assertNear(cursor.screen, view.cursor(cursor.screen)!!.screen)
+        assertEquals(far, view.cursor(cursor.screen)?.node)
     }
 
     @Test

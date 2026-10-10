@@ -269,11 +269,10 @@ smaller and nearer the middle of the view, what is nearer bigger;
 what is behind you is not drawn, and an edge to it is drawn as far
 as it can be seen. At zoom 1 you
 are 1000 units in front of the plane you look at, so a node 1000
-units behind it is half its size. Zooming is coming closer: with a
-selection the wheel goes towards the selection, wherever the pointer
-is, and the selection stays where it is on the screen; without one,
-the wheel over a node goes towards that node, whatever its depth, and
-past the nodes in front of it. `examples/cube.dot` has one to try.
+units behind it is half its size. Zooming is coming closer: the
+wheel goes towards the node the pointer is on, or, over nothing, the
+one nearest to it on the screen, whatever its depth, and past the
+nodes in front of it; that node stays where it is. `examples/cube.dot` has one to try.
 
 `:z 300` puts the selected nodes at that depth, `:z +50` and `:z -50`
 move them by that much (away from you, towards you), `:z =-300` puts
@@ -285,9 +284,8 @@ the plane you look at.
 tabs (`:set no3d` off, `:set 3d!` toggles; the status line shows
 `[3d]`). In the Electron client a graph in 3D mode is drawn by the
 graphics card (WebGL), each node a picture in space. In 3D mode the middle button turns the
-view around the middle of the selection, which stays where it is on
-the screen, or around the middle of everything visible when nothing
-is selected; `:view-front` turns it back. Nodes always face you. What
+view around the same thing: the node it is pressed on, or the one
+nearest to the pointer, which stays where it is on the screen; `:view-front` turns it back. Nodes always face you. What
 you do with the mouse then happens across the view as you see it:
 a dragged node, grab, rotate, scale and mirror move nodes left,
 right, up and down on your screen, which seen from the side is into
