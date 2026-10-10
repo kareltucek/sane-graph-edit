@@ -80,7 +80,8 @@ fun EditorView.spaceScene(measurer: TextMeasurer): SpaceScene {
     g.recompute(measurer)
     DynamicPlacement.place(g)
     g.recompute(measurer)
-    val visible = g.nodes.filter { it in g.visibleNodes() }
+    val shown = g.visibleNodes()
+    val visible = g.nodes.filter { it in shown }
     val index = visible.withIndex().associate { (i, n) -> n to i }
     val selected = g.selectedNodes
     val points = visible.map { viewPoint(it) }

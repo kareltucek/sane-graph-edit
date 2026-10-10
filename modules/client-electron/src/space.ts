@@ -64,25 +64,123 @@ const SAME = 1.001;
 const MAX_PICTURE_SIDE = 4096;
 /** At most this many pictures are made for one frame: the rest keep the one they have until a later frame. */
 const PICTURES_PER_FRAME = 12;
-const HEAD_SEGMENTS = 12;
+const HEAD_SEGMENTS = 8;
+const HEAD_COS = Array.from({ length: HEAD_SEGMENTS + 1 }, (_, i) => Math.cos(i / HEAD_SEGMENTS * 2 * Math.PI));
+const HEAD_SIN = Array.from({ length: HEAD_SEGMENTS + 1 }, (_, i) => Math.sin(i / HEAD_SEGMENTS * 2 * Math.PI));
+
+/**
+ * Coloured triangles, all drawn at once: the edges, and the nodes
+ * that are too small on the screen for their text to show. Filled
+ * anew for every frame into arrays that are kept, so that nothing
+ * is made for a frame but what the graphics card is given.
+ */
+class Triangles {
+    readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
+    private positions = new Float32Array(3 * 1024);
+    private colours = new Float32Array(4 * 1024);
+    private indices = new Uint32Array(6 * 1024);
+    private vertices = 0;
+    private corners = 0;
+    /** How many vertices and indices the geometry has room for. */
+    private room = { vertices: 0, indices: 0 };
+
+    constructor(renderOrder: number) {
+        this.mesh = new THREE.Mesh(
+            new THREE.BufferGeometry(),
+            new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthTest: false, side: THREE.DoubleSide }),
+        );
+        this.mesh.renderOrder = renderOrder;
+        this.mesh.frustumCulled = false;
+    }
+
+    begin() {
+        this.vertices = 0;
+        this.corners = 0;
+    }
+
+    /** A point where the view sees it (y down, z away), in a colour; its number. */
+    vertex(x: number, y: number, z: number, r: number, g: number, b: number, alpha: number): number {
+        if ((this.vertices + 1) * 3 > this.positions.length) {
+            this.positions = grown(this.positions);
+            this.colours = grown(this.colours);
+        }
+        const p = this.vertices * 3;
+        this.positions[p] = x;
+        this.positions[p + 1] = -y;
+        this.positions[p + 2] = -z;
+        const c = this.vertices * 4;
+        this.colours[c] = r;
+        this.colours[c + 1] = g;
+        this.colours[c + 2] = b;
+        this.colours[c + 3] = alpha;
+        return this.vertices++;
+    }
+
+    triangle(a: number, b: number, c: number) {
+        if (this.corners + 3 > this.indices.length) this.indices = grown(this.indices);
+        this.indices[this.corners++] = a;
+        this.indices[this.corners++] = b;
+        this.indices[this.corners++] = c;
+    }
+
+    /** The four corners of a rectangle facing the viewer, at one depth. */
+    rectangle(left: number, top: number, right: number, bottom: number, z: number, r: number, g: number, b: number) {
+        const first = this.vertex(left, top, z, r, g, b, 1);
+        this.vertex(right, top, z, r, g, b, 1);
+        this.vertex(left, bottom, z, r, g, b, 1);
+        this.vertex(right, bottom, z, r, g, b, 1);
+        this.triangle(first, first + 1, first + 2);
+        this.triangle(first + 1, first + 3, first + 2);
+    }
+
+    end() {
+        const geometry = this.mesh.geometry;
+        if (this.room.vertices < this.positions.length / 3 || this.room.indices < this.indices.length) {
+            // the arrays grew: the graphics card is given new ones
+            geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+            geometry.setAttribute("color", new THREE.BufferAttribute(this.colours, 4).setUsage(THREE.DynamicDrawUsage));
+            geometry.setIndex(new THREE.BufferAttribute(this.indices, 1).setUsage(THREE.DynamicDrawUsage));
+            this.room = { vertices: this.positions.length / 3, indices: this.indices.length };
+        } else {
+            geometry.getAttribute("position").needsUpdate = true;
+            geometry.getAttribute("color").needsUpdate = true;
+            geometry.getIndex()!.needsUpdate = true;
+        }
+        geometry.setDrawRange(0, this.corners);
+    }
+}
+
+function grown<T extends Float32Array | Uint32Array>(array: T): T {
+    const bigger = new (array.constructor as { new(length: number): T })(array.length * 2);
+    bigger.set(array);
+    return bigger;
+}
+
+function rgb(colour: string): [number, number, number] {
+    const c = new THREE.Color(colour);
+    return [c.r, c.g, c.b];
+}
 
 export class SpaceRenderer<N extends SpaceNode> {
     private readonly renderer: THREE.WebGLRenderer;
     private readonly scene = new THREE.Scene();
     private readonly camera = new THREE.PerspectiveCamera();
     private readonly kept = new Map<string, Kept>();
-    private readonly edges = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthTest: false }));
+    // Before the nodes with pictures, which are drawn from the furthest to the nearest: an edge is never over a node,
+    // and the nodes too small for a picture, which are the far ones, are under the others.
+    private readonly edges = new Triangles(-2);
+    private readonly small = new Triangles(-1);
     private frame = 0;
+    /** For tests: how many milliseconds the parts of the last drawing took, how many pictures it made and how many draw calls. */
+    spent = { nodes: 0, edges: 0, render: 0, made: 0, calls: 0 };
     /** Where the view looked from when it was last drawn, and when that last changed. */
     private lookedFrom = "";
     private movedAt = 0;
 
     constructor(private readonly canvas: HTMLCanvasElement) {
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-        // before the nodes, which are drawn from the furthest to the nearest: an edge is never over a node
-        this.edges.renderOrder = -1;
-        this.edges.frustumCulled = false;
-        this.scene.add(this.edges);
+        this.scene.add(this.edges.mesh);
+        this.scene.add(this.small.mesh);
     }
 
     /**
@@ -92,6 +190,10 @@ export class SpaceRenderer<N extends SpaceNode> {
      * node's picture depends on, [paint] makes one. An edge is in
      * [ink], [radius] the size of its head, and fainter the longer
      * it is on the screen ([fade]: how much is taken away at most).
+     * [flatOf] tells of a node seen so small that its text does not
+     * show (given how many pixels a unit of it is seen with) how to
+     * draw it without a picture: filled, with an outline; null for
+     * one that gets its picture.
      * True if some pictures are still to be made: draw again.
      */
     draw(
@@ -107,6 +209,7 @@ export class SpaceRenderer<N extends SpaceNode> {
         fade: number,
         keyOf: (n: N) => string,
         paint: (n: N, pixelsPerUnit: number) => NodePicture,
+        flatOf: (n: N, pixelsPerUnit: number) => { fill: string; ink: string; outline: number } | null,
     ): boolean {
         this.frame++;
         // one pixel of the canvas for each of the screen's, as the flat canvas has it, or all of it is resampled
@@ -139,11 +242,40 @@ export class SpaceRenderer<N extends SpaceNode> {
         let pending = false;
         // the furthest first: what is nearer is drawn over it
         const order = space.nodes.map((n, i) => i).filter((i) => away(space.nodes[i]) > near).sort((a, b) => space.nodes[b].z - space.nodes[a].z);
-        order.forEach((index, rank) => {
+        /** As many of the screen's pixels to a unit as [n] is seen with. */
+        const seenWith = (n: SpaceNode) => space.distance / away(n) * space.scale * dpr;
+        this.small.begin();
+        const pictured = order.filter((index) => {
+            const n = space.nodes[index];
+            const seen = seenWith(n);
+            // in pixels from the middle of the screen
+            const x = (n.x - space.middleX) * seen;
+            const y = (n.y - space.middleY) * seen;
+            const inView = Math.abs(x) - n.width * seen / 2 < pixelWidth / 2 + seen * 4 && Math.abs(y) - n.height * seen / 2 < pixelHeight / 2 + seen * 4;
+            const flat = inView ? flatOf(n, seen) : null;
+            if (flat !== null) {
+                // too small for its text to show: an outline and a filling, drawn with all the others like it
+                const hw = n.width / 2;
+                const hh = n.height / 2;
+                const inset = Math.min(flat.outline, hw, hh);
+                this.small.rectangle(n.x - hw, n.y - hh, n.x + hw, n.y + hh, n.z, ...rgb(flat.ink));
+                this.small.rectangle(n.x - hw + inset, n.y - hh + inset, n.x + hw - inset, n.y + hh - inset, n.z, ...rgb(flat.fill));
+            } else if (!inView) {
+                // not seen: nothing is worked out for it, and the picture it has is kept for when it is seen again
+                const kept = this.kept.get(n.id);
+                if (kept !== undefined) {
+                    kept.frame = this.frame;
+                    kept.mesh.visible = false;
+                }
+            }
+            return inView && flat === null;
+        });
+        this.small.end();
+        pictured.forEach((index, rank) => {
             const n = space.nodes[index];
             // as many pixels to a unit as the node is seen with, and as it would be at zoom 1
             const finest = MAX_PICTURE_SIDE / Math.max(n.width, n.height, 1);
-            const seen = space.distance / away(n) * space.scale * dpr;
+            const seen = seenWith(n);
             const whole = Math.min(dpr, finest);
             const exact = seen > whole * EXACT_FROM && seen <= finest;
             const wanted = exact ? seen : whole;
@@ -183,6 +315,7 @@ export class SpaceRenderer<N extends SpaceNode> {
             } else if (stale) pending = true;
             const it = kept!;
             it.frame = this.frame;
+            it.mesh.visible = true;
             // the middle of the picture, in units from the middle of the node: across and down
             let shiftX = (it.pixelWidth / 2 - it.middleX) / it.pixelsPerUnit;
             let shiftY = (it.pixelHeight / 2 - it.middleY) / it.pixelsPerUnit;
@@ -206,17 +339,20 @@ export class SpaceRenderer<N extends SpaceNode> {
                 this.kept.delete(id);
             }
         });
+        const t1 = performance.now();
         this.strips(space, width, height, ink, radius, fade);
+        const t2 = performance.now();
         this.renderer.render(this.scene, this.camera);
+        const t3 = performance.now();
+        this.spent = { nodes: t1 - now, edges: t2 - t1, render: t3 - t2, made, calls: this.renderer.info.render.calls };
         return pending;
     }
 
     /** The edges, as strips a unit wide from border to border of their nodes, each with a disc for a head. */
     private strips(space: SpaceScene<N>, width: number, height: number, ink: string, radius: number, fade: number) {
-        const positions: number[] = [];
-        const colours: number[] = [];
-        const indices: number[] = [];
-        const colour = new THREE.Color(ink);
+        const [red, green, blue] = rgb(ink);
+        const edges = this.edges;
+        edges.begin();
         const near = space.distance / MAX_PERSPECTIVE;
         /** Where on the screen a point is seen, in pixels from the middle; what is behind the viewer as if just in front of him. */
         const seen = (x: number, y: number, z: number) => {
@@ -230,18 +366,18 @@ export class SpaceRenderer<N extends SpaceNode> {
                 : Math.min(dx === 0 ? Infinity : n.width / 2 / Math.abs(dx), dy === 0 ? Infinity : n.height / 2 / Math.abs(dy));
         const from = Math.min(width, height) * 0.125;
         const to = Math.max(width, height) * 0.5;
-        const vertex = (x: number, y: number, z: number, alpha: number) => {
-            positions.push(x, -y, -z);
-            colours.push(colour.r, colour.g, colour.b, alpha);
-            return positions.length / 3 - 1;
-        };
+        const vertex = (x: number, y: number, z: number, alpha: number) => edges.vertex(x, y, z, red, green, blue, alpha);
+        // an edge with both ends off the same side of the screen is not seen
+        const halfWidth = width / 2 + 50;
+        const halfHeight = height / 2 + 50;
         space.edges.forEach((e) => {
             const a = space.nodes[e.from];
             const b = space.nodes[e.to];
             const sa = seen(a.x, a.y, a.z);
             const sb = seen(b.x, b.y, b.z);
             const length = Math.hypot(sb.x - sa.x, sb.y - sa.y);
-            if (length > 0 && (space.distance + a.z - space.depth > near || space.distance + b.z - space.depth > near)) {
+            const off = Math.min(sa.x, sb.x) > halfWidth || Math.max(sa.x, sb.x) < -halfWidth || Math.min(sa.y, sb.y) > halfHeight || Math.max(sa.y, sb.y) < -halfHeight;
+            if (length > 0 && !off && (space.distance + a.z - space.depth > near || space.distance + b.z - space.depth > near)) {
                 // the way the edge goes on the screen; the nodes face the screen, so that is the way it leaves them
                 const dx = (sb.x - sa.x) / length;
                 const dy = (sb.y - sa.y) / length;
@@ -259,20 +395,15 @@ export class SpaceRenderer<N extends SpaceNode> {
                 vertex(x1 - px, y1 - py, a.z, alpha);
                 vertex(x2 + px, y2 + py, b.z, alpha);
                 vertex(x2 - px, y2 - py, b.z, alpha);
-                indices.push(first, first + 1, first + 2, first + 1, first + 3, first + 2);
+                edges.triangle(first, first + 1, first + 2);
+                edges.triangle(first + 1, first + 3, first + 2);
                 const middle = vertex(x2, y2, b.z, alpha);
                 for (let i = 0; i <= HEAD_SEGMENTS; i++) {
-                    const angle = i / HEAD_SEGMENTS * 2 * Math.PI;
-                    vertex(x2 + Math.cos(angle) * radius, y2 + Math.sin(angle) * radius, b.z, alpha);
-                    if (i > 0) indices.push(middle, middle + i, middle + i + 1);
+                    vertex(x2 + HEAD_COS[i] * radius, y2 + HEAD_SIN[i] * radius, b.z, alpha);
+                    if (i > 0) edges.triangle(middle, middle + i, middle + i + 1);
                 }
             }
         });
-        const geometry = this.edges.geometry;
-        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-        geometry.setAttribute("color", new THREE.Float32BufferAttribute(colours, 4));
-        geometry.setIndex(indices);
-        // seen from either side
-        this.edges.material.side = THREE.DoubleSide;
+        edges.end();
     }
 }

@@ -724,10 +724,22 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     bitmaps.nextFrame();
     if (threeD) {
         spaceRenderer ??= new SpaceRenderer(spaceCanvas);
+        const t0 = performance.now();
+        const spaceNow = view.space() as SpaceScene<SpaceSceneNode>;
+        const t1 = performance.now();
         const pending = spaceRenderer.draw(
-            view.space() as SpaceScene<SpaceSceneNode>, width, height, canvas.width, canvas.height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
+            spaceNow, width, height, canvas.width, canvas.height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
             pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit),
+            // as the flat drawing leaves out text that small; a selected node's outline stays visible however small it is
+            (n, pixelsPerUnit) => n.fontSize * pixelsPerUnit / dpr >= MIN_TEXT_PX || n.id === editing?.id
+                ? null
+                : { fill: n.bg ?? colours().background, ink: inkOf(n), outline: n.selected ? Math.max(2, 2.2 * dpr / pixelsPerUnit) : 1 },
         );
+        if (STAGE_TIMES !== undefined) {
+            const s = spaceRenderer.spent;
+            const line = `scene ${(t1 - t0).toFixed(1)} nodes ${s.nodes.toFixed(1)} edges ${s.edges.toFixed(1)} render ${s.render.toFixed(1)} made ${s.made} calls ${s.calls}\n`;
+            require("fs").appendFileSync(STAGE_TIMES, line);
+        }
         // the pictures that were not made for this frame
         if (pending) page.repaint();
         ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
@@ -962,6 +974,8 @@ async function replay(events: Played[], grid: client.GridMetrics) {
 
 /** For tests (`SGE_DRAW_TIMES=<file>`): how long each drawing took is added to the file. */
 const DRAW_TIMES = process.env.SGE_DRAW_TIMES;
+/** For tests (`SGE_STAGE_TIMES=<file>`): how long the parts of each drawing in 3D mode took, in milliseconds. */
+const STAGE_TIMES = process.env.SGE_STAGE_TIMES;
 const TIMED_FRAMES = 6;
 
 /** For tests: after the first drawing, so that positions in the window mean what the test saw. */
