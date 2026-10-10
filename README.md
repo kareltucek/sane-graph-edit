@@ -233,14 +233,15 @@ and shows every node as text.
 text is, written as a link is: `code-kotlin:src/A.kt:10-20` (lines),
 `markdown:README.md#Depth` (a section of a markdown file),
 `plain:notes.txt` (all of it). The node then shows what the file
-holds — read when the graph is opened and when the node is about to
-be edited — and an edit of the node is written to the file. When an
-edit changes how many lines there are, the line numbers of the nodes
-below it in that file follow, in every graph that is open. A graph
-that is not open is not corrected, and neither is anything when the
-file is changed by another program: name a section where you can.
-Undo takes back what the node shows, not what was written to the
-file. This is a first version.
+holds, read when the graph is opened. An edit of the node is a change
+of the graph like any other: it is undone like any other, and saving
+the graph (`:w`) writes it to the file. When a save changes how many
+lines there are, the line numbers of the nodes below them in that
+file follow, in every graph that is open. A graph that is not open
+is not corrected: name a section where you can. A file that another
+program changed under an edit is not written over; `:e` takes its
+text again. `gf` on a text file opens such a node, and `:w` there
+writes the file. This is a first version.
 
 A node being edited in the Electron client is never bigger than the
 part of it that is on the screen; beyond that neovim scrolls.

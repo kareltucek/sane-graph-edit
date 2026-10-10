@@ -130,7 +130,7 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     the suffix is a number or a range — `src/Billing.scala:42`,
     `src/Billing.scala:40-60` — the link opens a graph with one node
     holding those lines (a single line is a one-line range), being
-    edited: what is changed there is written to the file. (In a `.dot`
+    edited: what is changed there is written to the file by `:w`. (In a `.dot`
     file a number is a node id.) A path to a file that is not a `.dot`
     file opens all of it the same way. The node's `content-type` names
     the file (see the README).

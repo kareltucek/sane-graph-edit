@@ -66,13 +66,16 @@ class SourceViewTest {
     }
 
     @Test
-    fun `an edit of the opened lines is in the file, and the view has nothing unsaved`() {
+    fun `an edit of the opened lines is in the file once the view is saved`() {
         val src = source(10)
         val gv = GraphView()
         assertTrue(gv.content.showSourceInPlace(FileLink.Target(src, null, FileLink.Lines(2, 3))))
         val node = gv.g.nodes.single()
         gv.model.textEditStarted(node.id)
         gv.model.textEditEnded("line 2\nmore\nline 3")
+        assertTrue(gv.content.isDirty)
+        assertEquals("line 3", src.readText().lines()[2])
+        assertTrue(gv.content.saveNow())
         assertEquals("line 1\nline 2\nmore\nline 3\nline 4", src.readText().lines().take(5).joinToString("\n"))
         assertEquals("code-scala:$src:2-4", node.attributes.other[NodeType.ATTRIBUTE])
         assertFalse(gv.content.isDirty)

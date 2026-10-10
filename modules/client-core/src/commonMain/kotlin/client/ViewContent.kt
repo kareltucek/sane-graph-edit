@@ -63,10 +63,6 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         }
     }
 
-    /** A node of this view wrote its text to its file: a [SourceView] holds nothing else, so nothing is unsaved. */
-    fun fileWritten() {
-        if (sourceView != null) dirty(false)
-    }
 
     /** Whether [target] is a text file, or part of one, to show as a [SourceView]: not a graph, not a directory. */
     private fun isText(target: FileLink.Target): Boolean {
@@ -175,6 +171,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
 
     /** Show [newGraph] (or the document of [file]) instead of the current graph. */
     private fun replaceGraph(newGraph: Graph, file: Path? = null) {
+        view.fileTexts.clear()
         view.g = adopt(newGraph, file)
         watch(view.g)
         // a file somebody else has open may come with their unsaved changes
@@ -196,7 +193,17 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
      * the editor answers at once, later when it does not.
      */
     fun save(then: (Boolean) -> Unit = {}) {
-        currentFile?.let { writeTo(it, then) } ?: saveAs(then)
+        // the texts kept in other files first: the lines they are in afterwards are part of the graph that is saved
+        val texts = FileContent.save(view, shell.views())
+        when {
+            !texts -> then(false)
+            // a view of a text file holds nothing but that text
+            sourceView != null -> {
+                dirty(false)
+                then(true)
+            }
+            else -> currentFile?.let { writeTo(it, then) } ?: saveAs(then)
+        }
     }
 
     /**
@@ -320,6 +327,8 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             try {
                 // with a document everyone attached gets the file's content; a failure comes back as a message
                 document?.reload() ?: reloadOwn(path)
+                // the edits that waited are given up with the rest
+                view.fileTexts.clear()
                 onceLoaded { FileContent.refresh(view) }
                 view.repaint()
             } catch (t: Throwable) {
@@ -392,6 +401,8 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             sourceView = target
             untitledName = SourceView.title(target)
             pendingEdit = edit
+            // remembers what the file holds: an edit is told from it
+            FileContent.refresh(view)
             dirty(false)
             shell.stateChanged()
             if (view.size.x > 0) view.setViewTo(startOf(graph), view.viewTransform.scale)
