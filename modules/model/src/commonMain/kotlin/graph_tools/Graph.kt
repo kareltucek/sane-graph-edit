@@ -357,12 +357,12 @@ class Graph(
             val markdown = { text: String, at: Vector2 -> Node(text, at).also { it.attributes.other[NodeType.ATTRIBUTE] = NodeType.Markdown.attribute!! } }
             val root = markdown(utils.Help.commands, Vector2(0, 0)).also(g::add)
             val around = listOf(
-                markdown(utils.Help.selection, Vector2(0, -720)),
-                markdown(utils.Help.files, Vector2(850, 0)),
-                markdown(utils.Help.todo, Vector2(0, 650)),
-                markdown(utils.Help.attribution, Vector2(-750, -60)),
+                markdown(utils.Help.selection, Vector2(0, -520)),
+                markdown(utils.Help.files, Vector2(650, 0)),
+                markdown(utils.Help.todo, Vector2(0, 470)),
+                markdown(utils.Help.attribution, Vector2(-600, -60)),
                 // a client writes the examples out when it starts and knows where (`sge:examples`)
-                Node("examples\n(press gf)", Vector2(-750, 120)).also {
+                Node("examples\n(press gf)", Vector2(-600, 110)).also {
                     it.attributes.bg = utils.Rgb(0xF6EFC4)
                     it.attributes.other["link"] = "sge:examples"
                 },
@@ -370,8 +370,8 @@ class Graph(
             around.forEach { g.add(it); g.add(Edge(root, it)) }
             utils.Help.topics.zip(helpRays).forEach { (topic, degrees) ->
                 val ray = (degrees * kotlin.math.PI / 180).let { Vector2(kotlin.math.cos(it), -kotlin.math.sin(it)) }
-                val category = Node(topic.name, ray * 480.0).also { it.attributes.bg = utils.Rgb(topic.colour) }
-                val detail = markdown(topic.text.trimIndent(), ray * 1150.0)
+                val category = Node(topic.name, ray * 380.0).also { it.attributes.bg = utils.Rgb(topic.colour) }
+                val detail = markdown(topic.text.trimIndent(), ray * 760.0)
                 listOf(category, detail).forEach(g::add)
                 g.add(Edge(root, category))
                 g.add(Edge(category, detail))
