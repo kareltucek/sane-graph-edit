@@ -269,8 +269,10 @@ smaller and nearer the middle of the view, what is nearer bigger;
 what is behind you is not drawn, and an edge to it is drawn as far
 as it can be seen. At zoom 1 you
 are 1000 units in front of the plane you look at, so a node 1000
-units behind it is half its size. Zooming is coming closer: the
-wheel over a node goes towards that node, whatever its depth, and
+units behind it is half its size. Zooming is coming closer: with a
+selection the wheel goes towards the selection, wherever the pointer
+is, and the selection stays where it is on the screen; without one,
+the wheel over a node goes towards that node, whatever its depth, and
 past the nodes in front of it. `examples/cube.dot` has one to try.
 
 `:z 300` puts the selected nodes at that depth, `:z +50` and `:z -50`

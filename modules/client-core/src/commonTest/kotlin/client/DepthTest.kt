@@ -249,6 +249,17 @@ class DepthTest {
     }
 
     @Test
+    fun `the wheel goes towards the selection wherever the pointer is, and the selection stays where it was`() {
+        view.g.cleanSelect(setOf(far))
+        val was = screen(far)
+        // over nothing, far from the node
+        view.pointer.wheel(Vector2(100, 500), -1.0)
+        assertEquals(1000.0, view.viewTransform.depth)
+        assertNear(was, screen(far))
+        assertEquals(1.0, view.apparent(far)?.scale)
+    }
+
+    @Test
     fun `a view that is turned is from the front again in 2D mode`() {
         view.viewTransform.threeD = true
         view.viewTransform.turnTo(PI / 2, 0.0, view.size / 2)
