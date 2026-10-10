@@ -292,8 +292,8 @@ you do with the mouse then happens across the view as you see it:
 a dragged node, grab, rotate, scale and mirror move nodes left,
 right, up and down on your screen, which seen from the side is into
 the graph; new and pasted nodes land in the plane you look at. In 2D
-mode, the default, nothing turns the view, and a view that was
-turned is shown from the front. The layout optimizer and the SVG
+mode, the default, nothing turns the view (the middle button pans
+it), and a view that was turned is shown from the front. The layout optimizer and the SVG
 export know nothing of depth.
 
 ### Keyboard — `z`: view and folding

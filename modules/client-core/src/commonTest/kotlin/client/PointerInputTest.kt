@@ -54,9 +54,9 @@ class PointerInputTest {
     }
 
     @Test
-    fun `the middle button alone does nothing in 2D mode`() {
+    fun `the middle button pans in 2D mode`() {
         drag(Vector2(500, 400), Vector2(530, 380), Button.Middle)
-        assertEquals(Vector2.Zero, view.viewTransform.offset)
+        assertEquals(Vector2(30, -20), view.viewTransform.offset)
     }
 
     @Test

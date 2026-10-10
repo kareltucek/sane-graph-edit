@@ -45,8 +45,9 @@ class PointerInput(private val view: EditorView) {
             gestures.startPanView()
             pressAt(pos)
         } else if (button == Button.Middle && starts) {
-            // turns the view; in 2D mode it does nothing
-            if (gestures.startOrbit(screen)) pressAt(pos)
+            // turns the view; in 2D mode, where nothing does, it pans
+            if (!gestures.startOrbit(screen)) gestures.startPanView()
+            pressAt(pos)
         }
 
         view.endNodeEdit()

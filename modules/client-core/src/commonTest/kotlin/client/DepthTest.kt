@@ -222,18 +222,20 @@ class DepthTest {
     }
 
     @Test
-    fun `in 2D mode the middle button turns nothing, in 3D mode it turns the view around the selection in its middle`() {
+    fun `in 2D mode the middle button pans and turns nothing, in 3D mode it turns the view around the selection`() {
         view.viewTransform.threeD = false
         dragMiddle(Vector2(400, 300), Vector2(500, 300))
         assertEquals(0.0, view.viewTransform.yaw)
+        // the graph went with the pointer
+        assertNear(Vector2(500, 300), screen(flat))
         view.viewTransform.threeD = true
         view.g.cleanSelect(setOf(flat))
         val was = screen(far)
         dragMiddle(Vector2(400, 300), Vector2(500, 320))
         assertEquals(-0.5, view.viewTransform.yaw)
         assertEquals(0.1, view.viewTransform.pitch)
-        // what was in the middle is still there; what was not, is not where it was
-        assertNear(Vector2(400, 300), screen(flat))
+        // the selection is still where it was; what is not selected, is not
+        assertNear(Vector2(500, 300), screen(flat))
         assertTrue((screen(far) - was).length() > 10)
     }
 
