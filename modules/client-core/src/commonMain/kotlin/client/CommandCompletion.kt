@@ -36,10 +36,9 @@ object CommandCompletion {
     }
 
     private fun settings(): List<String> =
-        (KeyMapper.VALUE_SETTINGS + KeyMapper.APPLICATION_SETTINGS).map { "$it=" } +
-            KeyMapper.FLAG_SETTINGS +
-            KeyMapper.FLAG_SETTINGS.map { "no$it" } +
-            KeyMapper.FLAG_SETTINGS.map { "$it!" }
+        (KeyMapper.FLAG_SETTINGS + KeyMapper.APPLICATION_FLAGS).let { flags ->
+            (KeyMapper.VALUE_SETTINGS + KeyMapper.APPLICATION_SETTINGS).map { "$it=" } + flags + flags.map { "no$it" } + flags.map { "$it!" }
+        }
 
     /**
      * Entries of the directory [word] points into, as replacements for

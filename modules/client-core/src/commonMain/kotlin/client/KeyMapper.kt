@@ -937,13 +937,22 @@ class KeyMapper(
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
             // of the graph shown, not of all of them
             "3d" -> activeView?.let { it.viewTransform.threeD = change(it.viewTransform.threeD) }
-            else -> utils.Platform.warn("sane-graph-edit: unknown setting '$spec'")
+            else -> applicationFlags[name]?.let { flag ->
+                flag.on = change(flag.on)
+                flag.set(flag.on)
+            } ?: utils.Platform.warn("sane-graph-edit: unknown setting '$spec'")
         }
         activeView?.shell?.modesChanged()
     }
 
-    /** [FLAG_SETTINGS] plus aliases (not offered by completion). */
-    private val flagNames = FLAG_SETTINGS.toSet() + "show-childs"
+    /** A flag that is the application's own rather than the client's: whether it is [on], and what to tell the application when that changes. */
+    class ApplicationFlag(var on: Boolean, val set: (Boolean) -> Unit)
+
+    /** `:set <name>` / `no<name>` / `<name>!` flags that belong to the application, e.g. `nvim-theme`. */
+    val applicationFlags: MutableMap<String, ApplicationFlag> = mutableMapOf()
+
+    /** [FLAG_SETTINGS] and the application's, plus aliases (not offered by completion). */
+    private val flagNames: Set<String> get() = FLAG_SETTINGS.toSet() + applicationFlags.keys + "show-childs"
 
     /**
      * Load an init file. Each line is a command-bar command
@@ -1331,6 +1340,9 @@ class KeyMapper(
 
         /** The names of the settings that are the application's own ([applicationSettings]), for completion: it adds them. */
         val APPLICATION_SETTINGS = mutableSetOf<String>()
+
+        /** The same for its flags ([applicationFlags]). */
+        val APPLICATION_FLAGS = mutableSetOf<String>()
 
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
         val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard", "3d")

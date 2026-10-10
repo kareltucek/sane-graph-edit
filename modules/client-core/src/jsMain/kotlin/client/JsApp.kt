@@ -8,7 +8,10 @@ import utils.Rgb
 import utils.Vector2
 
 /** `set <name>=<value>` of these is the page's to act on. */
-private val PAGE_SETTINGS = listOf("nvim-theme", "node-editor")
+private val PAGE_SETTINGS = listOf("node-editor")
+
+/** `set <name>` / `set no<name>` of these, which are on unless turned off, too: the page is told `on` or `off`. */
+private val PAGE_FLAGS = listOf("nvim-theme")
 
 /** The key mapping of a JavaScript renderer: the editing and tab commands, and the user's init file like the Swing application's. */
 private fun keyMapper(page: dynamic): KeyMapper {
@@ -18,6 +21,16 @@ private fun keyMapper(page: dynamic): KeyMapper {
     val mapper = KeyMapper(KeyMapper.defaultBindings(), JsScheduler, defaultMappings = KeyMapper.defaultKeyMappings())
     PAGE_SETTINGS.forEach { name -> mapper.applicationSettings[name] = { value -> page.setting(name, value) } }
     KeyMapper.APPLICATION_SETTINGS += PAGE_SETTINGS
+    PAGE_FLAGS.forEach { name ->
+        val flag = KeyMapper.ApplicationFlag(true) { on -> page.setting(name, if (on) "on" else "off") }
+        mapper.applicationFlags[name] = flag
+        // as it used to be written, and may be in an init file: `set nvim-theme=off`
+        mapper.applicationSettings[name] = { value ->
+            flag.on = value != "off"
+            flag.set(flag.on)
+        }
+    }
+    KeyMapper.APPLICATION_FLAGS += PAGE_FLAGS
     // the page's own: how much memory the pictures it keeps take
     CommandRegistry.register("cache") { it.shell.message(page.cacheStats() as String) }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
