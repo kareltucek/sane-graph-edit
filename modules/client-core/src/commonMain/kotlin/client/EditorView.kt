@@ -86,7 +86,16 @@ class EditorView(
     /** Told when a transform gesture (grab, rotate, scale) starts (true) and ends (false): keys then mean something else. */
     var onTransformMode: (Boolean) -> Unit = {}
 
-    fun startNodeEdit(n: Node, screenClick: Vector2?) = startNodeEdit(n.id, screenClick)
+    fun startNodeEdit(n: Node, screenClick: Vector2?) {
+        // what is edited is what the file holds now
+        FileContent.refresh(this, listOf(n))
+        g.ensureCachesFresh()
+        startNodeEdit(n.id, screenClick)
+    }
+
+    init {
+        content.onceLoaded { FileContent.refresh(this) }
+    }
 
     // --- text of a node being edited in place (renderer → client) ---
 
@@ -111,7 +120,12 @@ class EditorView(
         textEdit?.let { (n, before) ->
             // back to the text before the edit, so that the command's redo is what applies the change
             n.attributes.text = before
-            if (before != text) g.commit(EditTextCommand(g, n, before, text))
+            val source = FileContent.of(n, content.currentFile)
+            when {
+                // the node's text follows from the file's
+                source != null -> if (FileContent.read(source) != text) FileContent.write(this, n, source, text, shell.views())
+                before != text -> g.commit(EditTextCommand(g, n, before, text))
+            }
             g.needsRecomputing(n)
         }
         textEdit = null

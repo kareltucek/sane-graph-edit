@@ -82,7 +82,7 @@ class NodeTypeTest {
         keys.executeCommandLine("content-type code-c")
         keys.executeCommandLine("content-type")
         keys.executeCommandLine("content-type picture")
-        assertEquals(listOf("code-c", "content-type: `picture` is not one (plain, markdown, code, code-<language>)"), messages)
+        assertEquals(listOf("code-c", "content-type: `picture` is not one (plain, markdown, code, code-<language>; each may be followed by :<file>)"), messages)
         assertEquals("code-c", attribute(a))
     }
 

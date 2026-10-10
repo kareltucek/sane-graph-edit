@@ -266,6 +266,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             sourceView = null
             shell.stateChanged()
             onceLoaded {
+                FileContent.refresh(view)
                 view.boundScreen()
                 view.repaint()
             }
@@ -292,6 +293,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             try {
                 // with a document everyone attached gets the file's content; a failure comes back as a message
                 document?.reload() ?: reloadOwn(path)
+                onceLoaded { FileContent.refresh(view) }
                 view.repaint()
             } catch (t: Throwable) {
                 shell.alert("Reload error", "Could not reload $path:\n${t.message}")
@@ -359,10 +361,24 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             sourceView = FileLink.Target(path, null, lines)
             untitledName = SourceView.title(path, lines)
             shell.stateChanged()
-            if (view.size.x > 0) view.setViewTo(Vector2.Zero, view.viewTransform.scale)
+            if (view.size.x > 0) view.setViewTo(startOf(graph), view.viewTransform.scale)
             shell.sessionChanged()
         }
         return graph != null
+    }
+
+    /**
+     * Where to look at the lines of a [SourceView]: at their middle,
+     * and along a side they are longer than the view, at where they
+     * start, so that a long text is read from its first line.
+     */
+    private fun startOf(source: Graph): Vector2 {
+        source.ensureCachesFresh()
+        val node = source.nodes.first { it.attributes.name == SourceView.NODE_ID }
+        val half = node.cache.shapeBounds / 2
+        val room = view.size / view.viewTransform.scale / 2
+        val along = { middle: Double, halfNode: Double, halfRoom: Double -> if (halfNode > halfRoom) middle - halfNode + halfRoom * 0.95 else middle }
+        return Vector2(along(node.position.x, half.x, room.x), along(node.position.y, half.y, room.y))
     }
 
     /** Replace the graph with the built-in help graph (the `help` node of a [FileTree]). */

@@ -151,6 +151,7 @@ class Tabs(
             if (all) quitAll(force) else quitCurrent(force)
         }
         override fun modesChanged() = host.modesChanged()
+        override fun views(): List<EditorView> = this@Tabs.views
     }
 
     private fun add(graph: Graph, path: Path?): EditorView {

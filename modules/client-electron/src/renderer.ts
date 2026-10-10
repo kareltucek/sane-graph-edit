@@ -549,19 +549,32 @@ function cellsOf(n: SceneNode, whole: Scene, grid: client.GridMetrics): Cells {
     const scene = viewOf(n, whole);
     const bounds = canvas.getBoundingClientRect();
     const fontPx = n.fontSize * scene.scale;
+    const nodeLeft = (n.x - n.width / 2) * scene.scale + scene.offsetX;
+    const nodeTop = (n.y - n.height / 2) * scene.scale + scene.offsetY;
+    // of a node that reaches beyond the view only what is seen: the editor starts at the view's edge and neovim scrolls the text in it
+    const clipLeft = Math.max(nodeLeft, 0);
+    const clipTop = Math.max(nodeTop, 0);
     return {
-        left: place.left - bounds.left,
-        top: place.top - bounds.top,
+        left: Math.max(place.left - bounds.left, Math.min(place.left - bounds.left - nodeLeft, place.cellWidth)),
+        top: Math.max(place.top - bounds.top, Math.min(place.top - bounds.top - nodeTop, place.cellHeight)),
         cellWidth: place.cellWidth,
         cellHeight: place.cellHeight,
         font: `${fontPx}px ${FONT}`,
         baseline: grid.ascent * fontPx,
         clip: {
-            left: (n.x - n.width / 2) * scene.scale + scene.offsetX,
-            top: (n.y - n.height / 2) * scene.scale + scene.offsetY,
-            width: n.width * scene.scale,
-            height: n.height * scene.scale,
+            left: clipLeft,
+            top: clipTop,
+            width: Math.max(0, Math.min(nodeLeft + n.width * scene.scale, canvas.clientWidth) - clipLeft),
+            height: Math.max(0, Math.min(nodeTop + n.height * scene.scale, canvas.clientHeight) - clipTop),
         },
+    };
+}
+
+/** How many columns and rows of [cells] are seen. */
+function roomOf(cells: Cells): { columns: number; rows: number } {
+    return {
+        columns: Math.floor((cells.clip.left + cells.clip.width - cells.left) / cells.cellWidth),
+        rows: Math.floor((cells.clip.top + cells.clip.height - cells.top) / cells.cellHeight),
     };
 }
 
@@ -647,7 +660,10 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     if (edited !== undefined && editor instanceof GridEditor && editor.shown) {
         // in page pixels, like the places it is given
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        editor.draw(ctx, cellsOf(edited, scene, grid));
+        const cells = cellsOf(edited, scene, grid);
+        const room = roomOf(cells);
+        editor.limit(room.columns, room.rows);
+        editor.draw(ctx, cells);
         ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     }
     const box = scene.selectionBox;

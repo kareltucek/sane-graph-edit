@@ -229,6 +229,22 @@ size of its source text whatever is shown in it; a picture that
 does not fit is scaled down. The Swing client keeps the attribute
 and shows every node as text.
 
+**Text kept in a file.** A type may be followed by `:` and where the
+text is, written as a link is: `code-kotlin:src/A.kt:10-20` (lines),
+`markdown:README.md#Depth` (a section of a markdown file),
+`plain:notes.txt` (all of it). The node then shows what the file
+holds — read when the graph is opened and when the node is about to
+be edited — and an edit of the node is written to the file. When an
+edit changes how many lines there are, the line numbers of the nodes
+below it in that file follow, in every graph that is open. A graph
+that is not open is not corrected, and neither is anything when the
+file is changed by another program: name a section where you can.
+Undo takes back what the node shows, not what was written to the
+file. This is a first version.
+
+A node being edited in the Electron client is never bigger than the
+part of it that is on the screen; beyond that neovim scrolls.
+
 ### Depth: `z`
 
 A node can have a third coordinate, `z`, the third number of its

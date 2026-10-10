@@ -59,6 +59,9 @@ interface Shell : Dialogs {
 
     /** A view mode (`:set unhide` …) changed: every view shows it. */
     fun modesChanged()
+
+    /** Every view the application has open. */
+    fun views(): List<EditorView> = emptyList()
 }
 
 /** No application: messages are printed, questions are answered with no. */

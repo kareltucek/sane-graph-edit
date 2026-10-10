@@ -357,12 +357,35 @@ export class GridEditor {
         return this.lines.join("\n");
     }
 
-    private get wantedColumns(): number {
+    /** How many columns and rows there is room for on the screen; null while that is not known. */
+    private room: { columns: number; rows: number } | null = null;
+
+    /**
+     * The editor is never bigger than what is seen of its node: there
+     * is room for [columns] by [rows]. Text beyond that is reached by
+     * neovim's own scrolling.
+     */
+    limit(columns: number, rows: number) {
+        if (this.room?.columns !== columns || this.room?.rows !== rows) {
+            this.room = { columns, rows };
+            if (!this.closed) this.fit();
+        }
+    }
+
+    private get textColumns(): number {
         return Math.max(Math.max(1, ...this.lines.map((l) => [...l].length)) + SPARE_COLUMNS, MIN_COLUMNS);
     }
 
-    private get wantedRows(): number {
+    private get textRows(): number {
         return Math.max(this.lines.length + SPARE_ROWS, MIN_ROWS);
+    }
+
+    private get wantedColumns(): number {
+        return Math.max(Math.min(this.textColumns, this.room?.columns ?? Infinity), MIN_COLUMNS);
+    }
+
+    private get wantedRows(): number {
+        return Math.max(Math.min(this.textRows, this.room?.rows ?? Infinity), MIN_ROWS);
     }
 
     /** Neovim answers while it still reads the user's init files; it is of use once it is through with them. */
@@ -439,8 +462,10 @@ export class GridEditor {
     /** As many rows and columns as the text has now, or as few as neovim can do with. */
     private fit() {
         if (this.columns !== this.wantedColumns || this.rows !== this.wantedRows) {
+            // all of the text is on the screen, from its first cell, unless there is no room for all of it: then neovim scrolls
+            const whole = this.wantedColumns === this.textColumns && this.wantedRows === this.textRows;
             this.nvim
-                .then((nvim) => nvim.uiTryResize(this.wantedColumns, this.wantedRows).then(() => nvim.call("winrestview", [{ topline: 1, leftcol: 0 }])))
+                .then((nvim) => nvim.uiTryResize(this.wantedColumns, this.wantedRows).then(() => (whole ? nvim.call("winrestview", [{ topline: 1, leftcol: 0 }]) : undefined)))
                 .catch(() => {});
         }
     }
