@@ -765,7 +765,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     ctx.imageSmoothingQuality = "high";
     bitmaps.nextFrame();
     if (threeD) {
-        spaceRenderer ??= new SpaceRenderer(spaceCanvas);
+        spaceRenderer ??= new SpaceRenderer(spaceCanvas, () => page.repaint());
         const t0 = performance.now();
         const spaceNow = view.space() as SpaceScene<SpaceSceneNode>;
         lastSpaceIds = spaceNow.nodes.map((n) => n.id);

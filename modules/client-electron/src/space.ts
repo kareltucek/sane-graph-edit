@@ -176,6 +176,8 @@ const ROW_STEP = 8;
 const MAX_ON_PAGE = 1024;
 /** While pictures are being put on a page, the graphics card is given the page no more often than this. */
 const PAGE_UPLOAD_MS = 300;
+/** Pictures are made in the background for this many milliseconds at a time. */
+const FILL_SLICE_MS = 10;
 /** Pictures are made for the atlas for at most this many milliseconds of a frame. */
 const ATLAS_BUDGET_MS = 6;
 
@@ -310,10 +312,53 @@ export class SpaceRenderer<N extends SpaceNode> {
     private lookedFrom = "";
     private movedAt = 0;
 
-    constructor(private readonly canvas: HTMLCanvasElement) {
+    /**
+     * [onFilled]: some pictures were made in the background and the
+     * graph is to be drawn again, so that the graphics card gets them
+     * a page at a time and not all at once when they are first seen.
+     */
+    constructor(private readonly canvas: HTMLCanvasElement, private readonly onFilled: () => void) {
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
         this.scene.add(this.edges.mesh);
         this.scene.add(this.small.mesh);
+    }
+
+    // --- filling the atlas in the background ---
+    // Drawing makes the pictures of the nodes it shows. The rest are made here, a few milliseconds at a time between whatever
+    // else the page has to do (there is one thread: a longer piece of work would hold up the pointer and the keys), so that
+    // going somewhere else in the graph finds its pictures made. It starts when a graph is first drawn with depth.
+
+    /** The nodes of the graph as it was last drawn, and how to make their pictures. */
+    private toFill: { nodes: N[]; dpr: number; keyOf: (n: N) => string; paint: (n: N, pixelsPerUnit: number) => NodePicture } | null = null;
+    /** Which graph the background work is for or was last done for: it is not done again for the same one. */
+    private filledFor = "";
+    private filling = false;
+    /** Where in the nodes the work is. */
+    private fillNext = 0;
+    private toldAt = 0;
+
+    private fill() {
+        const work = this.toFill;
+        const start = performance.now();
+        let made = false;
+        while (work !== null && this.fillNext < work.nodes.length && performance.now() - start < FILL_SLICE_MS) {
+            const n = work.nodes[this.fillNext++];
+            if (Math.max(n.width, n.height) * work.dpr <= MAX_ON_PAGE) {
+                const key = work.keyOf(n);
+                const slot = this.slots.get(n.id);
+                if (slot === undefined || slot.key !== key) {
+                    this.put(n, key, work.paint(n, work.dpr), slot);
+                    made = true;
+                }
+            }
+        }
+        this.filling = work !== null && this.fillNext < work.nodes.length;
+        // the pages reach the graphics card when the graph is drawn
+        if (made && (!this.filling || start - this.toldAt > PAGE_UPLOAD_MS)) {
+            this.toldAt = start;
+            this.onFilled();
+        }
+        if (this.filling) setTimeout(() => this.fill(), 0);
     }
 
     /**
@@ -376,6 +421,17 @@ export class SpaceRenderer<N extends SpaceNode> {
         const order = space.nodes.map((n, i) => i).filter((i) => away(space.nodes[i]) > near).sort((a, b) => space.nodes[b].z - space.nodes[a].z);
         /** As many of the screen's pixels to a unit as [n] is seen with. */
         const seenWith = (n: SpaceNode) => space.distance / away(n) * space.scale * dpr;
+        // the pictures of the nodes that are not shown now are made in the background
+        this.toFill = { nodes: space.nodes, dpr, keyOf, paint };
+        const graph = `${space.nodes.length} ${space.nodes[0]?.id} ${space.nodes[space.nodes.length - 1]?.id} ${dpr}`;
+        if (graph !== this.filledFor) {
+            this.filledFor = graph;
+            this.fillNext = 0;
+            if (!this.filling) {
+                this.filling = true;
+                setTimeout(() => this.fill(), 0);
+            }
+        }
         this.small.begin();
         this.pages.forEach((page) => page.begin());
         /** Milliseconds of this frame spent making pictures for the atlas. */
