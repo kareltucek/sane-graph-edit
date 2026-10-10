@@ -707,10 +707,14 @@ function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
     return [
         `Pictures kept (the graph shown is drawn ${threeD ? "with depth, 3D" : "flat, 2D"}):`,
         "",
-        `2D drawings   ${megabytes(flat.bytes)} of at most ${megabytes(flat.limit)}, ${flat.drawings} drawings   ${share(drawn, nodes.length)}`,
-        ...(space === null ? ["3D            nothing yet: no graph was drawn with depth"] : [
-            `3D pictures   ${megabytes(space.ownBytes)}   ${share(space.own, lastSpaceIds.length)}`,
-            `3D atlas      ${megabytes(space.atlasBytes)} in ${space.pages} pages   ${share(space.atlas, lastSpaceIds.length)}`,
+        `Text drawings (the text of a node alone; 2D, and what the 3D ones are made from)`,
+        `    ${megabytes(flat.bytes)} of at most ${megabytes(flat.limit)}, ${flat.drawings} drawings   ${share(drawn, nodes.length)}`,
+        ...(space === null ? ["3D: nothing yet, no graph was drawn with depth"] : [
+            `3D, drawn directly (a node at the size it is seen at, 1:1)`,
+            `    ${megabytes(space.ownBytes)}   ${share(space.own, lastSpaceIds.length)}`,
+            `3D, cached drawings (a node at half its size, 1:2, many to a page)`,
+            `    ${megabytes(space.usedBytes)} of pictures on ${space.pages} pages   ${share(space.atlas, lastSpaceIds.length)}`,
+            `    the pages: ${megabytes(space.pageBytes)} here + ${megabytes(space.cardBytes)} on the graphics card`,
         ]),
     ].join("\n");
 }

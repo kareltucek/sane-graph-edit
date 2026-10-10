@@ -152,6 +152,8 @@ class Triangles {
 
 /** One side of a page of the atlas, in pixels. */
 const PAGE = 2048;
+/** The rows of a page are whole multiples of this many pixels high. */
+const ROW_STEP = 8;
 /** A picture wider or higher than this many pixels is not put on a page: it would take too much of it. */
 const MAX_ON_PAGE = 512;
 /** While pictures are being put on a page, the graphics card is given the page no more often than this. */
@@ -188,10 +190,9 @@ class Page {
     private indices = new Uint32Array(6 * 256);
     private quads = 0;
     private room = 0;
-    /** Pictures are put in rows, each as high as its highest: where the next one goes. */
-    private nextX = 0;
-    private rowY = 0;
-    private rowHeight = 0;
+    /** Pictures are put in rows, each for pictures of about one height: how high a row is, and where its next picture goes. */
+    private readonly rows: { y: number; height: number; nextX: number }[] = [];
+    private nextY = 0;
     /** The page has pictures the graphics card has not been given yet; when it last was given the page. */
     dirty = false;
     uploadedAt = 0;
@@ -206,17 +207,16 @@ class Page {
 
     /** Room for a picture of [width] by [height] pixels, a pixel free around it; null when the page is full. */
     place(width: number, height: number): { x: number; y: number } | null {
-        if (this.nextX + width + 1 > PAGE) {
-            this.rowY += this.rowHeight + 1;
-            this.nextX = 0;
-            this.rowHeight = 0;
+        // a row of pictures no more than an eighth higher than this one: little is left free above it
+        const high = Math.ceil(height / ROW_STEP) * ROW_STEP;
+        let row = this.rows.find((it) => it.height === high && it.nextX + width + 1 <= PAGE);
+        if (row === undefined && this.nextY + high + 1 <= PAGE && width + 1 <= PAGE) {
+            row = { y: this.nextY, height: high, nextX: 0 };
+            this.rows.push(row);
+            this.nextY += high + 1;
         }
-        const fits = this.rowY + height + 1 <= PAGE && width + 1 <= PAGE;
-        const at = fits ? { x: this.nextX, y: this.rowY } : null;
-        if (fits) {
-            this.nextX += width + 1;
-            this.rowHeight = Math.max(this.rowHeight, height);
-        }
+        const at = row === undefined ? null : { x: row.nextX, y: row.y };
+        if (row !== undefined) row.nextX += width + 1;
         return at;
     }
 
@@ -495,17 +495,21 @@ export class SpaceRenderer<N extends SpaceNode> {
      * What is kept, for the nodes [ids]: how many of them have a
      * picture of their own and how many bytes those take on the
      * graphics card; how many have one in the atlas, how many pages
-     * that has, and how many bytes they take, here and there together.
+     * that has, how many bytes the pictures on them take, how many
+     * the pages themselves here (they are whole, however full), and
+     * how many on the graphics card, which has smaller copies too.
      */
-    stats(ids: string[]): { own: number; ownBytes: number; atlas: number; pages: number; atlasBytes: number } {
+    stats(ids: string[]): { own: number; ownBytes: number; atlas: number; pages: number; usedBytes: number; pageBytes: number; cardBytes: number } {
         const own = ids.map((id) => this.kept.get(id)).filter((it) => it !== undefined);
+        const pageBytes = this.pages.length * PAGE * PAGE * 4;
         return {
             own: own.length,
             ownBytes: own.reduce((sum, it) => sum + it.pixelWidth * it.pixelHeight * 4, 0),
             atlas: ids.filter((id) => this.slots.has(id)).length,
             pages: this.pages.length,
-            // the page's own canvas, and the same with its smaller copies (a third more) on the graphics card
-            atlasBytes: Math.round(this.pages.length * PAGE * PAGE * 4 * (1 + 4 / 3)),
+            usedBytes: [...this.slots.values()].reduce((sum, it) => sum + it.width * it.height * 4, 0),
+            pageBytes,
+            cardBytes: Math.round(pageBytes * 4 / 3),
         };
     }
 
@@ -514,9 +518,14 @@ export class SpaceRenderer<N extends SpaceNode> {
         const width = picture.image.width;
         const height = picture.image.height;
         const reuse = old !== undefined && old.width === width && old.height === height;
-        let page = reuse ? old.page : this.pages[this.pages.length - 1];
-        let at = reuse ? { x: old.x, y: old.y } : page?.place(width, height) ?? null;
-        if (at === null) {
+        // the same place again, or the first page that has room
+        let page: Page | undefined = reuse ? old.page : undefined;
+        let at: { x: number; y: number } | null = reuse ? { x: old.x, y: old.y } : null;
+        for (let i = 0; at === null && i < this.pages.length; i++) {
+            page = this.pages[i];
+            at = page.place(width, height);
+        }
+        if (at === null || page === undefined) {
             page = new Page(this.renderer.capabilities.getMaxAnisotropy());
             this.pages.push(page);
             this.scene.add(page.mesh);
