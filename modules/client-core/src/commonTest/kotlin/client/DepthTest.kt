@@ -238,6 +238,17 @@ class DepthTest {
     }
 
     @Test
+    fun `the view turns around the selection wherever on the screen it is, and that stays where it was`() {
+        view.g.cleanSelect(setOf(far))
+        val was = screen(far)
+        val other = screen(flat)
+        assertTrue((was - Vector2(400, 300)).length() > 50, "the selection is not in the middle of the screen")
+        dragMiddle(Vector2(400, 300), Vector2(500, 320))
+        assertNear(was, screen(far))
+        assertTrue((screen(flat) - other).length() > 10)
+    }
+
+    @Test
     fun `a view that is turned is from the front again in 2D mode`() {
         view.viewTransform.threeD = true
         view.viewTransform.turnTo(PI / 2, 0.0, view.size / 2)

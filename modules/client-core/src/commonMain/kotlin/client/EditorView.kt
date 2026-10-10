@@ -208,6 +208,14 @@ class EditorView(
     /** How far away the middle of what a turn of the view goes around is: of the selection, or of everything visible. Null when there is nothing. */
     fun orbitDepth(): Double? = focus().takeIf { it.isNotEmpty() }?.let { nodes -> nodes.sumOf { viewPoint(it).z } / nodes.size }
 
+    /**
+     * Where on the screen the middle of what a turn of the view goes
+     * around is, once the view is of the plane at [orbitDepth]: the
+     * middle of the selection, or of everything visible. It stays
+     * there while the view turns. Null when there is nothing.
+     */
+    fun orbitMiddle(): Vector2? = middleOf(focus())?.let { viewTransform.toScreen(it) }
+
     /** The middle of [nodes] across the view: of the box around them in the graph, or, in a turned view, around where they are seen. Null for none. */
     fun middleOf(nodes: Collection<Node>): Vector2? = boxOf(nodes)?.let { (ul, br) -> (ul + br) / 2 }
 

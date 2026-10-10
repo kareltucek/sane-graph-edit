@@ -283,7 +283,8 @@ the plane you look at.
 tabs (`:set no3d` off, `:set 3d!` toggles; the status line shows
 `[3d]`). In the Electron client a graph in 3D mode is drawn by the
 graphics card (WebGL), each node a picture in space. In 3D mode the middle button turns the
-view around the selection, or around everything visible when nothing
+view around the middle of the selection, which stays where it is on
+the screen, or around the middle of everything visible when nothing
 is selected; `:view-front` turns it back. Nodes always face you. What
 you do with the mouse then happens across the view as you see it:
 a dragged node, grab, rotate, scale and mirror move nodes left,
