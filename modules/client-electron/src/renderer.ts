@@ -725,7 +725,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     if (threeD) {
         spaceRenderer ??= new SpaceRenderer(spaceCanvas);
         const pending = spaceRenderer.draw(
-            view.space() as SpaceScene<SpaceSceneNode>, width, height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
+            view.space() as SpaceScene<SpaceSceneNode>, width, height, canvas.width, canvas.height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
             pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit),
         );
         // the pictures that were not made for this frame

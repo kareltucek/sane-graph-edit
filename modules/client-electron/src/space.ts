@@ -39,13 +39,25 @@ interface Kept {
     /** What the picture on it is of, and how fine it is. */
     key: string;
     pixelsPerUnit: number;
+    /** The picture's size in pixels, and where in it the middle of the node is. */
+    pixelWidth: number;
+    pixelHeight: number;
+    middleX: number;
+    middleY: number;
     frame: number;
 }
 
 /** What is nearer the viewer than this many times its size is not drawn: as the client does not find it under the pointer either. */
 const MAX_PERSPECTIVE = 50;
-/** A picture is made anew when the node is seen this many times bigger or smaller than its picture is good for. */
-const COARSER = 1.5;
+/**
+ * A node seen at more than this part of its size at zoom 1 gets a
+ * picture made for exactly the size it is seen at, pixel for pixel,
+ * so that its text is sharp; a smaller one is shown from the picture
+ * made for zoom 1, scaled down.
+ */
+const EXACT_FROM = 0.5;
+/** Two sizes no further apart than this are the same one. */
+const SAME = 1.001;
 /** No picture is wider or higher than this many pixels. */
 const MAX_PICTURE_SIDE = 4096;
 /** At most this many pictures are made for one frame: the rest keep the one they have until a later frame. */
@@ -70,7 +82,8 @@ export class SpaceRenderer<N extends SpaceNode> {
 
     /**
      * Draw [space] on the canvas, [width] by [height] of the page's
-     * pixels, [dpr] of the screen's to each. [keyOf] tells what a
+     * pixels, [dpr] of the screen's to each, which makes it
+     * [pixelWidth] by [pixelHeight] of those. [keyOf] tells what a
      * node's picture depends on, [paint] makes one. An edge is in
      * [ink], [radius] the size of its head, and fainter the longer
      * it is on the screen ([fade]: how much is taken away at most).
@@ -80,6 +93,8 @@ export class SpaceRenderer<N extends SpaceNode> {
         space: SpaceScene<N>,
         width: number,
         height: number,
+        pixelWidth: number,
+        pixelHeight: number,
         dpr: number,
         background: string,
         ink: string,
@@ -89,8 +104,9 @@ export class SpaceRenderer<N extends SpaceNode> {
         paint: (n: N, pixelsPerUnit: number) => NodePicture,
     ): boolean {
         this.frame++;
-        this.renderer.setPixelRatio(dpr);
-        this.renderer.setSize(width, height, false);
+        // one pixel of the canvas for each of the screen's, as the flat canvas has it, or all of it is resampled
+        this.renderer.setPixelRatio(1);
+        this.renderer.setSize(pixelWidth, pixelHeight, false);
         this.renderer.setClearColor(background);
         // The client's own picture of things, which it finds nodes under the pointer by: a pinhole in front of the middle of the
         // screen, [distance] from the plane. Here y is up and z towards the viewer, so both are turned around.
@@ -111,33 +127,59 @@ export class SpaceRenderer<N extends SpaceNode> {
         const order = space.nodes.map((n, i) => i).filter((i) => away(space.nodes[i]) > near).sort((a, b) => space.nodes[b].z - space.nodes[a].z);
         order.forEach((index, rank) => {
             const n = space.nodes[index];
-            // as many pixels to a unit as the node is seen with
-            const wanted = Math.min(space.distance / away(n) * space.scale * dpr, MAX_PICTURE_SIDE / Math.max(n.width, n.height, 1));
+            // as many pixels to a unit as the node is seen with, and as it would be at zoom 1
+            const finest = MAX_PICTURE_SIDE / Math.max(n.width, n.height, 1);
+            const seen = space.distance / away(n) * space.scale * dpr;
+            const whole = Math.min(dpr, finest);
+            const exact = seen > whole * EXACT_FROM && seen <= finest;
+            const wanted = exact ? seen : whole;
             const key = keyOf(n);
             let kept = this.kept.get(n.id);
-            const stale = kept === undefined || kept.key !== key || kept.pixelsPerUnit < wanted / COARSER || kept.pixelsPerUnit > wanted * COARSER * 2;
+            const stale = kept === undefined || kept.key !== key || kept.pixelsPerUnit > wanted * SAME || kept.pixelsPerUnit < wanted / SAME;
             if (stale && (kept === undefined || made < PICTURES_PER_FRAME)) {
                 made++;
                 const picture = paint(n, wanted);
                 const texture = new THREE.CanvasTexture(picture.image);
                 texture.colorSpace = THREE.SRGBColorSpace;
-                texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+                if (exact) {
+                    // shown pixel for pixel: nothing to scale
+                    texture.generateMipmaps = false;
+                    texture.minFilter = THREE.LinearFilter;
+                } else texture.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+                const sizes = {
+                    pixelsPerUnit: wanted,
+                    pixelWidth: picture.image.width,
+                    pixelHeight: picture.image.height,
+                    middleX: (n.width / 2 + picture.margin) * wanted,
+                    middleY: (n.height / 2 + picture.margin) * wanted,
+                };
                 if (kept === undefined) {
                     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false }));
-                    kept = { mesh, key, pixelsPerUnit: wanted, frame: this.frame };
+                    kept = { mesh, key, frame: this.frame, ...sizes };
                     this.kept.set(n.id, kept);
                     this.scene.add(mesh);
                 } else {
                     kept.mesh.material.map?.dispose();
                     kept.mesh.material.map = texture;
-                    kept.key = key;
-                    kept.pixelsPerUnit = wanted;
+                    Object.assign(kept, { key, ...sizes });
                 }
-                kept.mesh.scale.set(n.width + 2 * picture.margin, n.height + 2 * picture.margin, 1);
+                // as big as the picture is, which is a little more than the node: whole pixels
+                kept.mesh.scale.set(kept.pixelWidth / wanted, kept.pixelHeight / wanted, 1);
             } else if (stale) pending = true;
-            kept!.frame = this.frame;
-            kept!.mesh.position.set(n.x, -n.y, -n.z);
-            kept!.mesh.renderOrder = rank;
+            const it = kept!;
+            it.frame = this.frame;
+            // the middle of the picture, in units from the middle of the node: across and down
+            let shiftX = (it.pixelWidth / 2 - it.middleX) / it.pixelsPerUnit;
+            let shiftY = (it.pixelHeight / 2 - it.middleY) / it.pixelsPerUnit;
+            if (it.pixelsPerUnit <= seen * SAME && it.pixelsPerUnit >= seen / SAME) {
+                // pixel for pixel: the picture's corner on a corner of a pixel, or its text is blurred
+                const left = pixelWidth / 2 + (n.x - space.middleX) * seen - it.middleX;
+                const top = pixelHeight / 2 + (n.y - space.middleY) * seen - it.middleY;
+                shiftX += (Math.round(left) - left) / seen;
+                shiftY += (Math.round(top) - top) / seen;
+            }
+            it.mesh.position.set(n.x + shiftX, -(n.y + shiftY), -n.z);
+            it.mesh.renderOrder = rank;
         });
         // what is no longer there, or behind the viewer
         this.kept.forEach((it, id) => {
