@@ -108,7 +108,7 @@ class FileTreeTest {
         val gv = GraphView(initialGraph = FileTree.build(root, bigScreen))
         gv.setSize(3000, 2000)
         gv.content.browseDir = root
-        val help = gv.g.nodes.single { it.attributes.text == "help" }
+        val help = gv.g.nodes.single { it.attributes.text == FileLink.HELP_NODE }
         val current = gv.g.nodes.single { it.attributes.text == "${root.fileName}/" }
 
         assertTrue(gv.g.findEdge(current, help) != null)

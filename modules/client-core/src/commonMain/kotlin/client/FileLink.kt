@@ -34,6 +34,9 @@ object FileLink {
     /** Tab title of the help graph. */
     const val HELP_TITLE = "help"
 
+    /** What a node that leads to the help says. */
+    const val HELP_NODE = "help\n(press gf)"
+
     /** A line (`to == null`: shown with context around it) or a range, 1-based, inclusive. */
     data class Lines(val from: Int, val to: Int?) {
         override fun toString(): String = if (to == null) "$from" else "$from-$to"

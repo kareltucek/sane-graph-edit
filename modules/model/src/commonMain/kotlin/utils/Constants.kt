@@ -56,108 +56,11 @@ object Constants {
      */
     val edgeFadedMaxBrightness: Int = 220
 
-    val helpCommands = """
-        Graph manipulation
-        ==================
-
-        Mouse
-          Double-click empty  - new node
-          Double-click node   - edit text
-          Drag a node         - move the selection
-          Drag empty space    - pan view
-          Mouse wheel         - zoom (centred on cursor)
-          Right-click         - colour / shape / size picker
-
-        Keys
-          v/V + mouseover - new node + edge from selection (fwd/bwd)
-          e/E + mouseover - connect selection to node under cursor (fwd/bwd)
-          a/A             - append new node + edge from last active (fwd/bwd)
-          c               - clear edges (within or incident to selection)
-          d               - delete selected nodes
-          D               - delete + reconnect predecessors to successors
-          o/O             - layout optimiser (free / restricted)
-          - / =           - optimize + shrink / grow spring target
-                            distance (session-wide multiplier)
-          g               - toggle grab-and-move
-
-        Style
-          F - copy style from selected node
-          f - paste style onto selected nodes
-
-        History
-          u / Ctrl+Z       - undo
-          U / Ctrl+Shift+Z - redo (Ctrl+R also works)
-    """.trimIndent()
-
-    val helpSelection = """
-        Selection & navigation
-        ======================
-
-        Mouse
-          Click node        - select (replaces current selection)
-          Ctrl + click node - toggle in / out of multi-selection
-          Ctrl + drag empty - rubber-band selection box
-
-        Keys
-          Ctrl+A      - select all / deselect all (toggle)
-          Escape      - clear selection
-          t/T         - add forward/backward reachable closure
-          l/L         - add one generation of neighbours
-          w/W         - remove the "oldest" generation of selection
-          Space       - edit text of last active node
-          Shift+Space - replace selection with last active, then edit
-
-        Filtering
-          i - invert selection (among visible nodes)
-          h - hide the selected nodes
-          H - unhide one level (undo the last h)
-              (use 'ih' = invert then hide to keep only selection)
-
-        Marks
-          ma..mz - save selection under mark a..z (session only)
-          mA..mZ - save selection under mark A..Z (persisted to file)
-          'a..'z - recall mark a..z
-          'A..'Z - recall mark A..Z
-
-        View
-          0 - fit view to all visible (or to selection)
-          1 - centre view on selection
-    """.trimIndent()
-
     val helpAttribution = """
         Created by Karel Tuček.
 
         Code is freely available at
         github.com/kareltucek/sane-graph-edit
-    """.trimIndent()
-
-    val helpFile = """
-        Files, tabs & clipboard
-        =======================
-
-        Files
-          :open        - open (file dialog)
-          Ctrl+O / Ctrl+I - jump back / forward (after gf etc.)
-          F5 / :e      - reload file from disk
-          gf / gF      - follow the node's file link (here / new tab)
-          g<letter>    - follow the node's link-<letter>
-          :browse      - file tree of the working dir (gf opens);
-                         its help node opens this help; also :tabnew
-          :cd <dir>    - switch the workspace (working dir + its tabs)
-          Ctrl+S       - save
-          Ctrl+Shift+S - save as
-          Ctrl+E       - export SVG
-          Ctrl+Shift+E - export selection as SVG
-
-        Tabs
-          Ctrl+N / Ctrl+T           - open file in new tab
-          Ctrl+W                    - close tab (prompt if dirty)
-          Ctrl+Tab / Ctrl+Shift+Tab - next / previous tab
-          Ctrl+PgDn / Ctrl+PgUp     - next / previous tab (alias)
-
-        Clipboard
-          Ctrl+C / Ctrl+X / Ctrl+V  - copy / cut / paste
-                                      (works across tabs)
     """.trimIndent()
 
     val helpTodo = """

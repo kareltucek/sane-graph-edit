@@ -96,11 +96,25 @@ class SvgWriterTest {
         val svg = SvgWriter.write(Graph.defaultGraph())
         assertTrue(svg.contains("<svg"))
         assertTrue(svg.contains("</svg>"))
-        // All 5 help nodes and the one that leads to the examples should be present.
+        // The hub, a node per category and the one that leads to the examples should be present.
         val nodeGroups = Regex("""<g class="node">""").findAll(svg).count()
-        assertEquals(6, nodeGroups)
-        // 5 edges (star from commands hub).
+        assertEquals(21, nodeGroups)
+        // a star from the hub
         val edgeLines = Regex("""<line """).findAll(svg).count()
-        assertEquals(5, edgeLines)
+        assertEquals(20, edgeLines)
+    }
+
+    @Test
+    fun `no two nodes of the help graph overlap`() {
+        val g = Graph.defaultGraph()
+        g.recompute(graph_tools.TextMeasurer.default)
+        val nodes = g.nodes.toList()
+        val overlapping = nodes.flatMap { a -> nodes.filter { b -> a.id < b.id && overlap(a, b) }.map { a.attributes.text.lines().first() to it.attributes.text.lines().first() } }
+        assertEquals(emptyList(), overlapping)    }
+
+    private fun overlap(a: graph_tools.Node, b: graph_tools.Node): Boolean {
+        val reach = (a.cache.shapeBounds + b.cache.shapeBounds) / 2.0
+        val apart = a.position - b.position
+        return kotlin.math.abs(apart.x) < reach.x && kotlin.math.abs(apart.y) < reach.y
     }
 }

@@ -99,7 +99,7 @@ object FileTree {
         }
         addSubtree(chain.last(), top.children, 1)
 
-        val help = Node(FileLink.HELP_TITLE, Vector2(0, 0)).also {
+        val help = Node(FileLink.HELP_NODE, Vector2(0, 0)).also {
             it.attributes.bg = helpColor
             it.attributes.other[FileLink.ATTRIBUTE] = FileLink.HELP
         }

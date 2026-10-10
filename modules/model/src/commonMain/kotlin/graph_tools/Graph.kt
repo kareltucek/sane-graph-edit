@@ -345,42 +345,48 @@ class Graph(
          * Holds the in-app keystroke and command reference, so a new
          * user can read it without having to find a manual.
          *
-         * Layout: a star with the commands node at the centre and the
-         * other four reference nodes around it (selection on top,
-         * files on the right, todo on the bottom, attribution on the
-         * left). Positions are generous because the text blocks are
-         * tall — anyone unhappy with the spacing can tap `o` to let
-         * the layout optimiser tidy it.
-         *
-         * Edit `Constants.helpCommands` / `helpSelection` / `helpFile`
-         * / `helpAttribution` / `helpTodo` to update the displayed
-         * text — this function just wires the five blocks together.
+         * Layout: one node per category ([utils.Help]) in a grid of
+         * rows around the hub, an edge from the hub to each. The
+         * texts are in `utils.Help` (and `Constants.helpTodo` /
+         * `helpAttribution`); this function only places them.
          */
         fun defaultGraph(): Graph {
             val g = Graph()
-            val commands = Node(Constants.helpCommands, Vector2(0, 0))
-            val selection = Node(Constants.helpSelection, Vector2(0, -550))
-            val files = Node(Constants.helpFile, Vector2(700, 0))
-            val todo = Node(Constants.helpTodo, Vector2(0, 600))
-            val attribution = Node(Constants.helpAttribution, Vector2(-700, 0))
-            g.add(commands)
-            g.add(selection)
-            g.add(files)
-            g.add(todo)
-            g.add(attribution)
-            g.add(Edge(commands, selection))
-            g.add(Edge(commands, files))
-            g.add(Edge(commands, todo))
-            g.add(Edge(commands, attribution))
+            val hub = Node(utils.Help.hub, Vector2(0, 0))
+            g.add(hub)
             // a client writes the examples out when it starts and knows where (`sge:examples`)
-            val examples = Node("examples\n(gf opens them)", Vector2(-700, 250)).also {
+            val examples = Node("examples\n(press gf)", Vector2(0, 0)).also {
                 it.attributes.bg = utils.Rgb(0xF6EFC4)
                 it.attributes.other["link"] = "sge:examples"
             }
+            val rows = utils.Help.run {
+                listOf(
+                    listOf(mouse, structure, selection, folding, view),
+                    listOf(marks, moving, null, text, depth),
+                    listOf(files, links, commandLine, tabs, sessions),
+                    listOf(style, history, macros, Constants.helpTodo, Constants.helpAttribution),
+                )
+            }
+            val placed = rows.mapIndexed { row, texts ->
+                texts.mapIndexed { column, text ->
+                    text?.let { Node(it, Vector2((column - 2) * helpColumn, (row - 1) * helpRow)).also(g::add) }
+                }
+            }
+            // the last row hangs on the one above it: an edge from the hub would cross that
+            placed.forEachIndexed { row, nodes ->
+                nodes.forEachIndexed { column, n ->
+                    if (n != null) g.add(Edge(placed.getOrNull(row - 1)?.get(column).takeIf { row == placed.lastIndex } ?: hub, n))
+                }
+            }
+            val last = placed.last().last()!!
+            examples.position = last.position + Vector2(0.0, 130.0)
             g.add(examples)
-            g.add(Edge(commands, examples))
+            g.add(Edge(last, examples))
             return g
         }
+
+        private const val helpColumn = 620.0
+        private const val helpRow = 520.0
     }
 }
 

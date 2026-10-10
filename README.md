@@ -140,16 +140,16 @@ batch operations:
 
 ```sh
 # Export a DOT file to SVG, no window, no user interaction
-sane-graph-edit input.dot -e ':export output.svg<Enter>'
+sane-graph-edit input.dot -e ':export svg output.svg<Enter>'
 
 # Recall a persistent mark (A-Z), then export just those nodes
-sane-graph-edit input.dot -e "'A" -e ':export-selection a.svg<Enter>'
+sane-graph-edit input.dot -e "'A" -e ':export-selection svg a.svg<Enter>'
 ```
 
 Flags:
 - `-e '<keys>'` — execute a key sequence and exit. Repeatable.
   The argument is whatever you'd type interactively:
-  `':export foo.svg<Enter>'`, `"'A"`, `'dih'`, anything.
+  `':export svg foo.svg<Enter>'`, `"'A"`, `'dih'`, anything.
 - `-u` — stay open with a window after running `-e`. Useful for
   pre-configuring a session.
 - `[file]` — positional arg: DOT file to load on startup.

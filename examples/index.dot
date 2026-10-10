@@ -4,7 +4,7 @@ digraph examples {
   simple [label="simple.dot\ntwo nodes and an edge"; pos="-300,150!"; link="simple.dot"; fillcolor="#F6EFC4"];
   marked [label="marked.dot\npersistent marks: 'A, 'B"; pos="0,150!"; link="marked.dot"; fillcolor="#F6EFC4"];
   cube [label="cube.dot\ndepth; :set 3d and the middle button turn it"; pos="350,150!"; link="cube.dot"; fillcolor="#F6EFC4"];
-  help [label="help\nkeys and commands"; pos="-300,-150!"; link="sge:help"; fillcolor="#F6EFC4"];
+  help [label="help\nkeys and commands\n(press gf)"; pos="-300,-150!"; link="sge:help"; fillcolor="#F6EFC4"];
   readme [label="README.md\nthe manual"; pos="0,-150!"; link="../README.md:1-9999"; fillcolor="#F6EFC4"];
   format [label="file-format.md\nwhat a file holds"; pos="300,-150!"; link="../docs/file-format.md:1-9999"; fillcolor="#F6EFC4"];
   index -> simple;
