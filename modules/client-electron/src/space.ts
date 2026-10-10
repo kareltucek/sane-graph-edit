@@ -491,6 +491,24 @@ export class SpaceRenderer<N extends SpaceNode> {
         return pending;
     }
 
+    /**
+     * What is kept, for the nodes [ids]: how many of them have a
+     * picture of their own and how many bytes those take on the
+     * graphics card; how many have one in the atlas, how many pages
+     * that has, and how many bytes they take, here and there together.
+     */
+    stats(ids: string[]): { own: number; ownBytes: number; atlas: number; pages: number; atlasBytes: number } {
+        const own = ids.map((id) => this.kept.get(id)).filter((it) => it !== undefined);
+        return {
+            own: own.length,
+            ownBytes: own.reduce((sum, it) => sum + it.pixelWidth * it.pixelHeight * 4, 0),
+            atlas: ids.filter((id) => this.slots.has(id)).length,
+            pages: this.pages.length,
+            // the page's own canvas, and the same with its smaller copies (a third more) on the graphics card
+            atlasBytes: Math.round(this.pages.length * PAGE * PAGE * 4 * (1 + 4 / 3)),
+        };
+    }
+
     /** Put [picture], which is of [n] and of what [key] tells, on a page of the atlas: where [old] is if it has the same size, else in a new place. */
     private put(n: N, key: string, picture: NodePicture, old: Slot | undefined): Slot {
         const width = picture.image.width;

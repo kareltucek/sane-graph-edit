@@ -17,6 +17,8 @@ private fun keyMapper(page: dynamic): KeyMapper {
     FilePicker.runner = NodeShellRunner
     val mapper = KeyMapper(KeyMapper.defaultBindings(), JsScheduler, defaultMappings = KeyMapper.defaultKeyMappings())
     PAGE_SETTINGS.forEach { name -> mapper.applicationSettings[name] = { value -> page.setting(name, value) } }
+    // the page's own: how much memory the pictures it keeps take
+    CommandRegistry.register("cache") { it.shell.message(page.cacheStats() as String) }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
     mapper.commandNames = { CommandRegistry.list() }
     mapper.markSetter = { view, letter, change -> Actions.setMark(view, letter, change) }
@@ -173,6 +175,7 @@ class JsApp internal constructor(private val client: EditorClient, private val m
  * [page] is an object with what the client asks of the page:
  * `repaint()` — the picture is out of date;
  * `tabs()` — the strip of tabs or the view to show changed ([JsApp.tabs], [JsApp.current]);
+ * `cacheStats()` — as text of several lines: how much memory the pictures the page keeps take (`:cache`);
  * `editNode(id, atClick, x, y)` — let the user edit the node's text, with the caret at the view position x, y if `atClick`;
  * `endEdit()` — close that editor;
  * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`;

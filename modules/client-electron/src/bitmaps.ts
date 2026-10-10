@@ -52,6 +52,16 @@ export class Bitmaps {
     private pixels = 0;
     private frame = 0;
 
+    /** Whether a drawing is kept as [key]. */
+    has(key: string): boolean {
+        return this.kept.has(key);
+    }
+
+    /** How many drawings are kept, how many bytes they take, and how many they may take. */
+    get stats(): { drawings: number; bytes: number; limit: number } {
+        return { drawings: this.kept.size, bytes: this.pixels * 4, limit: MAX_PIXELS * 4 };
+    }
+
     /** A new drawing of the view begins: what it uses is not let go of before the next one. */
     nextFrame() {
         this.frame++;

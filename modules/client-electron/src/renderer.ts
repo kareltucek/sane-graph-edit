@@ -678,6 +678,37 @@ function endEdit(view: client.JsView) {
     }
 }
 
+/** The nodes of the graph as it was last drawn with depth. */
+let lastSpaceIds: string[] = [];
+
+/**
+ * What `:cache` tells: for each kind of picture that is kept, how
+ * much memory it takes and how many of the nodes of the graph shown
+ * have one. [threeD]: the graph is drawn with depth now.
+ */
+function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
+    const megabytes = (bytes: number) => `${(bytes / 2 ** 20).toFixed(1)} MB`;
+    const share = (count: number, of: number) => `${count} of ${of} nodes (${of === 0 ? 0 : Math.round(100 * count / of)} %)`;
+    const nodes = lastScene?.nodes ?? [];
+    // a node's drawing is kept by what it shows, as [drawContent] names it
+    const drawn = nodes.filter((n) => {
+        const picture = pictureOf(n);
+        const content = picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n));
+        return bitmaps.has(`${content.key}\n${content.width} ${content.height}`);
+    }).length;
+    const flat = bitmaps.stats;
+    const space = spaceRenderer?.stats(lastSpaceIds) ?? null;
+    return [
+        `Pictures kept (the graph shown is drawn ${threeD ? "with depth, 3D" : "flat, 2D"}):`,
+        "",
+        `2D drawings   ${megabytes(flat.bytes)} of at most ${megabytes(flat.limit)}, ${flat.drawings} drawings   ${share(drawn, nodes.length)}`,
+        ...(space === null ? ["3D            nothing yet: no graph was drawn with depth"] : [
+            `3D pictures   ${megabytes(space.ownBytes)}   ${share(space.own, lastSpaceIds.length)}`,
+            `3D atlas      ${megabytes(space.atlasBytes)} in ${space.pages} pages   ${share(space.atlas, lastSpaceIds.length)}`,
+        ]),
+    ].join("\n");
+}
+
 /** The editor that is being closed has not told its text yet; no other is opened meanwhile. */
 let closing: Promise<void> | null = null;
 
@@ -727,6 +758,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         spaceRenderer ??= new SpaceRenderer(spaceCanvas);
         const t0 = performance.now();
         const spaceNow = view.space() as SpaceScene<SpaceSceneNode>;
+        lastSpaceIds = spaceNow.nodes.map((n) => n.id);
         const t1 = performance.now();
         const pending = spaceRenderer.draw(
             spaceNow, width, height, canvas.width, canvas.height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
@@ -817,6 +849,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.editNode = (id, atClick, x, y) => current((view) => editNode(view, grid, id, atClick ? { x, y } : null));
     page.endEdit = () => current((view) => endEdit(view));
     page.tabs = () => showTabs(app);
+    page.cacheStats = () => cacheStats(grid, app.current()?.threeD ?? false);
     window.addEventListener("resize", repaint);
     // also when the screen's pixel density changes: the window moved to another screen, or the setting was changed
     new ResizeObserver((entries) => {
@@ -996,12 +1029,14 @@ const page: {
     showPicker: (x: number, y: number) => void;
     hidePicker: () => void;
     tabs: () => void;
+    cacheStats: () => string;
     confirm: (title: string, question: string) => boolean;
     choose: (kind: string, name: string) => string | null;
     exit: () => void;
     status: (text: string) => void;
 } = {
     repaint: () => {},
+    cacheStats: () => "",
     editNode: () => {},
     endEdit: () => {},
     setting: (name, value) => {
