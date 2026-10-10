@@ -63,9 +63,10 @@ object FileLink {
 
     /**
      * Resolve a link value. `<path>:<nodeid>` names a node when the
-     * part after the last `:` is non-empty and has no `/`, and the
-     * whole value isn't itself an existing path. An empty `<path>`
-     * means the graph the link is in.
+     * part after the last `:` is non-empty and has no `/`; likewise
+     * `<path>#<section>`. So a file whose name has a `:` or a `#` in
+     * it cannot be linked to, and nothing is asked of the file system
+     * to tell. An empty `<path>` means the graph the link is in.
      */
     fun resolve(link: String, containingFile: Path?): Target =
         resolveIn(link, containingFile?.toAbsolutePath()?.getParent() ?: Workspace.dir)
@@ -75,9 +76,9 @@ object FileLink {
         val whole = resolvePath(link, baseDir)
         val colon = link.lastIndexOf(':')
         val nodeId = link.substring(colon + 1).takeIf { colon >= 0 && it.isNotEmpty() && '/' !in it }
-        val split = nodeId != null && !Fs.exists(whole)
+        val split = nodeId != null
         val hash = link.lastIndexOf('#')
-        val section = link.substring(hash + 1).takeIf { hash > 0 && it.isNotEmpty() && '/' !in it && !Fs.exists(whole) }
+        val section = link.substring(hash + 1).takeIf { hash > 0 && it.isNotEmpty() && '/' !in it }
         val pathPart = link.substring(0, colon.coerceAtLeast(0))
         // in a DOT file a number is a node id; in any other file it's a line (range)
         val lines = nodeId

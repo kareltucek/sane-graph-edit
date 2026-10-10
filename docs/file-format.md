@@ -120,9 +120,10 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     against the directory of the file that contains the node (for an
     unsaved tab: the editor's working directory). `~/` is the home
     directory. No URLs.
-  - `:<nodeid>` (the part after the last `:`, when it is non-empty,
-    has no `/`, and the whole value isn't an existing path): after
-    opening, that node (by its DOT id) is selected and centred.
+  - `:<nodeid>` (the part after the last `:`, when it is non-empty
+    and has no `/`): after opening, that node (by its DOT id) is
+    selected and centred. **A file name must not contain `:` or
+    `#`**: they always start what follows the path.
   - An empty `<path>` (`:n5`) means the graph the link is in; so does
     a path to the file that's already open in the tab. Nothing is
     reloaded then, the node is just focused.

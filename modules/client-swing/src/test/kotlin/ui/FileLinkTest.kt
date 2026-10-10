@@ -37,11 +37,13 @@ class FileLinkTest {
     }
 
     @Test
-    fun `an existing file with a colon in its name is not split`() {
+    fun `a file with a colon or a hash in its name cannot be linked to, even when there is one`() {
         val dir = Files.createTempDirectory("links")
         dir.resolve("a:b.dot").writeText("digraph g {}")
+        dir.resolve("a#b.md").writeText("# b\n")
         val inDir = dir.resolve("main.dot")
-        assertEquals(FileLink.Target(dir.resolve("a:b.dot"), null), FileLink.resolve("a:b.dot", inDir))
+        assertEquals(FileLink.Target(dir.resolve("a"), "b.dot"), FileLink.resolve("a:b.dot", inDir))
+        assertEquals("b.md", FileLink.resolve("a#b.md", inDir).section)
     }
 
     @Test
