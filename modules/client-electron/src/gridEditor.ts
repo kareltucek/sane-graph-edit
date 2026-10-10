@@ -679,6 +679,11 @@ export class GridEditor {
         return notation !== null;
     }
 
+    /** The wheel turned over the cell in [row], [column]: neovim scrolls the text. */
+    wheel(direction: "up" | "down", row: number, column: number) {
+        this.nvim.then((nvim) => nvim.inputMouse("wheel", direction, "", 0, row, column)).catch(() => {});
+    }
+
     /** A mouse button went down, moved or came up over the cell in [row], [column]: `press`, `drag` or `release`. */
     mouse(action: "press" | "drag" | "release", row: number, column: number) {
         this.nvim.then((nvim) => nvim.inputMouse("left", action, "", 0, row, column)).catch(() => {});

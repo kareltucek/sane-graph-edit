@@ -736,7 +736,11 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     const y = (e: MouseEvent) => e.clientY - canvas.getBoundingClientRect().top;
     canvas.addEventListener("wheel", (e) => {
         e.preventDefault();
-        current((view) => view.wheel(x(e), y(e), e.deltaY));
+        // while a node is edited the wheel is neovim's, wherever the pointer is: it scrolls the text, not the graph
+        if (editing?.editor instanceof GridEditor) {
+            const cell = editorCellAt(x(e), y(e), grid) ?? { row: 0, column: 0 };
+            if (e.deltaY !== 0) editing.editor.wheel(e.deltaY < 0 ? "up" : "down", cell.row, cell.column);
+        } else current((view) => view.wheel(x(e), y(e), e.deltaY));
     }, { passive: false });
     // The left button inside the node being edited is neovim's (it places the cursor, a drag selects), from the press to the release.
     let inEditor = false;

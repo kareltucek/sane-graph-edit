@@ -195,10 +195,12 @@ class JsView internal constructor(
             j.id = n.id
             j.x = n.position.x
             j.y = n.position.y
-            j.width = n.shapeBounds.x
-            j.height = n.shapeBounds.y
-            j.textWidth = n.textBounds.x
-            j.textHeight = n.textBounds.y
+            val shape = if (n.id == view.editing?.id) edited(n.shapeBounds, n.scale) else n.shapeBounds
+            val text = (n.textBounds - (n.shapeBounds - shape)).max(Vector2.Zero)
+            j.width = shape.x
+            j.height = shape.y
+            j.textWidth = text.x
+            j.textHeight = text.y
             j.lines = n.lines.toTypedArray()
             j.shape = n.shape
             val (bg, fg) = ColorStyle.PickerSet.shown(n.bg, n.fg, dark)
@@ -248,7 +250,22 @@ class JsView internal constructor(
     fun nodeText(id: String): String? = view.g.node(id)?.attributes?.text
 
     /** The renderer opened its editor on the node [id]. */
-    fun textEditStarted(id: String) = view.textEditStarted(id)
+    fun textEditStarted(id: String) {
+        view.textEditStarted(id)
+        // all of the node as it is shown while it is edited is in the view, a margin around it
+        view.g.node(id)?.let { n -> view.apparent(n)?.let { n to it } }?.let { (n, how) ->
+            val half = edited(n.cache.shapeBounds, how.scale) * (view.viewTransform.scale * how.scale / 2)
+            val at = view.viewTransform.toScreen(how.position)
+            val low = Vector2(EDIT_MARGIN, EDIT_MARGIN) + half
+            val high = view.size - low
+            val to = Vector2(at.x.coerceIn(low.x, maxOf(low.x, high.x)), at.y.coerceIn(low.y, maxOf(low.y, high.y)))
+            view.viewTransform.translate((to - at) / view.viewTransform.scale)
+        }
+    }
+
+    /** How big a node of [size] that is being edited is shown: no bigger than the view less a margin. Beyond that the editor scrolls. */
+    private fun edited(size: Vector2, depthScale: Double): Vector2 =
+        size.min(((view.size - Vector2(2 * EDIT_MARGIN, 2 * EDIT_MARGIN)) / (view.viewTransform.scale * depthScale)).max(Vector2(1.0, 1.0)))
 
     /** The editor now holds [text]: the node shows it. */
     fun textTyped(text: String) {
@@ -324,6 +341,9 @@ class JsView internal constructor(
     private companion object {
         /** A wheel notch is about 100 pixels in a DOM event and 3 units for the gesture code. */
         const val WHEEL_PIXELS_PER_STEP = 100.0 / 3
+
+        /** Pixels of the view left free around the node that is being edited. */
+        const val EDIT_MARGIN = 40.0
 
         val modifierKeys = setOf("Shift", "Control", "Alt", "Meta", "AltGraph")
         val lineOpeners = setOf(":", "/", "?")

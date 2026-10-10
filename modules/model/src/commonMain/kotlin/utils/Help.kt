@@ -1,10 +1,30 @@
 package utils
 
 /**
- * The texts of the help graph ([Graph.defaultGraph]), in markdown: a
- * cheatsheet, not the manual. [start] is where a reader begins;
- * [topics] is the tree around it: a category, the keys of it, and
- * under that what is more special.
+ * The texts of the help graph ([Graph.defaultGraph]), in markdown.
+ * [start] is where a reader begins; [topics] is the tree around it.
+ *
+ * How the help graph is meant to look (Karel, 2026-10-10):
+ *
+ * - It is a cheatsheet, not documentation: a key and a few words per
+ *   line, no explanations. Keys that do similar things share a line
+ *   (`d` / `D` — delete / delete + reconnect). What needs sentences
+ *   belongs in the README.
+ * - A tree, drawn as a star with its root in the middle; not a grid.
+ *   The root is "Quick start": the first thing a new user needs and
+ *   no more. Its children, and theirs, get gradually more detailed.
+ * - Around the root one small coloured node per category, naming it;
+ *   the text of the category hangs on that, further out, and what is
+ *   more special hangs on the text (marks on selection; modes and
+ *   options on the command line).
+ * - Every text node is markdown and starts with its own headline.
+ * - Arguments are named, and what they can be is listed:
+ *   `zf{motion}`, then `{motion}` — `t` / `T` / `l` / `L`.
+ * - All the variants of a key are listed, never "and so on":
+ *   `zi` / `zI`, `zo` / `zO`.
+ * - A node that leads somewhere says how: "(press gf)".
+ * - A new key or command gets a line in the node of its category; a
+ *   new category gets a coloured node and a headline of its own.
  */
 object Help {
     val start = """
