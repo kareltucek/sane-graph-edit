@@ -5,6 +5,10 @@
 // Off unless asked for (`--vr <port>`). It answers on this machine only (127.0.0.1) and only to who knows the token in the
 // address: the headset reaches it through its USB cable (`adb reverse`), which also makes the address `localhost` there,
 // as a browser demands of a page that wants to be immersive. Nothing is opened to the network.
+//
+// Only when that is asked for too (`--vr-lan`) does it answer on the local network instead, for a headset on the same Wi-Fi
+// without a cable: on the address of one network interface, over TLS (a page that is not from `localhost` must be, to be
+// immersive) with a certificate it makes for itself, which the headset's browser warns about once. The token is still needed.
 
 import type { IncomingMessage, Server, ServerResponse } from "http";
 import type { WebSocket } from "ws";
@@ -63,21 +67,82 @@ const FILES: { [path: string]: { file: string; type: string; open?: boolean } } 
 };
 
 /**
- * Start answering at [port] of this machine (0: any free one) for
- * headsets that know [token]. [told] gets the address to open in the
- * headset once the server listens, or what went wrong.
+ * The address of this machine on the local network: of the first
+ * interface that has one of the private kind (192.168…, 10…,
+ * 172.16–31…). Null when there is none.
  */
-export function startVr(port: number, token: string, source: VrSource, told: (address: string | null, error: string | null) => void) {
-    // loaded here, not bundled: Node's own, and a module of Node's kind
-    const http: typeof import("http") = require("http");
+function lanAddress(): string | null {
+    const os: typeof import("os") = require("os");
+    const all = Object.values(os.networkInterfaces()).flatMap((it) => it ?? []).filter((it) => it.family === "IPv4" && !it.internal).map((it) => it.address);
+    return all.find((it) => /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(it)) ?? null;
+}
+
+/**
+ * A key and a certificate for TLS, made once with `openssl` and kept
+ * with the application's configuration (the key readable by the user
+ * only); made anew when missing or past its year. Nobody vouches for
+ * the certificate: a browser warns before it goes on.
+ */
+function certificate(): { key: Buffer; cert: Buffer } {
     const fs: typeof import("fs") = require("fs");
     const path: typeof import("path") = require("path");
+    const os: typeof import("os") = require("os");
+    const { execFileSync }: typeof import("child_process") = require("child_process");
+    const directory = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "sane-graph-edit");
+    const key = path.join(directory, "vr-key.pem");
+    const cert = path.join(directory, "vr-cert.pem");
+    const valid = () => {
+        try {
+            execFileSync("openssl", ["x509", "-checkend", "86400", "-noout", "-in", cert], { stdio: "ignore" });
+            return fs.existsSync(key);
+        } catch {
+            return false;
+        }
+    };
+    if (!valid()) {
+        fs.mkdirSync(directory, { recursive: true });
+        execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "365", "-subj", "/CN=sane-graph-edit"], { stdio: "ignore" });
+        fs.chmodSync(key, 0o600);
+    }
+    return { key: fs.readFileSync(key), cert: fs.readFileSync(cert) };
+}
+
+/**
+ * Start answering at [port] (0: any free one) for headsets that know
+ * [token]: on this machine only, or with [lan] on the local network,
+ * over TLS. [told] gets the address to open in the headset once the
+ * server listens, or what went wrong.
+ */
+export function startVr(port: number, token: string, lan: boolean, source: VrSource, told: (address: string | null, error: string | null) => void) {
+    // loaded here, not bundled: Node's own, and a module of Node's kind
+    const http: typeof import("http") = require("http");
+    const https: typeof import("https") = require("https");
+    const fs: typeof import("fs") = require("fs");
+    const path: typeof import("path") = require("path");
+    const crypto: typeof import("crypto") = require("crypto");
     const { WebSocketServer }: typeof import("ws") = require("ws");
 
-    /** Whether who asks knows the token: it is in the address, as `?token=`. */
-    const knows = (request: IncomingMessage) => new URL(request.url ?? "/", "http://localhost").searchParams.get("token") === token;
+    /** Whether who asks knows the token: it is in the address, as `?token=`. Compared in a time that tells nothing of how much of it was right. */
+    const knows = (request: IncomingMessage) => {
+        const given = Buffer.from(new URL(request.url ?? "/", "http://localhost").searchParams.get("token") ?? "");
+        const wanted = Buffer.from(token);
+        return given.length === wanted.length && crypto.timingSafeEqual(given, wanted);
+    };
 
-    const server: Server = http.createServer((request: IncomingMessage, response: ServerResponse) => {
+    const host = lan ? lanAddress() : "127.0.0.1";
+    if (host === null) {
+        told(null, "this machine has no address on a local network");
+        return;
+    }
+    let secured: { key: Buffer; cert: Buffer } | null = null;
+    try {
+        secured = lan ? certificate() : null;
+    } catch (error) {
+        told(null, `could not make a certificate (is openssl there?): ${error}`);
+        return;
+    }
+
+    const answer = (request: IncomingMessage, response: ServerResponse) => {
         const asked = FILES[new URL(request.url ?? "/", "http://localhost").pathname];
         if (request.method !== "GET" || asked === undefined) {
             response.writeHead(404).end();
@@ -88,7 +153,8 @@ export function startVr(port: number, token: string, source: VrSource, told: (ad
             response.writeHead(200, { "Content-Type": asked.type, "Cache-Control": "no-store" });
             response.end(fs.readFileSync(path.join(__dirname, asked.file)));
         }
-    });
+    };
+    const server: Server = secured === null ? http.createServer(answer) : https.createServer(secured, answer);
 
     /** Each headset, with what it was last sent: the scene as text, and the version of each page. */
     const headsets = new Map<WebSocket, { scene: string; pages: number[]; sending: boolean }>();
@@ -134,9 +200,10 @@ export function startVr(port: number, token: string, source: VrSource, told: (ad
     }, TICK_MS);
 
     server.on("error", (error: Error) => told(null, error.message));
-    // this machine only
-    server.listen(port, "127.0.0.1", () => {
+    // this machine only, or the one address of it on the local network: never all of its interfaces
+    server.listen(port, host, () => {
         const at = server.address();
-        told(typeof at === "object" && at !== null ? `http://localhost:${at.port}/?token=${token}` : null, null);
+        const where = lan ? `https://${host}` : "http://localhost";
+        told(typeof at === "object" && at !== null ? `${where}:${at.port}/?token=${token}` : null, null);
     });
 }

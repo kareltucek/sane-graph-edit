@@ -990,11 +990,16 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     const vr = query.get("vr");
     if (vr !== null) {
         const token: string = require("crypto").randomBytes(16).toString("hex");
-        startVr(Number(vr) || 0, token, { scene: () => vrScene(app.current(), grid), pages: () => spaceRenderer?.atlas ?? [] }, (address, error) => {
+        // `--vr-lan` too: on the local network, for a headset without a cable
+        const lan = query.get("vrLan") !== null;
+        startVr(Number(vr) || 0, token, lan, { scene: () => vrScene(app.current(), grid), pages: () => spaceRenderer?.atlas ?? [] }, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
-                : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\nand open in the headset's browser\n    ${address}`;
+                : lan
+                    ? `VR: answering on the local network. With the headset on the same Wi-Fi, open in its browser\n    ${address}\n` +
+                        "and go on past its warning about the certificate (this machine made it for itself)."
+                    : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\nand open in the headset's browser\n    ${address}`;
             // where the application was started from, and in the window
             process.stdout.write(`sane-graph-edit: ${text}\n`);
             showMessage(text);

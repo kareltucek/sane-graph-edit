@@ -497,6 +497,15 @@ It is off unless asked for, answers on this machine only and only
 to who knows the token in the address; the cable is what lets the
 headset reach it, and nothing is opened to the network.
 
+Without a cable: `--vr 8765 --vr-lan` answers on the local network
+instead, for a headset on the same Wi-Fi. This does open a port to
+that network: on the one address this machine has there, over TLS
+(`https://192.168.…:8765/?token=…`, as it prints), and still only to
+who knows the token. The certificate is one the application makes
+for itself with `openssl` and keeps in its configuration directory
+(`vr-cert.pem`, `vr-key.pem`), so the headset's browser warns about
+it once and has to be told to go on.
+
 ### Session persistence
 
 The set of open file-backed tabs is persisted per workspace to

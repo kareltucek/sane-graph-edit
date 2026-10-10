@@ -142,7 +142,8 @@ const offset = new THREE.Vector3();
 
 function connect() {
     const address = new URL(window.location.href);
-    address.protocol = "ws:";
+    // over TLS when the page came so
+    address.protocol = address.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(address);
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
