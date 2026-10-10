@@ -4,7 +4,8 @@ import graph_tools.Node
 
 /**
  * Node links (see docs/file-format.md): `link-<letter>` attributes
- * holding `<path>` or `<path>:<nodeid>`, followed with `g<letter>`.
+ * holding `<path>`, `<path>:<nodeid>`, `<path>:<lines>` or
+ * `<path>#<section>`, followed with `g<letter>`.
  * Plain `link` is an alias for `link-f` (`gf`).
  */
 object FileLink {
@@ -20,6 +21,8 @@ object FileLink {
         val lines: Lines? = null,
         /** The built-in help graph ([HELP]). */
         val help: Boolean = false,
+        /** `<file>#<section>`: the section [lines] are of ([Sections]); with no [lines], the file has no such section. */
+        val section: String? = null,
     )
 
     /** Link value of the built-in help graph (`Graph.defaultGraph`). */
@@ -73,6 +76,8 @@ object FileLink {
         val colon = link.lastIndexOf(':')
         val nodeId = link.substring(colon + 1).takeIf { colon >= 0 && it.isNotEmpty() && '/' !in it }
         val split = nodeId != null && !Fs.exists(whole)
+        val hash = link.lastIndexOf('#')
+        val section = link.substring(hash + 1).takeIf { hash > 0 && it.isNotEmpty() && '/' !in it && !Fs.exists(whole) }
         val pathPart = link.substring(0, colon.coerceAtLeast(0))
         // in a DOT file a number is a node id; in any other file it's a line (range)
         val lines = nodeId
@@ -82,6 +87,7 @@ object FileLink {
         return when {
             link == HELP -> Target(null, null, help = true)
             link == EXAMPLES -> Target(HelpFiles.index, null)
+            section != null -> resolvePath(link.substring(0, hash), baseDir).let { Target(it, null, Sections.find(it, section), section = section) }
             !split -> Target(whole, null)
             pathPart.isEmpty() -> Target(null, nodeId)
             lines != null -> Target(resolvePath(pathPart, baseDir), null, lines)

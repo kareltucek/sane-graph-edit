@@ -133,6 +133,14 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     one-line range), plus grey context nodes with up to 500 lines
     before and after it, attached above and below. (In a `.dot` file a
     number is a node id.)
+  - **A section of a markdown file**: `<path>#<heading>` —
+    `README.md#Depth` — is the lines from that heading to the next
+    one of its level or above, so the link stays right when the file
+    changes above it. The heading that is `<heading>` is taken, else
+    the first that starts with it, else the first that has it; letter
+    case does not matter.
+  - `sge:help` is the built-in help, `sge:examples` the index of the
+    examples the application writes out when it starts.
 - Following, with exactly one node selected:
   - `g<letter>` follows `link-<letter>` in the current tab (asking
     first if it has unsaved changes) — **unless `g<letter>` is mapped

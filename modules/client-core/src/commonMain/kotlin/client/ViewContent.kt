@@ -428,6 +428,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 jumps.record(from)
                 showHelpInPlace()
             }
+            target.section != null && lines == null -> shell.message("no section `${target.section}` in ${path?.name}")
             path != null && lines != null -> if (confirmDiscard("open ${path.name}:$lines")) {
                 if (showSourceInPlace(path, lines)) jumps.record(from)
             }
@@ -460,6 +461,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             path == null -> {
                 jumps.record(currentLocation())
                 focusNode(target.nodeId)
+                null
+            }
+            target.section != null && lines == null -> {
+                shell.message("no section `${target.section}` in ${path.name}")
                 null
             }
             lines != null -> shell.newTab()?.takeIf { it.content.showSourceInPlace(path, lines) }
