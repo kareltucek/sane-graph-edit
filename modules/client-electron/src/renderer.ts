@@ -706,11 +706,10 @@ function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
     }).length;
     const flat = bitmaps.stats;
     const space = spaceRenderer?.stats(lastSpaceIds) ?? null;
-    // 2D cache: the text of a node as 2D mode draws it, the only one with a limit. 3D closeup nodes: those seen at more than half
-    // their size, drawn at the size they are seen at. 3D node cache: every node at its size at zoom 1, which is kept on the
-    // pages of the texture atlas, here (RAM) and on the graphics card (VRAM).
+    // 2D cache: the text of a node as 2D mode draws it. 3D closeup nodes: those seen at more than half their size, drawn at the
+    // size they are seen at. 3D node cache: every node at its size at zoom 1, which is kept on the pages of the texture atlas,
+    // here (RAM) and on the graphics card (VRAM). None of them has a limit.
     return [
-        `cache limit: ${megabytes(flat.limit).trim()}${videoMemory === null ? "" : ` (half of ${megabytes(videoMemory).trim()} VRAM)`}, 2d cache only`,
         `drawing now: ${threeD ? "3d" : "2d"}`,
         "",
         line("2d cache", flat.bytes, drawn, nodes.length),
@@ -724,41 +723,6 @@ function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
             `    ${space.pages} pages`,
         ]),
     ].join("\n");
-}
-
-/** How much memory the graphics card that draws the page has, in bytes; null while or when that cannot be told. */
-let videoMemory: number | null = null;
-
-/**
- * Find out [videoMemory] and let the 2D cache have half of it. The
- * page cannot ask the browser: it is asked of the card's driver, the
- * one WebGL says is drawing (NVIDIA: its tool; AMD: the kernel's
- * file). A card that shares the machine's memory (Intel) has no such
- * number, and the limit stays what it was.
- */
-function findVideoMemory() {
-    const probe = document.createElement("canvas").getContext("webgl");
-    const info = probe?.getExtension("WEBGL_debug_renderer_info");
-    const card = info ? String(probe!.getParameter(info.UNMASKED_RENDERER_WEBGL)) : "";
-    const found = (megabytes: number) => {
-        if (megabytes > 0) {
-            videoMemory = megabytes * 2 ** 20;
-            bitmaps.limit = videoMemory / 2;
-        }
-    };
-    if (/nvidia/i.test(card)) {
-        require("child_process").execFile("nvidia-smi", ["--query-gpu=memory.total", "--format=csv,noheader,nounits"], { timeout: 3000 },
-            (error: Error | null, out: string) => {
-                if (error === null) found(Math.max(0, ...out.split("\n").map((l) => Number(l.trim()) || 0)));
-            });
-    } else if (/amd|radeon/i.test(card)) {
-        const fs: typeof import("fs") = require("fs");
-        const sizes = fs.readdirSync("/sys/class/drm")
-            .map((name) => `/sys/class/drm/${name}/device/mem_info_vram_total`)
-            .filter((file) => fs.existsSync(file))
-            .map((file) => Number(fs.readFileSync(file, "utf8").trim()) / 2 ** 20);
-        found(Math.max(0, ...sizes));
-    }
 }
 
 /** The editor that is being closed has not told its text yet; no other is opened meanwhile. */
@@ -805,7 +769,6 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     ctx.lineWidth = 1;
     // a kept drawing shown smaller is averaged, not sampled
     ctx.imageSmoothingQuality = "high";
-    bitmaps.nextFrame();
     if (threeD) {
         spaceRenderer ??= new SpaceRenderer(spaceCanvas, () => page.repaint());
         const t0 = performance.now();
@@ -902,7 +865,6 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.endEdit = () => current((view) => endEdit(view));
     page.tabs = () => showTabs(app);
     page.cacheStats = () => cacheStats(grid, app.current()?.threeD ?? false);
-    findVideoMemory();
     window.addEventListener("resize", repaint);
     // also when the screen's pixel density changes: the window moved to another screen, or the setting was changed
     new ResizeObserver((entries) => {

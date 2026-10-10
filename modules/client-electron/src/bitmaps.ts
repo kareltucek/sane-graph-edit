@@ -40,38 +40,22 @@ export class Recent<V> {
     }
 }
 
-/** All kept drawings together hold at most this many pixels (four bytes each), unless the page knows better ([Bitmaps.limit]). */
-const MAX_PIXELS = 64e6;
-
 /** A drawing of more pixels than this is kept at a lower scale. */
 const MAX_BITMAP_PIXELS = 4e6;
 
 export class Bitmaps {
-    /** By what they are drawings of; the one used longest ago first. */
-    private readonly kept = new Map<string, { bitmap: Bitmap; pixels: number; frame: number }>();
+    /** By what they are drawings of. All are kept, however many: there is no limit. */
+    private readonly kept = new Map<string, { bitmap: Bitmap; pixels: number }>();
     private pixels = 0;
-    private frame = 0;
-
-    private maxPixels = MAX_PIXELS;
-
-    /** Keep at most [bytes] of drawings from now on. */
-    set limit(bytes: number) {
-        this.maxPixels = bytes / 4;
-    }
 
     /** Whether a drawing is kept as [key]. */
     has(key: string): boolean {
         return this.kept.has(key);
     }
 
-    /** How many drawings are kept, how many bytes they take, and how many they may take. */
-    get stats(): { drawings: number; bytes: number; limit: number } {
-        return { drawings: this.kept.size, bytes: this.pixels * 4, limit: this.maxPixels * 4 };
-    }
-
-    /** A new drawing of the view begins: what it uses is not let go of before the next one. */
-    nextFrame() {
-        this.frame++;
+    /** How many drawings are kept and how many bytes they take. */
+    get stats(): { drawings: number; bytes: number } {
+        return { drawings: this.kept.size, bytes: this.pixels * 4 };
     }
 
     /** The scale a drawing of [width] by [height] units is kept at, when [native] is what it would be unless that is too big. */
@@ -82,43 +66,27 @@ export class Bitmaps {
     /**
      * The drawing kept as [key], at [scale] or finer. One that is
      * not there is made: [draw] draws [width] by [height] units
-     * from 0, 0, at [scale] pixels each. Null when there is no room
-     * for it, all that is kept being in use in this drawing of the
-     * view.
+     * from 0, 0, at [scale] pixels each.
      */
-    get(key: string, width: number, height: number, scale: number, draw: (ctx: OffscreenCanvasRenderingContext2D) => void): Bitmap | null {
+    get(key: string, width: number, height: number, scale: number, draw: (ctx: OffscreenCanvasRenderingContext2D) => void): Bitmap {
         const found = this.kept.get(key);
-        // one that is finer than asked for does as well
-        if (found !== undefined && found.bitmap.scale >= scale) {
-            // last used, last let go of
-            this.kept.delete(key);
-            this.kept.set(key, { ...found, frame: this.frame });
-            return found.bitmap;
-        }
-        if (found !== undefined) this.drop(key);
+        // one that is finer than asked for does as well; a coarser one is replaced
+        const fits = found !== undefined && found.bitmap.scale >= scale;
+        if (found !== undefined && !fits) this.drop(key);
+        return fits ? found.bitmap : this.make(key, width, height, scale, draw);
+    }
+
+    private make(key: string, width: number, height: number, scale: number, draw: (ctx: OffscreenCanvasRenderingContext2D) => void): Bitmap {
         const pixelWidth = Math.max(1, Math.ceil(width * scale));
         const pixelHeight = Math.max(1, Math.ceil(height * scale));
-        const pixels = pixelWidth * pixelHeight;
-        if (!this.makeRoom(pixels)) return null;
         const canvas = new OffscreenCanvas(pixelWidth, pixelHeight);
         const ctx = canvas.getContext("2d")!;
         ctx.scale(scale, scale);
         draw(ctx);
         const bitmap = { image: canvas.transferToImageBitmap(), scale };
-        this.kept.set(key, { bitmap, pixels, frame: this.frame });
-        this.pixels += pixels;
+        this.kept.set(key, { bitmap, pixels: pixelWidth * pixelHeight });
+        this.pixels += pixelWidth * pixelHeight;
         return bitmap;
-    }
-
-    /** Let go of the drawings used longest ago until [pixels] more fit; false if they cannot. */
-    private makeRoom(pixels: number): boolean {
-        let stuck = false;
-        while (this.pixels + pixels > this.maxPixels && !stuck) {
-            const oldest = this.kept.entries().next().value;
-            stuck = oldest === undefined || oldest[1].frame === this.frame;
-            if (oldest !== undefined && !stuck) this.drop(oldest[0]);
-        }
-        return this.pixels + pixels <= this.maxPixels;
     }
 
     private drop(key: string) {
