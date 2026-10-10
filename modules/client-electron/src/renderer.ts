@@ -928,9 +928,14 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     }));
     wirePicker(current);
     lineInput.addEventListener("input", () => current((view) => view.lineTyped(lineInput.value)));
-    lineInput.addEventListener("keydown", (e) => current((view) => {
-        if (view.lineKey(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
-    }));
+    lineInput.addEventListener("keydown", (e) => {
+        // The line's key, and nobody else's: on its way up to the window, Enter would find the line closed and
+        // what its command said in the pane, and dismiss that as a key pressed over a message.
+        e.stopPropagation();
+        current((view) => {
+            if (view.lineKey(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
+        });
+    });
     // the line keeps the keys for as long as it is open
     lineInput.addEventListener("blur", () => {
         if (lineOpen()) lineInput.focus();
@@ -1003,7 +1008,7 @@ async function replay(events: Played[], grid: client.GridMetrics) {
             editing.editor.type([...(p.key ?? "")].map((c) => names[c] ?? c).join(""));
         } else if (p.type === "type") editing?.editor.type(p.key ?? "");
         else if (p.type === "keydown") {
-            (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: false }));
+            (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true }));
         }
         else if (p.type === "wheel") canvas.dispatchEvent(new WheelEvent("wheel", { ...common, deltaY: p.deltaY, cancelable: true }));
         else canvas.dispatchEvent(new PointerEvent(p.type, common));
