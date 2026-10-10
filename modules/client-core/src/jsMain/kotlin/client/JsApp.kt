@@ -17,6 +17,7 @@ private fun keyMapper(page: dynamic): KeyMapper {
     FilePicker.runner = NodeShellRunner
     val mapper = KeyMapper(KeyMapper.defaultBindings(), JsScheduler, defaultMappings = KeyMapper.defaultKeyMappings())
     PAGE_SETTINGS.forEach { name -> mapper.applicationSettings[name] = { value -> page.setting(name, value) } }
+    KeyMapper.APPLICATION_SETTINGS += PAGE_SETTINGS
     // the page's own: how much memory the pictures it keeps take
     CommandRegistry.register("cache") { it.shell.message(page.cacheStats() as String) }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }

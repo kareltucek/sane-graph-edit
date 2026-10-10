@@ -1329,6 +1329,9 @@ class KeyMapper(
         /** `:set <name>=<value>` settings ([applySetting]). */
         val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker")
 
+        /** The names of the settings that are the application's own ([applicationSettings]), for completion: it adds them. */
+        val APPLICATION_SETTINGS = mutableSetOf<String>()
+
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
         val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard", "3d")
 

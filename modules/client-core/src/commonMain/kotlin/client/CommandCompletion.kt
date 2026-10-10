@@ -36,7 +36,7 @@ object CommandCompletion {
     }
 
     private fun settings(): List<String> =
-        KeyMapper.VALUE_SETTINGS.map { "$it=" } +
+        (KeyMapper.VALUE_SETTINGS + KeyMapper.APPLICATION_SETTINGS).map { "$it=" } +
             KeyMapper.FLAG_SETTINGS +
             KeyMapper.FLAG_SETTINGS.map { "no$it" } +
             KeyMapper.FLAG_SETTINGS.map { "$it!" }
