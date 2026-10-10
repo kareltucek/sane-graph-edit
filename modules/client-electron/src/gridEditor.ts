@@ -186,6 +186,8 @@ export class GridEditor {
     /** The command line being typed (`:`, `/`), and the mode as neovim words it (`-- INSERT --`); the first shows if there is one. */
     private commandLine: string | null = null;
     private modeText = "";
+    /** The mode neovim is in, as it names it to a UI: `normal`, `insert`, `visual`, `operator`, `cmdline_normal`, … */
+    private mode = "normal";
 
     /** True once the editor is to be seen: until then the node's text is still the renderer's to draw. */
     shown = false;
@@ -505,6 +507,7 @@ export class GridEditor {
                     this.cursorStyles = (a[1] as { cursor_shape?: CursorStyle["shape"]; cell_percentage?: number }[])
                         .map((mode) => ({ shape: mode.cursor_shape ?? "block", percentage: mode.cell_percentage || 100 }));
                 } else if (name === "mode_change") {
+                    this.mode = a[0] as string;
                     this.cursorStyle = this.cursorStyles[a[1]] ?? { shape: "block", percentage: 100 };
                 } else if (name === "cmdline_show") {
                     // content in pieces, the character it began with (`:`), a prompt, the indent
@@ -675,7 +678,10 @@ export class GridEditor {
     /** A key went down. True if it is neovim's now. */
     key(e: KeyboardEvent): boolean {
         const notation = keyNotation(e);
-        if (notation !== null) this.type(notation);
+        // Escape in normal mode has nothing left to leave in neovim: it leaves the editor, as `:q` does
+        const leaves = notation === "<Esc>" && this.mode === "normal" && this.commandLine === null;
+        if (leaves) this.onExit();
+        else if (notation !== null) this.type(notation);
         return notation !== null;
     }
 
