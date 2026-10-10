@@ -161,10 +161,11 @@ class KeyMapper(
 
     /**
      * Prefix actions waiting for a letter: `q` records a macro,
-     * `@` replays one, `m` sets a mark, `'` recalls a mark. Null
-     * when no prefix is active.
+     * `@` replays one, `m` sets a mark (`m+` adds to it, `m-`
+     * removes from it), `'` recalls a mark. Null when no prefix
+     * is active.
      */
-    private enum class PrefixAction { RecordMacro, ReplayMacro, SetMark, RecallMark }
+    private enum class PrefixAction { RecordMacro, ReplayMacro, SetMark, AddMark, RemoveMark, RecallMark }
     private var waitingForPrefix: PrefixAction? = null
 
     /** True if currently recording a macro. */
@@ -174,7 +175,7 @@ class KeyMapper(
     private var replaying: Boolean = false
 
     /** Callback for setting a mark on the current selection. Set by Window. */
-    var markSetter: ((EditorView, Char) -> Unit)? = null
+    var markSetter: ((EditorView, Char, MarkChange) -> Unit)? = null
 
     /** Callback for recalling a mark. Set by Window. */
     var markRecaller: ((EditorView, Char) -> Unit)? = null
@@ -335,11 +336,16 @@ class KeyMapper(
         if (prefix != null) {
             waitingForPrefix = null
             val letter = key.firstOrNull()
-            if (letter != null && letter.isLetterOrDigit() && key.length == 1) {
+            if (prefix == PrefixAction.SetMark && (key == "+" || key == "-")) {
+                // `m+a`, `m-a`: the letter is still to come
+                waitingForPrefix = if (key == "+") PrefixAction.AddMark else PrefixAction.RemoveMark
+            } else if (letter != null && letter.isLetterOrDigit() && key.length == 1) {
                 when (prefix) {
                     PrefixAction.RecordMacro -> startRecording(letter)
                     PrefixAction.ReplayMacro -> replayRegister(letter)
-                    PrefixAction.SetMark -> activeView?.let { markSetter?.invoke(it, letter) }
+                    PrefixAction.SetMark -> activeView?.let { markSetter?.invoke(it, letter, MarkChange.Set) }
+                    PrefixAction.AddMark -> activeView?.let { markSetter?.invoke(it, letter, MarkChange.Add) }
+                    PrefixAction.RemoveMark -> activeView?.let { markSetter?.invoke(it, letter, MarkChange.Remove) }
                     PrefixAction.RecallMark -> activeView?.let { markRecaller?.invoke(it, letter) }
                 }
             }

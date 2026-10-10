@@ -374,7 +374,7 @@ class KeyMapperTest {
         mapper.activeView = GraphView(initialGraph = Graph()).model
         mapper.commandExecutor = { cmd, _ -> executed.add(cmd) }
         mapper.linkFollower = { _, letter, _ -> followed.add(letter) }
-        mapper.markSetter = { _, letter -> marks.add(letter) }
+        mapper.markSetter = { _, letter, _ -> marks.add(letter) }
 
         listOf("g", "m", "g", "q").forEach { mapper.feedKey(it) }
         assertEquals(listOf('m', 'q'), followed)

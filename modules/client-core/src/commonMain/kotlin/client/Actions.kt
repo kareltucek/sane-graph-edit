@@ -33,6 +33,9 @@ import utils.Vector2
 import utils.Utils.orElse
 import utils.Utils.toUnit
 
+/** What `m<letter>`, `m+<letter>` and `m-<letter>` do to a mark. */
+enum class MarkChange { Set, Add, Remove }
+
 /**
  * What the editing commands do, on an [EditorView]: they read its
  * graph, selection and cursor and commit [Command]s. No GUI toolkit
@@ -206,10 +209,14 @@ object Actions {
      * between persistent (uppercase → attributes.marks) and
      * transient (lowercase → cache.sessionMarks) storage.
      *
+     * With [MarkChange.Add] the selection gains the mark and
+     * with [MarkChange.Remove] it loses it; the other nodes
+     * keep what they have.
+     *
      * Undoable via [graph_tools.SetMarksCommand]. No-op if
      * nothing changes.
      */
-    fun setMark(graphView: EditorView, mark: Char) {
+    fun setMark(graphView: EditorView, mark: Char, change: MarkChange = MarkChange.Set) {
         if (!mark.isLetter()) return
         val g = graphView.g
         val upper = mark.isUpperCase()
@@ -217,7 +224,12 @@ object Actions {
         val before = g.nodes.associateWith { it.getMarks(upper) }
         val after = g.nodes.associateWith { n ->
             val old = n.getMarks(upper)
-            if (n in sel) {
+            val wanted = when (change) {
+                MarkChange.Set -> n in sel
+                MarkChange.Add -> n in sel || old.contains(mark)
+                MarkChange.Remove -> n !in sel && old.contains(mark)
+            }
+            if (wanted) {
                 if (old.contains(mark)) old else (old + mark).toCharArray().sorted().joinToString("")
             } else {
                 if (old.contains(mark)) old.replace(mark.toString(), "") else old

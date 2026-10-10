@@ -19,7 +19,7 @@ private fun keyMapper(page: dynamic): KeyMapper {
     PAGE_SETTINGS.forEach { name -> mapper.applicationSettings[name] = { value -> page.setting(name, value) } }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
     mapper.commandNames = { CommandRegistry.list() }
-    mapper.markSetter = { view, letter -> Actions.setMark(view, letter) }
+    mapper.markSetter = { view, letter, change -> Actions.setMark(view, letter, change) }
     mapper.markRecaller = { view, letter -> Actions.recallMark(view, letter) }
     mapper.linkFollower = { view, letter, quiet -> view.content.followFileLink(letter, quiet) }
     mapper.installDefaultTransformBindings()

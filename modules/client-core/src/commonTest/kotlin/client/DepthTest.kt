@@ -145,6 +145,25 @@ class DepthTest {
     }
 
     @Test
+    fun `m sets a mark to the selection, m+ adds the selection to it and m- takes it out, each one undo step`() {
+        keys.markSetter = { view, letter, change -> Actions.setMark(view, letter, change) }
+        val marked = { view.g.nodes.filter { it.hasMark('A') } }
+        view.g.cleanSelect(setOf(flat, far))
+        listOf("m", "A").forEach { keys.feedKey(it) }
+        view.g.cleanSelect(setOf(near))
+        listOf("m", "+", "A").forEach { keys.feedKey(it) }
+        assertEquals(listOf(flat, far, near), marked())
+        view.g.cleanSelect(setOf(far, behind))
+        listOf("m", "-", "A").forEach { keys.feedKey(it) }
+        assertEquals(listOf(flat, near), marked())
+        view.g.undo()
+        assertEquals(listOf(flat, far, near), marked())
+        // without a sign: exactly the selection
+        listOf("m", "A").forEach { keys.feedKey(it) }
+        assertEquals(listOf(far, behind), marked())
+    }
+
+    @Test
     fun `a node in the plane has no attribute, and a depth is written to a file and read back`() {
         Depth.set(far, 0.0)
         assertTrue(Depth.ATTRIBUTE !in far.attributes.other)
