@@ -80,11 +80,12 @@ class JsView internal constructor(
             override fun hide() {
                 page.hideLine()
             }
+            // the list and a message share a place: closing the line must not take away what its command said
             override fun showList(text: String) {
-                page.showMessage(text)
+                page.showMessage(text, true)
             }
             override fun hideList() {
-                page.hideMessage()
+                page.hideMessage(true)
             }
         },
     ) { keys }

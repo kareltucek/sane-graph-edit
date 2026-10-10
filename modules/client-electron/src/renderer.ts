@@ -124,14 +124,20 @@ function hideLine() {
     lineInput.blur();
 }
 
-function showMessage(text: string) {
+/** The pane shows the list of what the `:` line can be completed to, not a message. */
+let paneIsList = false;
+
+/** Show [text] in the pane above the status line: a message, or ([list]) what the `:` line can be completed to. */
+function showMessage(text: string, list = false) {
     pane.textContent = text;
     pane.style.display = "block";
     pane.scrollTop = 0;
+    paneIsList = list;
 }
 
-function hideMessage() {
-    pane.style.display = "none";
+/** Hide the pane; with [list], only if it still shows the list: what the command said in its place stays. */
+function hideMessage(list = false) {
+    if (!list || paneIsList) pane.style.display = "none";
 }
 
 // The strip of tabs above the graph. Which tabs there are and what selecting and closing one does is the client core's business.
@@ -1024,8 +1030,8 @@ const page: {
     setting: (name: string, value: string) => void;
     showLine: (text: string) => void;
     hideLine: () => void;
-    showMessage: (text: string) => void;
-    hideMessage: () => void;
+    showMessage: (text: string, list?: boolean) => void;
+    hideMessage: (list?: boolean) => void;
     showPicker: (x: number, y: number) => void;
     hidePicker: () => void;
     tabs: () => void;

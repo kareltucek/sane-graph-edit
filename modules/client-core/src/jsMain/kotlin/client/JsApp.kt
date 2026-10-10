@@ -181,6 +181,7 @@ class JsApp internal constructor(private val client: EditorClient, private val m
  * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`;
  * `showLine(text)` — show the `:` line holding `text`, the caret at its end, and give it the keys; `hideLine()`;
  * `showMessage(text)` — show `text` (several lines) until the user dismisses it; `hideMessage()`;
+ *   `showMessage(text, true)` shows the list of completions in the same place, and `hideMessage(true)` hides only that;
  * `status(text)` — the status line reads `text`;
  * `showPicker(x, y)` — show the style picker around the view position x, y; `hidePicker()`;
  * `confirm(title, question)` — ask the user a yes/no question and wait: true for yes;
