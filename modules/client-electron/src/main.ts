@@ -36,6 +36,8 @@ interface Args {
     play?: string;
     shots?: string;
     problem?: string;
+    /** `--vr <port>`: also show the graph to a headset's browser that asks at this port of this machine (0: any free one). */
+    vr?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -48,6 +50,7 @@ function parseArgs(argv: string[]): Args {
         else if (a === "--capture-after") args.captureAfter = argv[++i];
         else if (a === "--play") args.play = path.resolve(argv[++i]);
         else if (a === "--shots") args.shots = path.resolve(argv[++i]);
+        else if (a === "--vr") args.vr = argv[++i];
         else if (a.startsWith("-")) continue; // Chromium's own switches
         else if (path.resolve(a) === app.getAppPath()) continue; // `electron <this application>`
         else if (args.file === undefined) args.file = path.resolve(a);
@@ -103,6 +106,7 @@ app.whenReady().then(() => {
     if (args.capture !== undefined) query.capture = args.capture;
     if (args.captureAfter !== undefined) query.captureAfter = args.captureAfter;
     if (args.play !== undefined) query.play = args.play;
+    if (args.vr !== undefined) query.vr = args.vr;
     window.loadFile(path.join(__dirname, "index.html"), { query });
 });
 

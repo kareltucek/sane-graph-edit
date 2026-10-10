@@ -8,14 +8,16 @@
     "core": "cd ../.. && ./gradlew :editor-host:jsNodeDevelopmentLibraryDistribution",
     "check": "tsc --noEmit",
     "build:main": "esbuild src/main.ts --bundle --platform=node --external:electron --outfile=dist/main.js",
-    "build:renderer": "esbuild src/renderer.ts --bundle --platform=node --external:electron --external:node-pty --external:neovim --sourcemap --outfile=dist/renderer.js",
+    "build:renderer": "esbuild src/renderer.ts --bundle --platform=node --external:electron --external:node-pty --external:neovim --external:ws --sourcemap --outfile=dist/renderer.js",
+    "build:vr": "esbuild src/vr.ts --bundle --platform=browser --format=iife --log-level=error --outfile=dist/vr.js",
     "build:render": "esbuild src/render.ts --bundle --platform=browser --format=iife --log-level=error --outfile=dist/render.js",
-    "build": "npm run build:main && npm run build:renderer && npm run build:render && cp src/index.html node_modules/@xterm/xterm/css/xterm.css dist/",
+    "build": "npm run build:main && npm run build:renderer && npm run build:render && npm run build:vr && cp src/index.html src/vr.html node_modules/@xterm/xterm/css/xterm.css dist/",
     "start": "npm run build && electron --no-sandbox ."
   },
   "dependencies": {
     "@hpcc-js/wasm-graphviz": "^1.29.2",
     "@types/three": "^0.169.0",
+    "@types/ws": "^8.5.12",
     "@xterm/xterm": "^6.0.0",
     "dompurify": "^3.4.16",
     "marked": "^18.1.0",
@@ -23,7 +25,8 @@
     "neovim": "^5.5.0",
     "node-pty": "^1.1.0",
     "sane-graph-edit-editor-host": "file:../editor-host/build/dist/js/developmentLibrary",
-    "three": "^0.169.0"
+    "three": "^0.169.0",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

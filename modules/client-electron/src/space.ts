@@ -202,6 +202,8 @@ interface Slot {
  */
 class Page {
     readonly canvas = new OffscreenCanvas(PAGE, PAGE);
+    /** Goes up whenever a picture on the page changes: for who else shows the page, to know it has. */
+    version = 0;
     readonly ctx = this.canvas.getContext("2d")!;
     readonly texture = new THREE.CanvasTexture(this.canvas);
     readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
@@ -577,6 +579,40 @@ export class SpaceRenderer<N extends SpaceNode> {
         return pending;
     }
 
+    // --- the atlas for somebody else to show: a headset ([vrServer]) ---
+
+    /** One side of a page, in pixels. */
+    readonly pageSide = PAGE;
+
+    /** The pages of the atlas as pictures, each with a number that goes up when it changes. */
+    get atlas(): { image: OffscreenCanvas; version: number }[] {
+        return this.pages.map((page) => ({ image: page.canvas, version: page.version }));
+    }
+
+    /**
+     * Where the picture of the node [id] is in the atlas: on which
+     * page, the rectangle in pixels, how many pixels a unit of the
+     * node is, and where in the rectangle the node's middle is.
+     * Null while it has none, or for a node too big for a page.
+     */
+    placeOf(id: string): { page: number; x: number; y: number; width: number; height: number; pixelsPerUnit: number; middleX: number; middleY: number } | null {
+        const slot = this.slots.get(id);
+        return slot === undefined ? null : {
+            page: this.pages.indexOf(slot.page), x: slot.x, y: slot.y, width: slot.width, height: slot.height,
+            pixelsPerUnit: slot.pixelsPerUnit, middleX: slot.middleX, middleY: slot.middleY,
+        };
+    }
+
+    /**
+     * Have the pictures of [nodes] made in the background although
+     * the graph is not drawn with depth here: somebody else shows it.
+     */
+    prepare(nodes: N[], dpr: number, keyOf: (n: N) => string, paint: (n: N, pixelsPerUnit: number) => NodePicture) {
+        this.toFill = { nodes, dpr, keyOf, paint };
+        const stale = nodes.some((n) => Math.max(n.width, n.height) * dpr <= MAX_ON_PAGE && this.slots.get(n.id)?.key !== keyOf(n));
+        if (stale && !this.filling) this.refill();
+    }
+
     /**
      * What is kept, for the nodes [ids]: how many of them have a
      * picture of their own and how many bytes those take on the
@@ -620,6 +656,7 @@ export class SpaceRenderer<N extends SpaceNode> {
         page.ctx.clearRect(at.x, at.y, width, height);
         page.ctx.drawImage(picture.image, at.x, at.y);
         page.dirty = true;
+        page.version++;
         const slot = {
             page, x: at.x, y: at.y, width, height, key, pixelsPerUnit: picture.pixelsPerUnit,
             middleX: (n.width / 2 + picture.margin) * picture.pixelsPerUnit,

@@ -474,6 +474,29 @@ the file beside the session's socket with `.ws` in place of
 `.sock`. The messages are the same as on the socket, one per
 WebSocket text message.
 
+### A headset (`--vr`)
+
+A first version, to look at a graph in a headset; nothing can be
+changed from there yet. `make run ARGS="--vr 8765 graph.dot"` (the
+Electron client) also answers a headset's browser at that port, and
+says what to do next: with the headset on its USB cable,
+
+```sh
+adb reverse tcp:8765 tcp:8765
+```
+
+and then the address it prints, in the headset's browser. The page
+shows the graph of the tab that is shown in the window, as that
+changes, and offers to enter with the room visible (passthrough) or
+hidden. Squeezing a controller takes the graph in that hand; a
+thumbstick pushed forward or back makes it bigger or smaller. The
+headset only places pictures the window makes of the nodes: it holds
+nothing, and reloading its page loses nothing.
+
+It is off unless asked for, answers on this machine only and only
+to who knows the token in the address; the cable is what lets the
+headset reach it, and nothing is opened to the network.
+
 ### Session persistence
 
 The set of open file-backed tabs is persisted per workspace to

@@ -249,8 +249,15 @@ class JsView internal constructor(
      * middleX, middleY, depth, distance, scale}`: the viewer is `distance` in front of the plane at `depth`, before its point
      * `middleX, middleY`, which is in the middle of the screen, and a unit of that plane is `scale` pixels. Nodes face the viewer.
      */
-    fun space(): dynamic {
-        val scene = view.spaceScene(measurer)
+    fun space(): dynamic = spaceOf(view.spaceScene(measurer))
+
+    /**
+     * The same, but the nodes where they are in the graph, however this view is turned, zoomed or moved:
+     * for a renderer that looks from where it likes, as a headset does.
+     */
+    fun world(): dynamic = spaceOf(view.spaceScene(measurer, asSeen = false))
+
+    private fun spaceOf(scene: SpaceScene): dynamic {
         val o: dynamic = js("({})")
         o.nodes = scene.nodes.mapIndexed { i, n ->
             val j = node(n)

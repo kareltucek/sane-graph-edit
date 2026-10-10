@@ -76,7 +76,7 @@ data class SpaceScene(
 )
 
 /** Bring the node sizes up to date, as [scene] does, and describe what the view shows without projecting it. */
-fun EditorView.spaceScene(measurer: TextMeasurer): SpaceScene {
+fun EditorView.spaceScene(measurer: TextMeasurer, asSeen: Boolean = true): SpaceScene {
     g.recompute(measurer)
     DynamicPlacement.place(g)
     g.recompute(measurer)
@@ -84,7 +84,8 @@ fun EditorView.spaceScene(measurer: TextMeasurer): SpaceScene {
     val visible = g.nodes.filter { it in shown }
     val index = visible.withIndex().associate { (i, n) -> n to i }
     val selected = g.selectedNodes
-    val points = visible.map { viewPoint(it) }
+    // not [asSeen]: where the nodes are in the graph, however this view is turned; for a renderer that looks from where it likes
+    val points = visible.map { if (asSeen) viewPoint(it) else Point3(it.position, graph_tools.Depth.of(it)) }
     return SpaceScene(
         nodes = visible.zip(points).map { (n, at) -> sceneNode(n, n in selected, Apparent(at.xy, 1.0)) },
         depths = points.map { it.z },

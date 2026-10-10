@@ -4,6 +4,7 @@ import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
+import { startVr, VrScene } from "./vrServer";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -685,6 +686,35 @@ function endEdit(view: client.JsView) {
     }
 }
 
+/**
+ * What a headset shows of [view]: its nodes where they are in the
+ * graph, each with where its picture is in the atlas. The pictures
+ * are those of the 3D drawing, and are made for the headset also
+ * when this window draws the graph flat.
+ */
+function vrScene(view: client.JsView | null | undefined, grid: client.GridMetrics): VrScene | null {
+    const world = view ? view.world() as SpaceScene<SpaceSceneNode> : null;
+    if (world !== null) {
+        spaceRenderer ??= new SpaceRenderer(spaceCanvas, () => page.repaint());
+        spaceRenderer.prepare(world.nodes, window.devicePixelRatio, pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit));
+    }
+    const atlas = spaceRenderer;
+    return world === null || atlas === null ? null : {
+        nodes: world.nodes.map((n) => {
+            const place = atlas.placeOf(n.id);
+            const node = { id: n.id, x: n.x, y: n.y, z: n.z, width: n.width, height: n.height, fill: n.bg ?? colours().background, ink: inkOf(n) };
+            return place === null ? node : {
+                ...node, page: place.page, px: place.x, py: place.y, pw: place.width, ph: place.height,
+                pixelsPerUnit: place.pixelsPerUnit, middleX: place.middleX, middleY: place.middleY,
+            };
+        }),
+        edges: world.edges.map((e) => [e.from, e.to]),
+        pageSide: atlas.pageSide,
+        background: canvasColour(colours().background),
+        ink: colours().foreground,
+    };
+}
+
 /** The nodes of the graph as it was last drawn with depth. */
 let lastSpaceIds: string[] = [];
 
@@ -955,6 +985,21 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     });
     showTabs(app);
     repaint();
+
+    // `--vr <port>`: the graph of the tab shown, for a headset's browser ([vrServer])
+    const vr = query.get("vr");
+    if (vr !== null) {
+        const token: string = require("crypto").randomBytes(16).toString("hex");
+        startVr(Number(vr) || 0, token, { scene: () => vrScene(app.current(), grid), pages: () => spaceRenderer?.atlas ?? [] }, (address, error) => {
+            const port = address === null ? "" : new URL(address).port;
+            const text = address === null
+                ? `VR: could not start: ${error}`
+                : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\nand open in the headset's browser\n    ${address}`;
+            // where the application was started from, and in the window
+            process.stdout.write(`sane-graph-edit: ${text}\n`);
+            showMessage(text);
+        });
+    }
 
     const play = query.get("play");
     if (play !== null) setTimeout(() => replay(JSON.parse(require("fs").readFileSync(play, "utf8")), grid), PLAY_DELAY_MS);
