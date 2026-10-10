@@ -235,7 +235,13 @@ class Tabs(
 
     /** End the application, asking about every tab with unsaved changes unless [force]. True if it ends. */
     fun quitAll(force: Boolean): Boolean {
-        val agreed = force || open.all { mayClose(it) }
+        // and the files nodes keep their text in, when no graph that is asked about covers them
+        val files = FileContent.unsaved()
+        val filesAgreed = {
+            files.isEmpty() || graph_tools.ViewModes.discard ||
+                dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${files.joinToString(", ")}? (:wa saves them)")
+        }
+        val agreed = force || (open.all { mayClose(it) } && filesAgreed())
         if (agreed) {
             saveSession()
             host.exit()

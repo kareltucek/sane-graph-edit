@@ -748,6 +748,14 @@ class KeyMapper(
                     commandExecutor?.invoke("save", gv)
                 }
             }
+            "wa" -> {
+                // every graph that has a file, and every file nodes keep their text in; a graph without a name is told of
+                val views = (listOf(gv) + gv.shell.views()).distinct().filter { it.content.isDirty }
+                val (named, unnamed) = views.partition { it.content.currentFile != null || it.content.sourceView != null }
+                named.forEach { it.content.save() }
+                FileContent.saveAll(gv)
+                if (unnamed.isNotEmpty()) gv.shell.message("wa: ${unnamed.size} unsaved without a file name (:w <file> in each)")
+            }
             "q" -> gv.shell.quit(force = false, all = false)
             "q!" -> gv.shell.quit(force = true, all = false)
             "qa" -> gv.shell.quit(force = false, all = true)
@@ -1283,7 +1291,7 @@ class KeyMapper(
         /** Commands handled in [executeCommandLine] itself (the rest are [CommandRegistry] names). */
         val BUILTIN_COMMANDS = listOf(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
-            "w", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
+            "w", "wa", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
             "fold", "unfold", "toggle-fold", "content-type", "z",
         )
 

@@ -72,6 +72,9 @@ class FileContentTest {
 
     private val untouched = code.readText()
 
+    @kotlin.test.AfterTest
+    fun forget() = FileContent.dropAll()
+
     @Test
     fun `an edit is a change of the graph and not of the file, and undo takes it back`() {
         first.content.saveNow()
@@ -140,6 +143,24 @@ class FileContentTest {
         assertTrue(first.content.saveNow())
         assertEquals("line 1\nline two\nbetween\nline 3\nline 4", code.readText().lines().take(5).joinToString("\n"))
         assertEquals("code-kotlin:a.kt:7-8", type(first, "below"))
+    }
+
+    @Test
+    fun `a file with something unsaved is known of, lives on when its graph is read again, and is written with all the others`() {
+        first.content.saveNow()
+        edit(first, "top", "changed")
+        assertTrue(code.name in FileContent.unsaved())
+        graph_tools.ViewModes.discard = true
+        try {
+            first.content.reload()
+        } finally {
+            graph_tools.ViewModes.discard = false
+        }
+        assertEquals("changed", text(first, "top"))
+        assertEquals(untouched, code.readText())
+        assertTrue(FileContent.saveAll(second))
+        assertEquals("line 1\nchanged\nline 4", code.readText().lines().take(3).joinToString("\n"))
+        assertFalse(code.name in FileContent.unsaved())
     }
 
     @Test

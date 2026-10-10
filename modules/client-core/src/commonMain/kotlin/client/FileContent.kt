@@ -273,11 +273,30 @@ object FileContent {
      */
     fun save(view: EditorView): Boolean {
         reconcile(view)
-        return nodesOf(view).mapNotNull { it.second.path }.distinct().mapNotNull { buffers[it.toString()] }.map { buffer ->
+        return write(view, nodesOf(view).mapNotNull { it.second.path }.distinct().mapNotNull { buffers[it.toString()] })
+    }
+
+    /** Know of no file any more; for tests, which share this object. */
+    internal fun dropAll() {
+        buffers.clear()
+        kept.clear()
+    }
+
+    /** The names of the files that have something unsaved in their buffers. */
+    fun unsaved(): List<String> = buffers.values.filter { it.text != it.disk }.map { it.path.name }
+
+    /** [save] for every file that has something unsaved, whichever graph it was changed from, and for those no open graph speaks of any more. */
+    fun saveAll(view: EditorView): Boolean {
+        reconcile(view)
+        return write(view, buffers.values.filter { it.text != it.disk })
+    }
+
+    private fun write(view: EditorView, files: List<Buffer>): Boolean =
+        files.map { buffer ->
             val problem = try {
                 when {
                     buffer.text == buffer.disk -> null
-                    Fs.readText(buffer.path) != buffer.disk -> "it was changed by something else; `:e` takes its text again"
+                    Fs.readText(buffer.path) != buffer.disk -> "it was changed by something else; `:e!` takes its text again"
                     else -> {
                         Fs.writeText(buffer.path, buffer.text)
                         null
@@ -294,7 +313,6 @@ object FileContent {
             }
             problem == null
         }.all { it }
-    }
 
     /** The buffer of [path] is the file: the types that name lines of it name the lines of the windows. */
     private fun renumber(view: EditorView, path: Path) {
