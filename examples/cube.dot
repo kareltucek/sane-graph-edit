@@ -9,6 +9,8 @@ digraph cube {
   b10 [label="back\ntop right"; pos="200,-200,200!"];
   b01 [label="back\nbottom left"; pos="-200,200,200!"];
   b11 [label="back\nbottom right"; pos="200,200,200!"];
+  // gf on it goes back to the list of examples
+  index [label="examples"; pos="0,-420!"; link="index.dot:cube"; fillcolor="#F6EFC4"];
   f00 -> f10; f10 -> f11; f11 -> f01; f01 -> f00;
   b00 -> b10; b10 -> b11; b11 -> b01; b01 -> b00;
   f00 -> b00; f10 -> b10; f01 -> b01; f11 -> b11;

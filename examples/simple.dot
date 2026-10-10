@@ -1,5 +1,7 @@
 digraph g {
   n0 [label="Hello"; pos="0,0!"];
   n1 [label="World"; pos="200,0!"];
+  // gf on it goes back to the list of examples
+  index [label="examples"; pos="100,-120!"; link="index.dot:simple"; fillcolor="#F6EFC4"];
   n0 -> n1;
 }

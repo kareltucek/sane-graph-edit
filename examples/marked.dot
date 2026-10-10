@@ -3,6 +3,8 @@ digraph g {
   n1 [label="Skip"; pos="200,0!"];
   n2 [label="Keep2"; pos="0,100!"; marks="A"];
   n3 [label="Other"; pos="200,100!"; marks="B"];
+  // gf on it goes back to the list of examples
+  index [label="examples"; pos="100,-120!"; link="index.dot:marked"; fillcolor="#F6EFC4"];
   n0 -> n1;
   n0 -> n2;
   n2 -> n3;

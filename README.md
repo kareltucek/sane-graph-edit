@@ -61,6 +61,10 @@ Gradle downloads the right Kotlin compiler via the JVM toolchain
 config; you only need a JDK 21 (or newer) on your `$PATH` or
 managed by [sdkman](https://sdkman.io/).
 
+`./gradlew run --args=examples/index.dot` is a place to start: a graph
+whose nodes lead to the examples, the built-in help, this manual and the
+file format. Select a node and press `gf`; `Ctrl+O` goes back.
+
 ### Fat jar (portable, ~2 MB)
 
 ```sh
