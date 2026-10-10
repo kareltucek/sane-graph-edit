@@ -64,6 +64,23 @@ const SAME = 1.001;
 const MAX_PICTURE_SIDE = 4096;
 /** At most this many pictures are made for one frame: the rest keep the one they have until a later frame. */
 const PICTURES_PER_FRAME = 12;
+/**
+ * What is in front of what is the graphics card's business (its
+ * depth buffer), not the order things are drawn in: nodes drawn
+ * many at once from different pages cannot be drawn from the
+ * furthest to the nearest.
+ *
+ * A picture of a node hides what is behind it where it is not clear
+ * (its margin and the corners of its outline are), its edge smoothed.
+ * Of two nodes at one depth the one drawn later is on top.
+ */
+const PICTURE = { alphaTest: 0.5, alphaToCoverage: true } as const;
+/**
+ * Edges are drawn after the nodes, faint ones letting through what
+ * is behind them. One is hidden by a node in front of it and also by
+ * one at its own depth: in a flat graph an edge is under the nodes.
+ */
+const EDGES = { vertexColors: true, transparent: true, depthWrite: false, depthFunc: THREE.LessDepth, side: THREE.DoubleSide } as const;
 const HEAD_SEGMENTS = 8;
 const HEAD_COS = Array.from({ length: HEAD_SEGMENTS + 1 }, (_, i) => Math.cos(i / HEAD_SEGMENTS * 2 * Math.PI));
 const HEAD_SIN = Array.from({ length: HEAD_SEGMENTS + 1 }, (_, i) => Math.sin(i / HEAD_SEGMENTS * 2 * Math.PI));
@@ -84,10 +101,11 @@ class Triangles {
     /** How many vertices and indices the geometry has room for. */
     private room = { vertices: 0, indices: 0 };
 
-    constructor(renderOrder: number) {
+    /** [solid]: nodes, which hide what is behind them; otherwise edges, drawn over what is behind them and under what is not. */
+    constructor(renderOrder: number, solid: boolean) {
         this.mesh = new THREE.Mesh(
             new THREE.BufferGeometry(),
-            new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthTest: false, side: THREE.DoubleSide }),
+            new THREE.MeshBasicMaterial(solid ? { vertexColors: true, side: THREE.DoubleSide } : EDGES),
         );
         this.mesh.renderOrder = renderOrder;
         this.mesh.frustumCulled = false;
@@ -200,7 +218,7 @@ class Page {
     constructor(anisotropy: number) {
         this.texture.colorSpace = THREE.SRGBColorSpace;
         this.texture.anisotropy = anisotropy;
-        this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ map: this.texture, transparent: true, depthTest: false }));
+        this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ map: this.texture, ...PICTURE }));
         this.mesh.renderOrder = -1;
         this.mesh.frustumCulled = false;
     }
@@ -279,11 +297,10 @@ export class SpaceRenderer<N extends SpaceNode> {
     private readonly scene = new THREE.Scene();
     private readonly camera = new THREE.PerspectiveCamera();
     private readonly kept = new Map<string, Kept>();
-    // Before the nodes with pictures, which are drawn from the furthest to the nearest: an edge is never over a node,
-    // and the nodes too small for a picture, which are the far ones, are under the others.
-    private readonly edges = new Triangles(-3);
-    private readonly small = new Triangles(-2);
-    /** The pictures of the nodes that are shown small: all those of a page are drawn at once. */
+    // the edges after all the nodes ([EDGES]); the nodes that have no picture yet before those that have
+    private readonly edges = new Triangles(1e9, false);
+    private readonly small = new Triangles(-2, true);
+    /** The pictures of the nodes, each at its size at zoom 1: all those of a page are drawn at once. */
     private readonly pages: Page[] = [];
     private readonly slots = new Map<string, Slot>();
     private frame = 0;
@@ -423,8 +440,8 @@ export class SpaceRenderer<N extends SpaceNode> {
                         middleY: (n.height / 2 + picture.margin) * wanted,
                     };
                     if (kept === undefined) {
-                        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthTest: false }));
-                        kept = { mesh, key, frame: this.frame, ...sizes };
+                        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: texture, ...PICTURE }));
+                        kept ={ mesh, key, frame: this.frame, ...sizes };
                         this.kept.set(n.id, kept);
                         this.scene.add(mesh);
                     } else {
