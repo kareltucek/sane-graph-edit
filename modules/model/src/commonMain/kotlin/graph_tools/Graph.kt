@@ -346,41 +346,42 @@ class Graph(
          * user can read it without having to find a manual.
          *
          * Layout: a star. The node a reader starts with is in the
-         * middle, the rest of the reference above, right, below and
-         * left of it, and between those a small coloured node per
-         * category with what there is to say of it further out. The
-         * texts are markdown, in [utils.Help]; this function only
-         * places them.
+         * middle; on each ray from it a small coloured node that
+         * names a category, and further out what there is to say of
+         * it. The texts are markdown, in [utils.Help]; this function
+         * only places them.
          */
         fun defaultGraph(): Graph {
             val g = Graph()
             val markdown = { text: String, at: Vector2 -> Node(text, at).also { it.attributes.other[NodeType.ATTRIBUTE] = NodeType.Markdown.attribute!! } }
             val root = markdown(utils.Help.commands, Vector2(0, 0)).also(g::add)
-            val around = listOf(
-                markdown(utils.Help.selection, Vector2(0, -520)),
-                markdown(utils.Help.files, Vector2(650, 0)),
-                markdown(utils.Help.todo, Vector2(0, 470)),
-                markdown(utils.Help.attribution, Vector2(-600, -60)),
-                // a client writes the examples out when it starts and knows where (`sge:examples`)
-                Node("examples\n(press gf)", Vector2(-600, 110)).also {
-                    it.attributes.bg = utils.Rgb(0xF6EFC4)
-                    it.attributes.other["link"] = "sge:examples"
-                },
-            )
-            around.forEach { g.add(it); g.add(Edge(root, it)) }
-            utils.Help.topics.zip(helpRays).forEach { (topic, degrees) ->
+            val placed = utils.Help.topics.zip(helpRays).map { (topic, where) ->
+                val (degrees, distance) = where
                 val ray = (degrees * kotlin.math.PI / 180).let { Vector2(kotlin.math.cos(it), -kotlin.math.sin(it)) }
                 val category = Node(topic.name, ray * 380.0).also { it.attributes.bg = utils.Rgb(topic.colour) }
-                val detail = markdown(topic.text.trimIndent(), ray * 760.0)
+                val detail = markdown(topic.text.trimIndent(), ray * distance)
                 listOf(category, detail).forEach(g::add)
                 g.add(Edge(root, category))
                 g.add(Edge(category, detail))
+                category to detail
             }
+            val selection = placed[0].second
+            val marks = markdown(utils.Help.marks, selection.position + Vector2(0, -260)).also(g::add)
+            g.add(Edge(selection, marks))
+            // a client writes the examples out when it starts and knows where (`sge:examples`)
+            val (about, attribution) = placed[3]
+            val examples = Node("examples\n(press gf)", attribution.position + Vector2(0, 120)).also {
+                it.attributes.bg = utils.Rgb(0xF6EFC4)
+                it.attributes.other["link"] = "sge:examples"
+            }
+            g.add(examples)
+            g.add(Edge(about, examples))
             return g
         }
 
-        /** Where the categories of the help graph are, in degrees from the right, anticlockwise. */
-        private val helpRays = listOf(52.0, 28.0, -28.0, -52.0, -128.0, -152.0, 152.0, 128.0)
+        /** Where the categories of the help graph are: degrees from the right, anticlockwise, and how far out the text of each is. */
+        private val helpRays = listOf(90.0 to 640.0, 0.0 to 800.0, -90.0 to 620.0, 180.0 to 760.0) +
+            listOf(52.0, 28.0, -28.0, -52.0, -128.0, -152.0, 152.0, 128.0).map { it to 760.0 }
     }
 }
 
