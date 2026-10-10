@@ -228,6 +228,8 @@ class JsView internal constructor(
             j.y1 = e.src.y
             j.x2 = e.dst.x
             j.y2 = e.dst.y
+            j.scale = e.scale
+            j.headScale = e.headScale
             j
         }.toTypedArray()
         return o

@@ -68,12 +68,17 @@ class ViewTransform {
     /** How far the viewer is from the plane, in workspace units: zooming in is coming closer. */
     val distance: Double get() = Constants.focalLength / scale
 
-    /** How many times its size in the plane something at depth [z] appears; null for what is behind the viewer or too near to show. */
+    /**
+     * How many times its size in the plane something at depth [z]
+     * appears; null for what is behind the viewer or too near to
+     * show. In 2D mode there is no perspective: everything is shown
+     * as if in the plane, whatever its depth.
+     */
     fun perspective(z: Double): Double? {
         // depth grows away from the viewer
         val away = distance + (z - depth)
         return when {
-            z == depth -> 1.0
+            !ViewModes.threeD || z == depth -> 1.0
             away <= 0.0 || distance / away > Constants.maxPerspective -> null
             else -> distance / away
         }
@@ -90,7 +95,8 @@ class ViewTransform {
     /** Speak of the plane at depth [z] from now on; what the view shows stays as it is. False if that plane is not shown. */
     fun refocus(z: Double, middle: Vector2): Boolean {
         val p = perspective(z)
-        if (p != null) {
+        // in 2D mode there are no planes to speak of
+        if (p != null && ViewModes.threeD) {
             offset = middle + (offset - middle) * p
             scale *= p
             depth = z

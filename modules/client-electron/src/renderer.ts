@@ -35,6 +35,9 @@ interface SceneEdge {
     y1: number;
     x2: number;
     y2: number;
+    /** How many times as thick the line is, and as big the head, as in the plane the view is of: for an edge further away or nearer. */
+    scale: number;
+    headScale: number;
 }
 
 interface Scene {
@@ -228,15 +231,33 @@ function measureGrid(): client.GridMetrics {
     return new client.GridMetrics(m.width / size, LINE_HEIGHT, ascent / size, MARGIN_COLUMNS * m.width / size, MARGIN_ROWS * LINE_HEIGHT);
 }
 
-function drawEdge(e: SceneEdge, scale: number) {
+/**
+ * Draw [e] in a view at [scale] that is [width] by [height]. An
+ * edge that is long on the screen is drawn fainter, so that the
+ * long ones do not cover what they cross: fully drawn up to an
+ * eighth of the view's shorter side, faintest from half its longer.
+ */
+function drawEdge(e: SceneEdge, scale: number, width: number, height: number) {
+    const length = Math.hypot(e.x2 - e.x1, e.y2 - e.y1) * scale;
+    const from = Math.min(width, height) * 0.125;
+    const to = Math.max(width, height) * 0.5;
+    const fade = to > from ? Math.min(1, Math.max(0, (length - from) / (to - from))) : 0;
+    ctx.globalAlpha = 1 - fade * EDGE_FADE;
+    ctx.lineWidth = e.scale;
     ctx.beginPath();
     ctx.moveTo(e.x1, e.y1);
     ctx.lineTo(e.x2, e.y2);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(e.x2, e.y2, ARROWHEAD_RADIUS, 0, 2 * Math.PI);
-    ctx.fill();
+    if (e.headScale > 0) {
+        ctx.beginPath();
+        ctx.arc(e.x2, e.y2, ARROWHEAD_RADIUS * e.headScale, 0, 2 * Math.PI);
+        ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 }
+
+/** How much of an edge is taken away when it is faintest. */
+const EDGE_FADE = 0.86;
 
 /** What neovim calls the kind of text in [n] (its file type); empty for plain text and for a language that cannot be one. */
 function filetypeOf(n: SceneNode): string {
@@ -657,7 +678,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     bitmaps.nextFrame();
     // only what is in the view; a selected node's outline is the widest thing drawn around one
     const outline = Math.max(2, 2.2 / scene.scale);
-    scene.edges.filter((e) => inView(scene, width, height, e.x1, e.y1, e.x2, e.y2, ARROWHEAD_RADIUS + 1)).forEach((e) => drawEdge(e, scene.scale));
+    scene.edges.filter((e) => inView(scene, width, height, e.x1, e.y1, e.x2, e.y2, ARROWHEAD_RADIUS + 1)).forEach((e) => drawEdge(e, scene.scale, width, height));
     scene.nodes
         .filter((n) => {
             const halfWidth = n.width * n.depthScale / 2;

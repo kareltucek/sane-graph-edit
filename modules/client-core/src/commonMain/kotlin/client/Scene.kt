@@ -35,8 +35,13 @@ data class SceneNode(
     val type: NodeType = NodeType.Plain,
 )
 
-/** An edge as a renderer draws it: a line with its head at [dst]. */
-data class SceneEdge(val src: Vector2, val dst: Vector2)
+/**
+ * An edge as a renderer draws it: a line with its head at [dst].
+ * Between nodes out of the plane the view speaks of the line is
+ * [scale] times as thick and the head [headScale] times as big; an
+ * edge that leaves the view towards the viewer has no head (0).
+ */
+data class SceneEdge(val src: Vector2, val dst: Vector2, val scale: Double = 1.0, val headScale: Double = 1.0)
 
 /**
  * What a view shows right now, as plain data (conn1, client →
@@ -67,10 +72,19 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
     return Scene(
         // what is further from the viewer first: what is nearer is drawn over it
         nodes = seen.entries.sortedBy { it.value.scale }.map { (n, how) -> sceneNode(n, n in selected, how) },
-        edges = g.edges.mapNotNull { e ->
+        edges = g.edges.filter { it.src in visible && it.dst in visible }.mapNotNull { e ->
             val src = seen[e.src]
             val dst = seen[e.dst]
-            if (src == null || dst == null) null else sceneEdge(e, src, dst)
+            when {
+                src != null && dst != null -> sceneEdge(e, src, dst)
+                // one end is behind the viewer or too near: the edge is drawn as far as it can be seen
+                src != null -> cut(e.src, e.dst)?.let { SceneEdge(src.position, it, src.scale, 0.0) }
+                dst != null -> cut(e.dst, e.src)?.let { from ->
+                    val into = e.dst.cache.shape.connectionPoint((dst.position - from).toUnit(), e.dst, Constants.arrowheadRadius) * dst.scale
+                    SceneEdge(from, listOf(dst.position - into, dst.position + into).minBy { (it - from).lengthSquared() }, dst.scale, dst.scale)
+                }
+                else -> null
+            }
         },
         selectionBox = gestures.selectionBoxFrom?.let { Vector2.computeCorners(gestures.lastPosition, it) },
     )
@@ -80,6 +94,20 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
 fun EditorView.sceneNode(id: String, measurer: TextMeasurer): SceneNode? {
     g.recompute(measurer)
     return g.node(id)?.let { n -> apparent(n)?.let { sceneNode(n, n in g.selectedNodes, it) } }
+}
+
+/**
+ * Where the line from [shown] to [hidden], a node too near the
+ * viewer to be shown or behind him, leaves what can be seen, as it
+ * appears in the plane the view speaks of. Null if it cannot be told.
+ */
+private fun EditorView.cut(shown: Node, hidden: Node): Vector2? {
+    val a = viewPoint(shown)
+    val b = viewPoint(hidden)
+    // a little further away than the nearest that is shown
+    val nearest = viewTransform.depth - viewTransform.distance + viewTransform.distance / Constants.maxPerspective * 1.01
+    val part = if (a.z > nearest && b.z < a.z) (a.z - nearest) / (a.z - b.z) else null
+    return part?.takeIf { it in 0.0..1.0 }?.let { viewTransform.apparent(a.xy + (b.xy - a.xy) * it, nearest, size / 2) }
 }
 
 /** The edge [e] between its nodes as they appear: from border to border of what is seen of them. */
@@ -94,7 +122,7 @@ private fun sceneEdge(e: Edge, src: Apparent, dst: Apparent): SceneEdge =
             src.position + out to dst.position - into,
             src.position - out to dst.position - into,
             src.position + out to dst.position + into,
-        ).minBy { (it.first - it.second).lengthSquared() }.let { SceneEdge(it.first, it.second) }
+        ).minBy { (it.first - it.second).lengthSquared() }.let { SceneEdge(it.first, it.second, (src.scale + dst.scale) / 2, dst.scale) }
     }
 
 private fun sceneNode(n: Node, selected: Boolean, how: Apparent): SceneNode =

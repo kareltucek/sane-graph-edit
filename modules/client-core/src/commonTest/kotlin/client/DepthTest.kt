@@ -31,6 +31,11 @@ class DepthTest {
     private val near = Node("near", Vector2(-100, -50)).also { Depth.set(it, -500.0) }
     private val behind = Node("behind", Vector2(300, 0)).also { Depth.set(it, -2000.0) }
 
+    init {
+        // depth shows in 3D mode only
+        ViewModes.threeD = true
+    }
+
     private val messages = mutableListOf<String>()
     private val shell = object : Shell by NoShell {
         override fun message(text: String) {
@@ -74,11 +79,39 @@ class DepthTest {
     }
 
     @Test
-    fun `what is behind the viewer is not shown, nor are its edges`() {
+    fun `in 2D mode there is no perspective, every node is shown where it is, and the wheel only zooms`() {
+        ViewModes.threeD = false
+        listOf(flat, far, near, behind).forEach { assertEquals(Apparent(it.position, 1.0), view.apparent(it)) }
+        val scene = view.scene(TextMeasurer.default)
+        assertEquals(4, scene.nodes.size)
+        assertEquals(3, scene.edges.size)
+        view.pointer.wheel(Vector2(500, 350), -1.0)
+        assertEquals(0.0, view.viewTransform.depth)
+    }
+
+    @Test
+    fun `giving a node a depth turns 3D mode on`() {
+        ViewModes.threeD = false
+        view.g.cleanSelect(setOf(flat))
+        keys.executeCommandLine("z 300")
+        assertTrue(ViewModes.threeD)
+    }
+
+    @Test
+    fun `what is behind the viewer is not shown, and its edge is drawn as far as it can be seen, without a head`() {
         assertNull(view.apparent(behind))
         val scene = view.scene(TextMeasurer.default)
         assertEquals(listOf(far.id, flat.id, near.id), scene.nodes.map { it.id })
-        assertEquals(2, scene.edges.size)
+        assertEquals(3, scene.edges.size)
+        // behind -> flat: it comes from where the viewer is and has its head at the node that is seen
+        val cut = scene.edges.single { it.scale == 1.0 && it.headScale == 1.0 && it.src != scene.edges.first().src && (it.src - Vector2(0, 0)).length() > 100 }
+        assertTrue(cut.src.x > 0 && abs(cut.src.y) < 1e-6, "cut at ${cut.src}")
+    }
+
+    @Test
+    fun `an edge to a node further away is thinner and its head smaller`() {
+        val edge = view.scene(TextMeasurer.default).edges.single { it.headScale == 0.5 }
+        assertEquals(0.75, edge.scale)
     }
 
     @Test
@@ -193,6 +226,7 @@ class DepthTest {
 
     @Test
     fun `in 2D mode the middle button turns nothing, in 3D mode it turns the view around the selection in its middle`() {
+        ViewModes.threeD = false
         dragMiddle(Vector2(400, 300), Vector2(500, 300))
         assertEquals(0.0, view.viewTransform.yaw)
         ViewModes.threeD = true

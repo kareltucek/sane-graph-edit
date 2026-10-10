@@ -867,7 +867,11 @@ class KeyMapper(
                     )
                     z == null -> gv.shell.message("z: `$text` is not a number (z 100, z +50, z -50, z =-50)")
                     // a sign means from where the node is; `z 0`, `z 100` and `z =-100` say where to
-                    else -> Actions.depthSelection(gv, z, relative = text.startsWith("+") || text.startsWith("-"))
+                    else -> {
+                        Actions.depthSelection(gv, z, relative = text.startsWith("+") || text.startsWith("-"))
+                        // a graph with depth in it is shown with it
+                        if (gv.g.nodes.any { graph_tools.Depth.of(it) != 0.0 }) graph_tools.ViewModes.threeD = true
+                    }
                 }
             }
             "fold", "unfold", "toggle-fold" -> {

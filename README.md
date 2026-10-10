@@ -261,9 +261,13 @@ negative for a node in front of the plane. A node without one is in
 the plane, and a graph without any looks as it always did. (An
 attribute `z="200"` is read as well.)
 
-The view looks straight at the graph. What is further away is drawn
+Depth shows in 3D mode only (`:set 3d`), which turns itself on when
+a graph with depth in it is opened or a node is given one; in 2D
+mode every node is drawn as if in the plane. In 3D mode
+the view looks straight at the graph. What is further away is drawn
 smaller and nearer the middle of the view, what is nearer bigger;
-what is behind you is not drawn, nor are its edges. At zoom 1 you
+what is behind you is not drawn, and an edge to it is drawn as far
+as it can be seen. At zoom 1 you
 are 1000 units in front of the plane you look at, so a node 1000
 units behind it is half its size. Zooming is coming closer: the
 wheel over a node goes towards that node, whatever its depth, and
