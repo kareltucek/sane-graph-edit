@@ -41,15 +41,16 @@ object Explore {
     }
 
     /**
-     * `:explore-hide`, what the right button does in the mode: all
-     * that is shown downstream of the selected nodes is hidden; with
-     * nothing shown there, the selected nodes themselves are, and
-     * are no longer selected. One undo step.
+     * `:explore-hide`, what the right button does in the mode: the
+     * children of the selected nodes that are shown are hidden (one
+     * generation: what is below them stays as it is); with none
+     * shown, the selected nodes themselves are, and are no longer
+     * selected. One undo step.
      */
     fun hide(view: EditorView) {
         val g = view.g
         val from = g.selectedNodes.filter { !it.isHidden }.toSet()
-        val below = (GraphTools.computeClosure(g, from, true, intoHidden = true) - from).filter { !it.isHidden }
+        val below = (GraphTools.computeGeneration(g, from, true, intoHidden = true) - from).filter { !it.isHidden }
         when {
             below.isNotEmpty() -> g.commit(HideCommand(below))
             from.isNotEmpty() -> {

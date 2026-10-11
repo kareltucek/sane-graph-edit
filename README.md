@@ -336,9 +336,9 @@ while on:
   all but the last active node) and turns `show-parents` and
   `show-children` on, so the neighbours of what is shown are seen,
   faint. A click shows: a faint node, or the children of a node that
-  is shown already (`:explore-show`). A right click hides: all that
-  is shown downstream of the node, or with nothing shown there the
-  node itself (`:explore-hide`). Turning the mode off puts the two
+  is shown already (`:explore-show`). A right click hides: the
+  children of the node that are shown (one generation), or with none
+  shown the node itself (`:explore-hide`). Turning the mode off puts the two
   show modes back; what is hidden stays hidden (undo, or `zR`).
 - `dynamic` — a node that becomes visible (by any of the above, or
   `H`) is moved next to its visible neighbours, left to right: a
