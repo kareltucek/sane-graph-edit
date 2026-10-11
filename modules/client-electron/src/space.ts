@@ -2,6 +2,7 @@
 // and the edges strips between them. The perspective is the graphics card's (three.js on WebGL), not worked out here.
 
 import * as THREE from "three";
+import { ROOM_COLOUR } from "./room";
 
 /** A node of the scene: where the view sees it (x across, y down, z away) and how big it is, in the graph's units. */
 export interface SpaceNode {
@@ -308,6 +309,8 @@ export class SpaceRenderer<N extends SpaceNode> {
     private readonly pages: Page[] = [];
     private readonly slots = new Map<string, Slot>();
     private frame = 0;
+    /** The room the graph is in, as lines; drawn like anything else in space, so that nodes in front of a line hide it. */
+    private readonly walls = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: ROOM_COLOUR }));
     /** For tests: how many milliseconds the parts of the last drawing took, how many pictures it made and how many draw calls. */
     spent = { nodes: 0, edges: 0, render: 0, made: 0, calls: 0 };
     /** Where the view looked from when it was last drawn, and when that last changed. */
@@ -323,6 +326,15 @@ export class SpaceRenderer<N extends SpaceNode> {
         this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
         this.scene.add(this.edges.mesh);
         this.scene.add(this.small.mesh);
+        this.walls.frustumCulled = false;
+        this.scene.add(this.walls);
+    }
+
+    /** The lines to show of the room at the next drawing, as the view sees them: the two ends of each, x, y and z after each other. Null: none. */
+    room(lines: Float64Array | null) {
+        this.walls.visible = lines !== null;
+        // here y is up and z towards the viewer
+        if (lines !== null) this.walls.geometry.setAttribute("position", new THREE.Float32BufferAttribute(Array.from(lines, (v, i) => i % 3 === 0 ? v : -v), 3));
     }
 
     // --- filling the atlas in the background ---

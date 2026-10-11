@@ -4,6 +4,7 @@ import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
+import { mockRoom, outlines } from "./room";
 import { startVr, VrScene, VrSurface } from "./vrServer";
 
 // The page: draws what the client core says the view shows and
@@ -723,8 +724,25 @@ let lastSpaceIds: string[] = [];
  * much memory it takes and how many of the nodes of the graph shown
  * have one. [threeD]: the graph is drawn with depth now.
  */
-/** The room a headset is in, as it last told of it; null while none has. */
-let room: VrSurface[] | null = null;
+/** The room a headset is in, as it last told of it, or the made-up one (`:room-mock`); null while there is neither. */
+let roomSurfaces: VrSurface[] | null = null;
+/**
+ * Its outlines as lines in the graph ([outlines]), for the 3D drawing. Made when first drawn: the middle of the graph shown
+ * then is where a graph is in the room, and stays so whatever is moved or shown afterwards.
+ */
+let roomLines: Float64Array | null = null;
+
+function setRoom(surfaces: VrSurface[]) {
+    roomSurfaces = surfaces;
+    roomLines = null;
+    page.repaint();
+}
+
+/** The middle of the box around [nodes]; of none, the graph's origin. */
+function middleOf(nodes: SpaceSceneNode[]): [number, number, number] {
+    const middle = (of: (n: SpaceSceneNode) => number) => nodes.length === 0 ? 0 : (Math.min(...nodes.map(of)) + Math.max(...nodes.map(of))) / 2;
+    return [middle((n) => n.x), middle((n) => n.y), middle((n) => n.z)];
+}
 
 /** The room, for `:room`: a line for each surface with what it is, how big, and where its middle is (metres; y up from the floor). */
 function roomText(): string {
@@ -735,9 +753,9 @@ function roomText(): string {
         const size = `${metres(Math.max(...xs) - Math.min(...xs))} × ${metres(Math.max(...zs) - Math.min(...zs))} m`;
         return `${s.label.padEnd(12)} ${size.padEnd(16)} at ${s.matrix.slice(12, 15).map(metres).join(", ")}`;
     };
-    return room === null ? "No headset has told of its room (start with --vr, enter in the headset; its space must be set up)."
-        : room.length === 0 ? "The headset knows of no surfaces in its room."
-        : room.map(line).join("\n");
+    return roomSurfaces === null ? "No headset has told of its room (start with --vr, enter in the headset; its space must be set up). :room-mock makes one up."
+        : roomSurfaces.length === 0 ? "The headset knows of no surfaces in its room."
+        : roomSurfaces.map(line).join("\n");
 }
 
 function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
@@ -821,6 +839,8 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         const t0 = performance.now();
         const spaceNow = view.space() as SpaceScene<SpaceSceneNode>;
         lastSpaceIds = spaceNow.nodes.map((n) => n.id);
+        if (roomSurfaces !== null) roomLines ??= outlines(roomSurfaces, middleOf((view.world() as SpaceScene<SpaceSceneNode>).nodes));
+        spaceRenderer.room(roomLines === null ? null : view.seen(roomLines));
         const t1 = performance.now();
         const pending = spaceRenderer.draw(
             spaceNow, width, height, canvas.width, canvas.height, dpr, canvasColour(colours().background), colours().foreground, ARROWHEAD_RADIUS, EDGE_FADE,
@@ -913,6 +933,10 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.tabs = () => showTabs(app);
     page.cacheStats = () => cacheStats(grid, app.current()?.threeD ?? false);
     page.room = roomText;
+    page.roomMock = () => {
+        setRoom(mockRoom());
+        return roomText();
+    };
     window.addEventListener("resize", repaint);
     // also when the screen's pixel density changes: the window moved to another screen, or the setting was changed
     new ResizeObserver((entries) => {
@@ -1013,9 +1037,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         const source = {
             scene: () => vrScene(app.current(), grid),
             pages: () => spaceRenderer?.atlas ?? [],
-            room: (surfaces: VrSurface[]) => {
-                room = surfaces;
-            },
+            room: setRoom,
         };
         startVr(Number(vr) || 0, token, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
@@ -1126,6 +1148,7 @@ const page: {
     tabs: () => void;
     cacheStats: () => string;
     room: () => string;
+    roomMock: () => string;
     confirm: (title: string, question: string) => boolean;
     choose: (kind: string, name: string) => string | null;
     exit: () => void;
@@ -1134,6 +1157,7 @@ const page: {
     repaint: () => {},
     cacheStats: () => "",
     room: () => "",
+    roomMock: () => "",
     editNode: () => {},
     endEdit: () => {},
     setting: (name, value) => {

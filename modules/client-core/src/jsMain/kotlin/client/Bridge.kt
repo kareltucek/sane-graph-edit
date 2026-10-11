@@ -257,6 +257,10 @@ class JsView internal constructor(
      */
     fun world(): dynamic = spaceOf(view.spaceScene(measurer, asSeen = false))
 
+    /** Points of the graph (x, y and z of each after each other) as this view sees them: where [space] would have nodes that are there. */
+    fun seen(points: DoubleArray): DoubleArray =
+        points.asList().chunked(3).flatMap { (x, y, z) -> view.viewTransform.toView(Point3(x, y, z)).let { listOf(it.x, it.y, it.z) } }.toDoubleArray()
+
     private fun spaceOf(scene: SpaceScene): dynamic {
         val o: dynamic = js("({})")
         o.nodes = scene.nodes.mapIndexed { i, n ->

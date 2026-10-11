@@ -512,6 +512,11 @@ the page outlines them with what they are (`wall`, `floor`, `desk`…)
 and tells the window of them: `:room` lists them, with their sizes
 and where they are. Nothing is laid out by them yet.
 
+The window draws that room too, in 3D mode, as outlines around the
+graph (a unit of the graph is a millimetre; the middle of the graph
+is 1.3 m above the floor). `:room-mock` makes a room up, with a
+door, a window and a desk, to try this without a headset.
+
 ### Session persistence
 
 The set of open file-backed tabs is persisted per workspace to

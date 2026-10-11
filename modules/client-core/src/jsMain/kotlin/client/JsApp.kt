@@ -35,6 +35,8 @@ private fun keyMapper(page: dynamic): KeyMapper {
     CommandRegistry.register("cache") { it.shell.message(page.cacheStats() as String) }
     // the room a headset told the page of
     CommandRegistry.register("room") { it.shell.message(page.room() as String) }
+    // a made-up room, to try without a headset what a room is used for
+    CommandRegistry.register("room-mock") { it.shell.message(page.roomMock() as String) }
     mapper.commandExecutor = { cmd, view -> CommandRegistry.execute(cmd, view) }
     mapper.commandNames = { CommandRegistry.list() }
     mapper.markSetter = { view, letter, change -> Actions.setMark(view, letter, change) }
@@ -192,7 +194,7 @@ class JsApp internal constructor(private val client: EditorClient, private val m
  * `repaint()` — the picture is out of date;
  * `tabs()` — the strip of tabs or the view to show changed ([JsApp.tabs], [JsApp.current]);
  * `cacheStats()` — as text of several lines: how much memory the pictures the page keeps take (`:cache`);
- * `room()` — as text, a line for each surface of the room a headset is in (`:room`);
+ * `room()` — as text, a line for each surface of the room a headset is in (`:room`); `roomMock()` — make a room up, and the same;
  * `editNode(id, atClick, x, y)` — let the user edit the node's text, with the caret at the view position x, y if `atClick`;
  * `endEdit()` — close that editor;
  * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`;

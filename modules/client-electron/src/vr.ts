@@ -2,12 +2,11 @@
 // else. Reloading it loses nothing. It works in an ordinary browser too, where the graph is turned with the mouse.
 
 import * as THREE from "three";
+import { GRAPH_AT, METRES_PER_UNIT, ROOM_COLOUR } from "./room";
 import type { VrNode, VrScene } from "./vrServer";
 
-/** A unit of the graph is this many metres: a node 150 units wide is 15 cm. */
-const METRES_PER_UNIT = 0.001;
-/** Where the middle of the graph is put when it arrives: in front of the eyes, at arm's length and a bit. */
-const START = new THREE.Vector3(0, 1.3, -1.2);
+/** Where the middle of the graph is put when it arrives. */
+const START = new THREE.Vector3(...GRAPH_AT);
 const ARROW = 5;
 
 const canvas = document.getElementById("view") as HTMLCanvasElement;
@@ -203,7 +202,6 @@ offer(document.getElementById("enter-vr") as HTMLButtonElement, "immersive-vr");
 
 // --- the room: the flat surfaces the headset knows of (walls, floor, a desk), each as its outline with what it is called ---
 
-const PLANE_COLOUR = 0x44ccff;
 /** The surfaces shown, each with when it last changed: redrawn when that moves on. In the room, not in the graph. */
 const surfaces = new Map<XRPlane, { shown: THREE.Group; changed: number }>();
 const room = new THREE.Group();
@@ -218,7 +216,7 @@ function word(text: string): THREE.Sprite {
     pen.font = "64px sans-serif";
     pen.textAlign = "center";
     pen.textBaseline = "middle";
-    pen.fillStyle = "#44ccff";
+    pen.fillStyle = `#${ROOM_COLOUR.toString(16).padStart(6, "0")}`;
     pen.fillText(text, 256, 64);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(picture), transparent: true, depthTest: false }));
     sprite.scale.set(0.4, 0.1, 1);
@@ -239,7 +237,7 @@ function outline(plane: XRPlane): THREE.Group {
     const shown = new THREE.Group();
     shown.matrixAutoUpdate = false;
     const corners = plane.polygon.map((p) => new THREE.Vector3(p.x, 0, p.z));
-    shown.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(corners), new THREE.LineBasicMaterial({ color: PLANE_COLOUR })));
+    shown.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(corners), new THREE.LineBasicMaterial({ color: ROOM_COLOUR })));
     const name = word(plane.semanticLabel ?? plane.orientation);
     name.position.copy(new THREE.Box3().setFromPoints(corners).getCenter(new THREE.Vector3()));
     shown.add(name);
