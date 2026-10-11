@@ -33,6 +33,8 @@ data class SceneNode(
     val selected: Boolean,
     /** What the text is: decides how it is shown while it is not edited. */
     val type: NodeType = NodeType.Plain,
+    /** Hidden, and seen only as a parent or a child of a shown node ([graph_tools.Graph.isFaint]): drawn half as strong. */
+    val faint: Boolean = false,
 )
 
 /**
@@ -87,7 +89,7 @@ fun EditorView.spaceScene(measurer: TextMeasurer, asSeen: Boolean = true): Space
     // not [asSeen]: where the nodes are in the graph, however this view is turned; for a renderer that looks from where it likes
     val points = visible.map { if (asSeen) viewPoint(it) else Point3(it.position, graph_tools.Depth.of(it)) }
     return SpaceScene(
-        nodes = visible.zip(points).map { (n, at) -> sceneNode(n, n in selected, Apparent(at.xy, 1.0)) },
+        nodes = visible.zip(points).map { (n, at) -> sceneNode(n, n in selected, g.isFaint(n), Apparent(at.xy, 1.0)) },
         depths = points.map { it.z },
         edges = g.edges.mapNotNull { e -> index[e.src]?.let { from -> index[e.dst]?.let { from to it } } },
         middle = viewTransform.toWorkspace(size / 2),
@@ -113,7 +115,7 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
     val seen = g.nodes.filter { it in visible }.mapNotNull { n -> apparent(n)?.let { n to it } }.toMap()
     return Scene(
         // what is further from the viewer first: what is nearer is drawn over it
-        nodes = seen.entries.sortedBy { it.value.scale }.map { (n, how) -> sceneNode(n, n in selected, how) },
+        nodes = seen.entries.sortedBy { it.value.scale }.map { (n, how) -> sceneNode(n, n in selected, g.isFaint(n), how) },
         edges = g.edges.filter { it.src in visible && it.dst in visible }.mapNotNull { e ->
             val src = seen[e.src]
             val dst = seen[e.dst]
@@ -135,7 +137,7 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
 /** The node [id] alone, as [scene] describes it, its size brought up to date with [measurer]. Null when there is none, or it is not shown. */
 fun EditorView.sceneNode(id: String, measurer: TextMeasurer): SceneNode? {
     g.recompute(measurer)
-    return g.node(id)?.let { n -> apparent(n)?.let { sceneNode(n, n in g.selectedNodes, it) } }
+    return g.node(id)?.let { n -> apparent(n)?.let { sceneNode(n, n in g.selectedNodes, g.isFaint(n), it) } }
 }
 
 /**
@@ -167,7 +169,7 @@ private fun sceneEdge(e: Edge, src: Apparent, dst: Apparent): SceneEdge =
         ).minBy { (it.first - it.second).lengthSquared() }.let { SceneEdge(it.first, it.second, (src.scale + dst.scale) / 2, dst.scale) }
     }
 
-private fun sceneNode(n: Node, selected: Boolean, how: Apparent): SceneNode =
+private fun sceneNode(n: Node, selected: Boolean, faint: Boolean, how: Apparent): SceneNode =
     SceneNode(
         id = n.id,
         position = how.position,
@@ -182,4 +184,5 @@ private fun sceneNode(n: Node, selected: Boolean, how: Apparent): SceneNode =
         monospace = NodeText.isMonospace(n),
         selected = selected,
         type = NodeType.of(n),
+        faint = faint,
     )

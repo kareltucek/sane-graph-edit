@@ -34,4 +34,13 @@ object ViewModes {
      */
     var discard: Boolean = false
 
+    /**
+     * `:set explore` — walking through a graph: all but the selected
+     * nodes were hidden when it was turned on, [showParents] and
+     * [showChildren] are on, and the buttons of the mouse select and
+     * fold. The client's doing (its `Explore`); here it is only
+     * known to be on.
+     */
+    var explore: Boolean = false
+
 }

@@ -31,6 +31,8 @@ interface SceneNode {
     /** How many times its sizes the node is drawn, around x, y: other than 1 for a node nearer or further than the plane the view is of. */
     depthScale: number;
     selected: boolean;
+    /** Hidden, and seen only as a parent or a child of a shown node: drawn half as strong. */
+    faint: boolean;
 }
 
 interface SceneEdge {
@@ -440,6 +442,9 @@ function viewOf(n: SceneNode, scene: View): View {
 }
 
 /** Draw [n]. Text too small to read is left out, unless [smallText]: a picture that is kept is not made again for being small. */
+/** How strong a faint node is drawn. */
+const FAINT = 0.5;
+
 function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number, smallText = false) {
     const view = viewOf(n, scene);
     const scale = view.scale;
@@ -450,6 +455,12 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
     if (n.shape === "oval") ctx.ellipse(n.x, n.y, n.width / 2, n.height / 2, 0, 0, 2 * Math.PI);
     else ctx.roundRect(left, top, n.width, n.height, CORNER_RADIUS);
     const ink = inkOf(n);
+    if (n.faint) {
+        // half of it over the background's colour: nothing shows through it, as through no node
+        ctx.fillStyle = colours().background;
+        ctx.fill();
+        ctx.globalAlpha = FAINT;
+    }
     ctx.fillStyle = n.bg ?? colours().background;
     ctx.fill();
     ctx.strokeStyle = ink;
@@ -463,6 +474,7 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
         const picture = pictureOf(n);
         drawContent(picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n)), view, dpr);
     }
+    ctx.globalAlpha = 1;
 }
 
 /** A node of the graph drawn with depth: where the view sees it, and how far away. */
@@ -495,7 +507,7 @@ function pictureKey(n: SpaceSceneNode): string {
     const picture = pictureOf(n);
     const painting = paintingOf(n);
     return JSON.stringify([
-        n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.selected, n.type, n.language, colours().background, colours().foreground,
+        n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.selected, n.faint, n.type, n.language, colours().background, colours().foreground,
         picture === null ? 0 : nameOf(picture), painting === null ? 0 : nameOf(painting), n.id === editing?.id && editing.editor.shown,
     ]);
 }

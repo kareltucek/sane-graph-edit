@@ -237,6 +237,7 @@ class JsView internal constructor(
         j.fontSize = n.fontSize
         j.depthScale = n.scale
         j.selected = n.selected
+        j.faint = n.faint
         return j
     }
 
@@ -343,6 +344,14 @@ class JsView internal constructor(
         1 -> PointerInput.Button.Middle
         2 -> PointerInput.Button.Right
         else -> null
+    }
+
+    init {
+        // the buttons of the mouse can be mapped as keys are
+        view.pointer.mouseKey = { key, select ->
+            keys.activeView = view
+            keys.mouseKey(key, select)
+        }
     }
 
     fun pointerDown(x: Double, y: Double, domButton: Int, control: Boolean, shift: Boolean) {

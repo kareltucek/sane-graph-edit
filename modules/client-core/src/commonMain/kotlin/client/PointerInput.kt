@@ -26,7 +26,37 @@ class PointerInput(private val view: EditorView) {
         if (!view.content.isBusy) press(screen, button, control, shift)
     }
 
+    /**
+     * Asked when the left or the right button is pressed on a node,
+     * with the button as a key ([KeyMapper.LEFT_MOUSE],
+     * [KeyMapper.RIGHT_MOUSE]) and what makes that node the
+     * selection: true when the button is mapped to something, which
+     * was then done ([KeyMapper.mouseKey]). Nobody asked: the buttons
+     * do what they do out of the box.
+     */
+    var mouseKey: (key: String, select: () -> Unit) -> Boolean = { _, _ -> false }
+
+    /** Whether [button], pressed at [pos], stands for keys, which were then run. */
+    private fun mapped(pos: Vector2, button: Button, control: Boolean): Boolean {
+        val key = when (button) {
+            Button.Left -> KeyMapper.LEFT_MOUSE
+            Button.Right -> KeyMapper.RIGHT_MOUSE
+            Button.Middle -> null
+        }
+        val under = if (key == null || control || gestures.state != null) emptySet() else Clicker.selectClickedNode(view, pos)
+        return key != null && under.isNotEmpty() && mouseKey(key) {
+            view.endNodeEdit()
+            view.endStylePicker()
+            view.g.cleanSelect(under)
+        }
+    }
+
     private fun press(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
+        if (mapped(workspace(screen), button, control)) view.repaint()
+        else pressUnmapped(screen, button, control, shift)
+    }
+
+    private fun pressUnmapped(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
         val pos = workspace(screen)
         val starts = gestures.state == null
         if (button == Button.Left && starts) {

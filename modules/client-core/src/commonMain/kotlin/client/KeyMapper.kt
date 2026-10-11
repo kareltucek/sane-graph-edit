@@ -214,6 +214,23 @@ class KeyMapper(
         mappings.remove(lhs)
     }
 
+    /**
+     * A button of the mouse ([LEFT_MOUSE], [RIGHT_MOUSE]) was pressed
+     * on a node. If it is mapped (`:map <RightMouse> zO`), or stands
+     * for something in explore mode ([EXPLORE_MOUSE]), [select] is
+     * called, which makes that node the selection, and then the keys
+     * it stands for are run. False when it stands for nothing: the
+     * button then does what it does out of the box.
+     */
+    fun mouseKey(key: String, select: () -> Unit): Boolean {
+        val mapping = mappings[key] ?: EXPLORE_MOUSE[key]?.takeIf { graph_tools.ViewModes.explore }?.let { Mapping(it, recursive = false) }
+        mapping?.let {
+            select()
+            replayRhs(it.rhs, it.recursive)
+        }
+        return mapping != null
+    }
+
     /** Clear all user mappings (but not defaults). */
     fun clearMappings() {
         mappings.clear()
@@ -935,6 +952,7 @@ class KeyMapper(
             "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
+            "explore" -> activeView?.let { Explore.set(it, change(graph_tools.ViewModes.explore)) }
             // of the graph shown, not of all of them
             "3d" -> activeView?.let { it.viewTransform.threeD = change(it.viewTransform.threeD) }
             else -> applicationFlags[name]?.let { flag ->
@@ -1112,6 +1130,13 @@ class KeyMapper(
         sb.appendLine()
         sb.appendLine("  show-children     Same, for children. Alias: show-childs.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showChildren) "on" else "off"}.")
+        sb.appendLine()
+        sb.appendLine("  explore           Walk through the graph: hides all but the selected")
+        sb.appendLine("                    nodes (one undo step) and turns show-parents and")
+        sb.appendLine("                    show-children on. A click selects; a right click")
+        sb.appendLine("                    unfolds or folds the node (:explore-toggle).")
+        sb.appendLine("                    The buttons can be mapped: <LeftMouse>, <RightMouse>.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.explore) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("  dynamic           Nodes that become visible are moved next to")
         sb.appendLine("                    their visible neighbours, left to right:")
@@ -1345,7 +1370,14 @@ class KeyMapper(
         val APPLICATION_FLAGS = mutableSetOf<String>()
 
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
-        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard", "3d")
+        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard", "3d", "explore")
+
+        /** A button of the mouse pressed on a node, as a key that can be mapped (`:map <RightMouse> zO`). */
+        const val LEFT_MOUSE = "<LeftMouse>"
+        const val RIGHT_MOUSE = "<RightMouse>"
+
+        /** What the buttons of the mouse stand for in explore mode ([Explore]), unless the user mapped them: the right one unfolds or folds the node. */
+        val EXPLORE_MOUSE = mapOf(RIGHT_MOUSE to ":explore-toggle<CR>")
 
         /** `:help <topic>` topics. */
         val HELP_TOPICS = listOf("commands", "keys", "map", "bindings", "init", "config", "settings")

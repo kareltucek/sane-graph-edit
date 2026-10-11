@@ -212,7 +212,7 @@ object Help {
                             - `:set {option}` / `:set no{option}` / `:set {option}!`
                             - `{option}`:
                               - `unhide` / `show-parents` / `show-children`
-                              - `dynamic` / `discard` / `3d`
+                              - `dynamic` / `discard` / `3d` / `explore`
                             - `:set {name}={value}`
                             - `{name}`:
                               - `timeoutlen` / `picker`
