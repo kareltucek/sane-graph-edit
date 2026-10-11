@@ -192,13 +192,13 @@ class HideTest {
     }
 
     @Test
-    fun `a hidden node seen as a child is faint until it is selected`() = withModes(showChildren = true) {
+    fun `a hidden node that is seen is faint`() = withModes(showChildren = true) {
         val (g, ns) = chain("B", "C", "D")
         assertFalse(g.isFaint(ns.getValue("A")))    // not hidden
         assertTrue(g.isFaint(ns.getValue("B")))     // hidden child of A
         assertFalse(g.isFaint(ns.getValue("C")))    // not seen at all
         g.select(ns.getValue("B"))
-        assertFalse(g.isFaint(ns.getValue("B")))    // selected
+        assertTrue(g.isFaint(ns.getValue("B")))     // selected, still hidden
         assertTrue(g.isFaint(ns.getValue("C")))     // child of selected B
     }
 

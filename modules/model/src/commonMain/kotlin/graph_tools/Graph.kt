@@ -316,14 +316,14 @@ class Graph(
     }
 
     /**
-     * True when [n] is seen although it is hidden and not selected:
-     * as a parent or a child of a shown node, with
-     * [ViewModes.showParents] / [ViewModes.showChildren]. Such a node
-     * is drawn faint. An attached node is as its owner is.
+     * True when [n] is seen although it is hidden: with
+     * [ViewModes.showParents] / [ViewModes.showChildren], as a parent
+     * or a child of a shown node, or selected. Such a node is drawn
+     * faint. An attached node is as its owner is.
      */
     fun isFaint(n: Node): Boolean {
         val owner = attachmentOwners[n]
-        return if (owner != null) isFaint(owner) else n.isHidden && n !in selectedNodesRestricted && isVisible(n)
+        return if (owner != null) isFaint(owner) else n.isHidden && isVisible(n)
     }
 
     /** All nodes passing [isVisible]; linear in nodes + edges. */

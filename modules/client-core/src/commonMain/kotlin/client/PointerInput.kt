@@ -27,24 +27,23 @@ class PointerInput(private val view: EditorView) {
     }
 
     /**
-     * Asked when the left or the right button is pressed on a node,
-     * with the button as a key ([KeyMapper.LEFT_MOUSE],
-     * [KeyMapper.RIGHT_MOUSE]) and what makes that node the
-     * selection: true when the button is mapped to something, which
-     * was then done ([KeyMapper.mouseKey]). Nobody asked: the buttons
-     * do what they do out of the box.
+     * Asked when a button is used on a node, with the button as a
+     * key ([KeyMapper.LEFT_MOUSE], [KeyMapper.RIGHT_MOUSE]) and what
+     * makes that node the selection: true when the button is mapped
+     * to something, which was then done ([KeyMapper.mouseKey]).
+     * Nobody asked: the buttons do what they do out of the box.
+     *
+     * The right button is asked about when it is pressed, and does
+     * nothing else if it is mapped. The left one when it was clicked
+     * (pressed and released in one place), after what it does out of
+     * the box: it selects and drags as ever.
      */
     var mouseKey: (key: String, select: () -> Unit) -> Boolean = { _, _ -> false }
 
-    /** Whether [button], pressed at [pos], stands for keys, which were then run. */
-    private fun mapped(pos: Vector2, button: Button, control: Boolean): Boolean {
-        val key = when (button) {
-            Button.Left -> KeyMapper.LEFT_MOUSE
-            Button.Right -> KeyMapper.RIGHT_MOUSE
-            Button.Middle -> null
-        }
-        val under = if (key == null || control || gestures.state != null) emptySet() else Clicker.selectClickedNode(view, pos)
-        return key != null && under.isNotEmpty() && mouseKey(key) {
+    /** Whether the button that [key] is, used at [pos], stands for keys, which were then run. */
+    private fun mapped(pos: Vector2, key: String): Boolean {
+        val under = Clicker.selectClickedNode(view, pos)
+        return under.isNotEmpty() && mouseKey(key) {
             view.endNodeEdit()
             view.endStylePicker()
             view.g.cleanSelect(under)
@@ -52,7 +51,8 @@ class PointerInput(private val view: EditorView) {
     }
 
     private fun press(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
-        if (mapped(workspace(screen), button, control)) view.repaint()
+        val asKey = button == Button.Right && !control && gestures.state == null
+        if (asKey && mapped(workspace(screen), KeyMapper.RIGHT_MOUSE)) view.repaint()
         else pressUnmapped(screen, button, control, shift)
     }
 
@@ -119,7 +119,10 @@ class PointerInput(private val view: EditorView) {
         val middleGesture = gestures.state == GestureController.States.PanningWorkspace || gestures.state == GestureController.States.Orbiting
         if (button == Button.Left || (button == Button.Middle && middleGesture)) {
             if (gestures.state == GestureController.States.SelectionBox) gestures.dragOrEndSelectionBox(true)
-            gestures.endSingleClick(workspace(screen), actual, control, view)
+            val pos = workspace(screen)
+            val clicked = button == Button.Left && !control && (gestures.pressedAt - pos).lengthSquared() < Constants.cursorDeadZone * Constants.cursorDeadZone
+            gestures.endSingleClick(pos, actual, control, view)
+            if (clicked) mapped(pos, KeyMapper.LEFT_MOUSE)
         }
         view.repaint()
     }

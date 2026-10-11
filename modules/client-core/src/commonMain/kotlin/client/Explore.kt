@@ -15,9 +15,8 @@ import graph_tools.ViewModes
  * that the parents and children of what is shown are seen, faint
  * ([graph_tools.Graph.isFaint]). The buttons of the mouse then mean
  * what [KeyMapper.EXPLORE_MOUSE] says, unless the user mapped them:
- * the left one selects, as always, which shows the neighbours of
- * the node clicked for as long as it is selected; the right one
- * unfolds or folds it for good ([toggle]).
+ * the left one shows ([show]: a faint node, or the children of one
+ * that is shown already), the right one hides ([hide]).
  *
  * Turning it off puts the two show modes back as they were. What is
  * hidden stays hidden: undo, or `zR`.
@@ -27,21 +26,36 @@ object Explore {
     private var before: Pair<Boolean, Boolean>? = null
 
     /**
-     * `:explore-toggle`, what the right button does in the mode:
-     * unfold the selected nodes, or fold them. Unfolding shows their
-     * hidden children, and themselves if they are hidden (a faint
-     * node that was clicked); with nothing of that hidden, the
-     * children are hidden instead. One undo step.
+     * `:explore-show`, what a click of the left button does in the
+     * mode: of the selected nodes those that are hidden (a faint
+     * node that was clicked) are shown; with none hidden, their
+     * hidden children are. One undo step.
      */
-    fun toggle(view: EditorView) {
+    fun show(view: EditorView) {
         val g = view.g
         val from = g.selectedNodes.toSet()
-        val children = GraphTools.computeGeneration(g, from, true, intoHidden = true) - from
-        val hidden = (from + children).filter { it.isHidden }
-        val shown = children.filter { !it.isHidden }
+        val own = from.filter { it.isHidden }
+        val hidden = own.ifEmpty { (GraphTools.computeGeneration(g, from, true, intoHidden = true) - from).filter { it.isHidden } }
+        if (hidden.isNotEmpty()) g.commit(RevealCommand(hidden.associateWith { it.cache.hideLevel }))
+        view.repaint()
+    }
+
+    /**
+     * `:explore-hide`, what the right button does in the mode: all
+     * that is shown downstream of the selected nodes is hidden; with
+     * nothing shown there, the selected nodes themselves are, and
+     * are no longer selected. One undo step.
+     */
+    fun hide(view: EditorView) {
+        val g = view.g
+        val from = g.selectedNodes.filter { !it.isHidden }.toSet()
+        val below = (GraphTools.computeClosure(g, from, true, intoHidden = true) - from).filter { !it.isHidden }
         when {
-            hidden.isNotEmpty() -> g.commit(RevealCommand(hidden.associateWith { it.cache.hideLevel }))
-            shown.isNotEmpty() -> g.commit(HideCommand(shown))
+            below.isNotEmpty() -> g.commit(HideCommand(below))
+            from.isNotEmpty() -> {
+                g.commit(HideCommand(from.toList()))
+                g.unselectAll(from)
+            }
         }
         view.repaint()
     }

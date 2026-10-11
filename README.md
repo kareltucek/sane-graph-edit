@@ -329,22 +329,17 @@ while on:
 - `show-parents` / `show-children` — besides non-hidden nodes, also
   show selected nodes and every parent / child of a non-hidden or
   selected node. Display only; hide levels are untouched. A hidden
-  node that is seen only as such a parent or child is drawn faint
-  (half as strong); selected, it is drawn as any other.
+  node that is seen so is drawn faint, half as strong (not by the
+  Swing client).
 - `explore` — for walking through a graph. Turning it on hides every
   node that is not selected (one undo step; with nothing selected,
   all but the last active node) and turns `show-parents` and
   `show-children` on, so the neighbours of what is shown are seen,
-  faint. A click on a faint node selects it, which shows its
-  neighbours for as long as it is selected; a right click on a node
-  unfolds it for good, showing it and its children, or with all of
-  those shown folds the children again (`:explore-toggle`). Turning it off puts
-  the two show modes back; what is hidden stays hidden (undo, or
-  `zR`). Electron client only.
-
-A button of the mouse pressed on a node can be mapped like a key:
-`:map <RightMouse> zO` selects the node and runs `zO`. Unmapped, the
-buttons do what they always did (`:unmap <RightMouse>`).
+  faint. A click shows: a faint node, or the children of a node that
+  is shown already (`:explore-show`). A right click hides: all that
+  is shown downstream of the node, or with nothing shown there the
+  node itself (`:explore-hide`). Turning the mode off puts the two
+  show modes back; what is hidden stays hidden (undo, or `zR`).
 - `dynamic` — a node that becomes visible (by any of the above, or
   `H`) is moved next to its visible neighbours, left to right: a
   child in a column right of its parents, a parent left of its
@@ -352,6 +347,12 @@ buttons do what they always did (`:unmap <RightMouse>`).
   A real move: one undo step per batch, saved with the file.
 - `discard` — never ask about unsaved changes: opening, following
   links, reloading, jumping, closing tabs and quitting discard them.
+
+The left and the right button of the mouse can be mapped like keys,
+for when they are used on a node: `:map <RightMouse> zO` makes the
+node the selection and runs `zO`. A mapped right button does only
+that (no style picker). A mapped `<LeftMouse>` is run after a click,
+and the button still selects and drags as ever. `:unmap` undoes it.
 
 ### Keyboard — styling
 

@@ -215,7 +215,7 @@ class KeyMapper(
     }
 
     /**
-     * A button of the mouse ([LEFT_MOUSE], [RIGHT_MOUSE]) was pressed
+     * A button of the mouse ([LEFT_MOUSE], [RIGHT_MOUSE]) was used
      * on a node. If it is mapped (`:map <RightMouse> zO`), or stands
      * for something in explore mode ([EXPLORE_MOUSE]), [select] is
      * called, which makes that node the selection, and then the keys
@@ -1133,8 +1133,10 @@ class KeyMapper(
         sb.appendLine()
         sb.appendLine("  explore           Walk through the graph: hides all but the selected")
         sb.appendLine("                    nodes (one undo step) and turns show-parents and")
-        sb.appendLine("                    show-children on. A click selects; a right click")
-        sb.appendLine("                    unfolds or folds the node (:explore-toggle).")
+        sb.appendLine("                    show-children on. A click shows: a faint node, or")
+        sb.appendLine("                    the children of a shown one (:explore-show). A right")
+        sb.appendLine("                    click hides: what is shown below the node, or with")
+        sb.appendLine("                    nothing there the node itself (:explore-hide).")
         sb.appendLine("                    The buttons can be mapped: <LeftMouse>, <RightMouse>.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.explore) "on" else "off"}.")
         sb.appendLine()
@@ -1372,12 +1374,12 @@ class KeyMapper(
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
         val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard", "3d", "explore")
 
-        /** A button of the mouse pressed on a node, as a key that can be mapped (`:map <RightMouse> zO`). */
+        /** A button of the mouse on a node, as a key that can be mapped (`:map <RightMouse> zO`): the left one clicked, the right one pressed. */
         const val LEFT_MOUSE = "<LeftMouse>"
         const val RIGHT_MOUSE = "<RightMouse>"
 
-        /** What the buttons of the mouse stand for in explore mode ([Explore]), unless the user mapped them: the right one unfolds or folds the node. */
-        val EXPLORE_MOUSE = mapOf(RIGHT_MOUSE to ":explore-toggle<CR>")
+        /** What the buttons of the mouse stand for in explore mode ([Explore]), unless the user mapped them: the left one shows, the right one hides. */
+        val EXPLORE_MOUSE = mapOf(LEFT_MOUSE to ":explore-show<CR>", RIGHT_MOUSE to ":explore-hide<CR>")
 
         /** `:help <topic>` topics. */
         val HELP_TOPICS = listOf("commands", "keys", "map", "bindings", "init", "config", "settings")

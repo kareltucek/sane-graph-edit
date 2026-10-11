@@ -174,6 +174,13 @@ class GraphView(
         AwtTextMeasurer.install()
         // during a transform gesture the keys are its controls (axis locks, confirm, cancel)
         model.onTransformMode = { on -> keyMapper?.mode = if (on) KeyMapper.Mode.Transform else KeyMapper.Mode.Normal }
+        // the buttons of the mouse can be mapped as keys are
+        model.pointer.mouseKey = { key, select ->
+            keyMapper?.let {
+                it.activeView = model
+                it.mouseKey(key, select)
+            } ?: false
+        }
     }
 
     /**

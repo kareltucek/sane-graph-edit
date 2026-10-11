@@ -106,7 +106,8 @@ fun registerEditingCommands() {
     r.register("hide") { impl.hideSelected(it) }
     r.register("unhide") { impl.unhideOneLevel(it) }
     r.register("unhide-all") { ZCommands.unhideAll(it) }
-    r.register("explore-toggle") { Explore.toggle(it) }
+    r.register("explore-show") { Explore.show(it) }
+    r.register("explore-hide") { Explore.hide(it) }
 
     // View to the target (the fold operators take a motion: see KeyMapper)
     r.register("view-top") { ZCommands.viewToEdge(it, ZCommands.Edge.Top, "view-top") }
