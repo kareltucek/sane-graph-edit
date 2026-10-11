@@ -4,7 +4,7 @@ import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
-import { startVr, VrScene } from "./vrServer";
+import { startVr, VrScene, VrSurface } from "./vrServer";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -723,6 +723,23 @@ let lastSpaceIds: string[] = [];
  * much memory it takes and how many of the nodes of the graph shown
  * have one. [threeD]: the graph is drawn with depth now.
  */
+/** The room a headset is in, as it last told of it; null while none has. */
+let room: VrSurface[] | null = null;
+
+/** The room, for `:room`: a line for each surface with what it is, how big, and where its middle is (metres; y up from the floor). */
+function roomText(): string {
+    const metres = (n: number) => n.toFixed(2);
+    const line = (s: VrSurface) => {
+        const xs = s.polygon.map((p) => p[0]);
+        const zs = s.polygon.map((p) => p[1]);
+        const size = `${metres(Math.max(...xs) - Math.min(...xs))} × ${metres(Math.max(...zs) - Math.min(...zs))} m`;
+        return `${s.label.padEnd(12)} ${size.padEnd(16)} at ${s.matrix.slice(12, 15).map(metres).join(", ")}`;
+    };
+    return room === null ? "No headset has told of its room (start with --vr, enter in the headset; its space must be set up)."
+        : room.length === 0 ? "The headset knows of no surfaces in its room."
+        : room.map(line).join("\n");
+}
+
 function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
     const megabytes = (bytes: number) => `${(bytes / 2 ** 20).toFixed(1)}MB`.padStart(8);
     const share = (count: number, of: number) => `${String(count).padStart(5)}/${of} nodes (${String(of === 0 ? 0 : Math.round(100 * count / of)).padStart(3)}%)`;
@@ -895,6 +912,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.endEdit = () => current((view) => endEdit(view));
     page.tabs = () => showTabs(app);
     page.cacheStats = () => cacheStats(grid, app.current()?.threeD ?? false);
+    page.room = roomText;
     window.addEventListener("resize", repaint);
     // also when the screen's pixel density changes: the window moved to another screen, or the setting was changed
     new ResizeObserver((entries) => {
@@ -992,7 +1010,14 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         const token: string = require("crypto").randomBytes(16).toString("hex");
         // `--vr-lan` too: on the local network, for a headset without a cable
         const lan = query.get("vrLan") !== null;
-        startVr(Number(vr) || 0, token, lan, { scene: () => vrScene(app.current(), grid), pages: () => spaceRenderer?.atlas ?? [] }, (address, error) => {
+        const source = {
+            scene: () => vrScene(app.current(), grid),
+            pages: () => spaceRenderer?.atlas ?? [],
+            room: (surfaces: VrSurface[]) => {
+                room = surfaces;
+            },
+        };
+        startVr(Number(vr) || 0, token, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
@@ -1100,6 +1125,7 @@ const page: {
     hidePicker: () => void;
     tabs: () => void;
     cacheStats: () => string;
+    room: () => string;
     confirm: (title: string, question: string) => boolean;
     choose: (kind: string, name: string) => string | null;
     exit: () => void;
@@ -1107,6 +1133,7 @@ const page: {
 } = {
     repaint: () => {},
     cacheStats: () => "",
+    room: () => "",
     editNode: () => {},
     endEdit: () => {},
     setting: (name, value) => {

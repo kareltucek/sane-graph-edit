@@ -43,8 +43,47 @@ export interface VrScene {
     ink: string;
 }
 
+/**
+ * A flat surface of the room the headset is in, as the headset reports it: what it is called (`wall`, `floor`, `desk`…; its
+ * orientation where the headset gives no name), where it is in the room (a 4×4 matrix by columns, metres, y up, the floor at 0:
+ * the surface lies in its x/z plane, y is its normal) and its outline there as pairs of x and z.
+ */
+export interface VrSurface {
+    label: string;
+    orientation: "horizontal" | "vertical";
+    matrix: number[];
+    polygon: [number, number][];
+}
+
+const MAX_SURFACES = 256;
+const MAX_CORNERS = 64;
+const MAX_LABEL = 32;
+/** A headset sends little: the surfaces of its room. */
+const MAX_MESSAGE_BYTES = 256 * 1024;
+
+/** The surfaces in what a headset sent, or null when that is something else: only numbers and short names are taken from it. */
+function surfacesOf(text: string): VrSurface[] | null {
+    const numbers = (it: unknown, count: number) => Array.isArray(it) && it.length === count && it.every((n) => typeof n === "number" && Number.isFinite(n));
+    try {
+        const sent = JSON.parse(text);
+        const fine = sent?.type === "room" && Array.isArray(sent.surfaces) && sent.surfaces.length <= MAX_SURFACES && sent.surfaces.every((s: any) =>
+            typeof s?.label === "string" && numbers(s.matrix, 16) && Array.isArray(s.polygon) && s.polygon.length <= MAX_CORNERS &&
+            s.polygon.every((p: unknown) => numbers(p, 2)));
+        return !fine ? null : sent.surfaces.map((s: any) => ({
+            label: s.label.slice(0, MAX_LABEL),
+            orientation: s.orientation === "vertical" ? "vertical" : "horizontal",
+            matrix: s.matrix,
+            polygon: s.polygon,
+        }));
+    } catch {
+        return null;
+    }
+}
+
 /** What is asked of the page that has the graph. */
 export interface VrSource {
+    /** A headset told of the room it is in: the last to do so is believed. */
+    room: (surfaces: VrSurface[]) => void;
     /** What to show now; null when there is nothing. */
     scene: () => VrScene | null;
     /** The pages of the atlas, each with a number that goes up when it changes. */
@@ -158,12 +197,16 @@ export function startVr(port: number, token: string, lan: boolean, source: VrSou
 
     /** Each headset, with what it was last sent: the scene as text, and the version of each page. */
     const headsets = new Map<WebSocket, { scene: string; pages: number[]; sending: boolean }>();
-    const sockets = new WebSocketServer({ noServer: true });
+    const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
     server.on("upgrade", (request, socket, head) => {
         if (knows(request)) sockets.handleUpgrade(request, socket, head, (ws) => {
             headsets.set(ws, { scene: "", pages: [], sending: false });
             ws.on("close", () => headsets.delete(ws));
             ws.on("error", () => headsets.delete(ws));
+            ws.on("message", (data, binary) => {
+                const surfaces = binary ? null : surfacesOf(data.toString());
+                if (surfaces !== null) source.room(surfaces);
+            });
         });
         else socket.destroy();
     });

@@ -506,6 +506,12 @@ for itself with `openssl` and keeps in its configuration directory
 (`vr-cert.pem`, `vr-key.pem`), so the headset's browser warns about
 it once and has to be told to go on.
 
+Where the headset knows the flat surfaces of its room (on a Quest:
+after its space setup, and when its browser is allowed to see them),
+the page outlines them with what they are (`wall`, `floor`, `desk`…)
+and tells the window of them: `:room` lists them, with their sizes
+and where they are. Nothing is laid out by them yet.
+
 ### Session persistence
 
 The set of open file-backed tabs is persisted per workspace to

@@ -140,6 +140,10 @@ const offset = new THREE.Vector3();
 
 // --- what the server sends: the scene as text, a page as its number and then its picture ---
 
+/** Says something to the window; null while not connected. And the room as it was last told of. */
+let tell: ((text: string) => void) | null = null;
+let toldOfRoom = "";
+
 function connect() {
     const address = new URL(window.location.href);
     // over TLS when the page came so
@@ -148,6 +152,9 @@ function connect() {
     socket.binaryType = "arraybuffer";
     socket.onopen = () => {
         state.textContent = "connected";
+        // the window may be a new one: it is told of the room again
+        toldOfRoom = "";
+        tell = (text) => socket.send(text);
     };
     socket.onmessage = (message) => {
         if (typeof message.data === "string") {
@@ -165,6 +172,7 @@ function connect() {
     };
     // the window went away, or the cable: try again, what is shown stays meanwhile
     socket.onclose = () => {
+        tell = null;
         state.textContent = "not connected; trying again…";
         setTimeout(connect, 2000);
     };
@@ -260,7 +268,32 @@ renderer.xr.addEventListener("planesdetected", (event) => {
         shown.visible = pose !== undefined && pose !== null;
         if (pose) shown.matrix.fromArray(pose.transform.matrix);
     });
+    report(planes);
 });
+
+const REPORT_MS = 1000;
+let reported = 0;
+
+/** Tell the window of the room, when it changed: to the millimetre, so that what only trembles is not told of again and again. */
+function report(planes: XRPlaneSet) {
+    if (tell !== null && performance.now() - reported > REPORT_MS) {
+        reported = performance.now();
+        const round = (n: number) => Math.round(n * 1000) / 1000;
+        const text = JSON.stringify({
+            type: "room",
+            surfaces: [...planes].filter((it) => surfaces.get(it)?.shown.visible).map((it) => ({
+                label: it.semanticLabel ?? it.orientation,
+                orientation: it.orientation,
+                matrix: surfaces.get(it)!.shown.matrix.toArray().map(round),
+                polygon: it.polygon.map((p) => [round(p.x), round(p.z)]),
+            })),
+        });
+        if (text !== toldOfRoom) {
+            tell(text);
+            toldOfRoom = text;
+        }
+    }
+}
 
 // Squeezing a controller takes the graph in that hand: it goes where the hand goes, turned as the hand turns, until let go.
 [0, 1].forEach((index) => {
