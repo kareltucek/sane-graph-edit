@@ -173,7 +173,7 @@ function connect() {
 // --- in the headset: enter, and take the graph in the hand ---
 
 function enter(mode: "immersive-ar" | "immersive-vr") {
-    navigator.xr!.requestSession(mode, { optionalFeatures: ["local-floor"] }).then((session) => {
+    navigator.xr!.requestSession(mode, { optionalFeatures: ["local-floor", "plane-detection"] }).then((session) => {
         renderer.xr.setReferenceSpaceType("local-floor");
         // with the room visible nothing is drawn behind the graph
         scene.background = mode === "immersive-vr" && shown !== null ? new THREE.Color(shown.background) : null;
@@ -192,6 +192,75 @@ function offer(button: HTMLButtonElement, mode: "immersive-ar" | "immersive-vr")
 
 offer(document.getElementById("enter-ar") as HTMLButtonElement, "immersive-ar");
 offer(document.getElementById("enter-vr") as HTMLButtonElement, "immersive-vr");
+
+// --- the room: the flat surfaces the headset knows of (walls, floor, a desk), each as its outline with what it is called ---
+
+const PLANE_COLOUR = 0x44ccff;
+/** The surfaces shown, each with when it last changed: redrawn when that moves on. In the room, not in the graph. */
+const surfaces = new Map<XRPlane, { shown: THREE.Group; changed: number }>();
+const room = new THREE.Group();
+scene.add(room);
+
+/** A word, as a small picture that faces whoever looks. */
+function word(text: string): THREE.Sprite {
+    const picture = document.createElement("canvas");
+    picture.width = 512;
+    picture.height = 128;
+    const pen = picture.getContext("2d")!;
+    pen.font = "64px sans-serif";
+    pen.textAlign = "center";
+    pen.textBaseline = "middle";
+    pen.fillStyle = "#44ccff";
+    pen.fillText(text, 256, 64);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(picture), transparent: true, depthTest: false }));
+    sprite.scale.set(0.4, 0.1, 1);
+    return sprite;
+}
+
+function forget(shown: THREE.Group) {
+    room.remove(shown);
+    shown.traverse((it) => {
+        const drawn = it as Partial<THREE.Line<THREE.BufferGeometry, THREE.Material>>;
+        drawn.geometry?.dispose();
+        drawn.material?.dispose();
+    });
+}
+
+/** The outline of a surface in its own space, where it lies flat (y is its normal), and its name in the middle. */
+function outline(plane: XRPlane): THREE.Group {
+    const shown = new THREE.Group();
+    shown.matrixAutoUpdate = false;
+    const corners = plane.polygon.map((p) => new THREE.Vector3(p.x, 0, p.z));
+    shown.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(corners), new THREE.LineBasicMaterial({ color: PLANE_COLOUR })));
+    const name = word(plane.semanticLabel ?? plane.orientation);
+    name.position.copy(new THREE.Box3().setFromPoints(corners).getCenter(new THREE.Vector3()));
+    shown.add(name);
+    return shown;
+}
+
+renderer.xr.addEventListener("planesdetected", (event) => {
+    // three.js says a set of planes here, and gives the frame
+    const frame = event.data as unknown as XRFrame;
+    const planes = frame.detectedPlanes ?? new Set<XRPlane>();
+    const space = renderer.xr.getReferenceSpace();
+    [...surfaces.keys()].filter((it) => !planes.has(it)).forEach((gone) => {
+        forget(surfaces.get(gone)!.shown);
+        surfaces.delete(gone);
+    });
+    planes.forEach((plane) => {
+        const had = surfaces.get(plane);
+        if (had === undefined || had.changed !== plane.lastChangedTime) {
+            if (had !== undefined) forget(had.shown);
+            const shown = outline(plane);
+            room.add(shown);
+            surfaces.set(plane, { shown, changed: plane.lastChangedTime });
+        }
+        const pose = space === null ? undefined : frame.getPose(plane.planeSpace, space);
+        const shown = surfaces.get(plane)!.shown;
+        shown.visible = pose !== undefined && pose !== null;
+        if (pose) shown.matrix.fromArray(pose.transform.matrix);
+    });
+});
 
 // Squeezing a controller takes the graph in that hand: it goes where the hand goes, turned as the hand turns, until let go.
 [0, 1].forEach((index) => {
