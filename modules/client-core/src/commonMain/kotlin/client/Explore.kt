@@ -11,7 +11,7 @@ import graph_tools.Node
  * While it is on, the view has a set of pinned nodes
  * ([Graph.pinned]): those are shown, and their parents and children
  * are seen faint ([Graph.isFaint]); nothing else is. It starts as
- * the selection (with nothing selected, the last active node). The
+ * the selection (with nothing selected, as [roots]). The
  * buttons of the mouse then mean what [KeyMapper.EXPLORE_MOUSE]
  * says, unless the user mapped them: the left one shows ([show]),
  * the right one folds ([hide]).
@@ -94,12 +94,33 @@ object Explore {
         view.repaint()
     }
 
+    /**
+     * Where to start from when nothing is selected: of each part of
+     * the graph that hangs together, the nodes that fewest edges
+     * come into. Of a tree that is its root; of a cycle, all of it.
+     */
+    fun roots(g: Graph): Set<Node> {
+        val nodes = g.nodes.filter { !it.detail().isBlank }.toSet()
+        val into = nodes.associateWith { n -> g.findInEdges(n).map { it.src }.filter { it in nodes && it != n }.toSet() }
+        val next = nodes.associateWith { n -> into.getValue(n) + g.findOutEdges(n).map { it.dst }.filter { it in nodes } }
+        tailrec fun part(reached: Set<Node>, edge: Set<Node>): Set<Node> {
+            val further = edge.flatMap { next.getValue(it) }.toSet() - reached
+            return if (further.isEmpty()) reached else part(reached + further, further)
+        }
+        val seen = mutableSetOf<Node>()
+        val parts = nodes.mapNotNull { n -> if (n in seen) null else part(setOf(n), setOf(n)).also { seen += it } }
+        return parts.flatMap { part ->
+            val fewest = part.minOf { into.getValue(it).size }
+            part.filter { into.getValue(it).size == fewest }
+        }.toSet()
+    }
+
     fun set(view: EditorView, on: Boolean) {
         val g = view.g
-        val kept = g.selectedNodes.toSet().ifEmpty { setOfNotNull(g.lastActiveNode?.takeIf { it in g.nodes }) }
+        val kept = g.selectedNodes.toSet().ifEmpty { if (on && !isOn(view)) roots(g) else emptySet() }
         when {
             on == isOn(view) -> Unit
-            on && kept.isEmpty() -> view.shell.message("explore: no node is selected")
+            on && kept.isEmpty() -> view.shell.message("explore: the graph has no nodes")
             on -> g.pinned = kept
             else -> {
                 g.pinned = null

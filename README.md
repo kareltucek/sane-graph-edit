@@ -352,8 +352,10 @@ while on:
   Swing client).
 - `explore` (key `x`; `x` or Escape leaves it) — explore mode, for
   walking through a graph; of the graph shown, not of all tabs. Only the pinned nodes are
-  shown, at first the selected ones (with nothing selected, the last
-  active node), and their parents and children faint. A click pins: a
+  shown, at first the selected ones (with nothing selected: of each
+  connected part of the graph the nodes that fewest edges come into,
+  so the root of a tree and all of a cycle), and their parents and
+  children faint. A click pins: a
   faint node, or the children of a node that is pinned already
   (`:explore-show`). A right click folds: everything pinned below the
   node, but for what is also below another pinned node; with nothing
@@ -536,7 +538,8 @@ smaller. The right controller points: on the node it points at, its
 trigger is the left button of a mouse and its grip the right one,
 so a node is selected with the trigger, and in explore mode opened
 with the trigger and folded with the grip. X on the left controller
-goes into explore mode (from the node selected) and out of it. The
+goes into explore mode (from the node selected, or from the roots
+of the graph) and out of it. The
 headset only places pictures the window makes of the nodes: it holds
 nothing, and reloading its page loses nothing.
 

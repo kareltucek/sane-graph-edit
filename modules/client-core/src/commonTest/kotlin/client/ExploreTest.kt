@@ -58,9 +58,22 @@ class ExploreTest {
     }
 
     @Test
-    fun `with nothing selected the mode is not entered`() {
+    fun `with nothing selected the mode starts from the nodes that fewest edges come into, of each part of the graph`() {
+        // a cycle of its own, beside the chain
+        val round = listOf(Node("r1", Vector2(100, 700)), Node("r2", Vector2(300, 700)), Node("r3", Vector2(200, 900)))
+        round.forEach { g.add(it) }
+        round.indices.forEach { g.add(Edge(round[it], round[(it + 1) % 3])) }
+        g.ensureCachesFresh()
+        g.unselectAll(g.nodes.toList())
         Explore.set(view, true)
-        assertFalse(Explore.isOn(view))
+        assertEquals(setOf(up, other) + round, g.pinned)
+    }
+
+    @Test
+    fun `a graph without nodes is not explored`() {
+        val empty = EditorView(Graph(), NoRenderer, NoShell)
+        Explore.set(empty, true)
+        assertFalse(Explore.isOn(empty))
     }
 
     @Test
