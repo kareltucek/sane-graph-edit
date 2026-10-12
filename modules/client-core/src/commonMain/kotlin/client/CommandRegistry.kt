@@ -106,6 +106,9 @@ fun registerEditingCommands() {
     r.register("hide") { impl.hideSelected(it) }
     r.register("unhide") { impl.unhideOneLevel(it) }
     r.register("unhide-all") { ZCommands.unhideAll(it) }
+    // levels of detail: one above the highest that has anything can be gone to, to start it
+    r.register("detail-less") { showLevel(it, it.g.level - 1) }
+    r.register("detail-more") { showLevel(it, it.g.level + 1) }
     r.register("explore") { Explore.set(it, !Explore.isOn(it)) }
     r.register("explore-show") { Explore.show(it) }
     r.register("explore-hide") { Explore.hide(it) }
@@ -171,5 +174,18 @@ fun registerEditingCommands() {
             gv.g.cleanSelect(setOf(node))
             gv.centerScreen()
         }
+    }
+}
+
+/** Show level [to] of detail ([Graph.showLevel]): from 0 to one above the highest that has anything, so that a new one can be started. */
+private fun showLevel(view: EditorView, to: Int) {
+    val level = to.coerceIn(0, view.g.topLevel + 1)
+    if (level != view.g.level) {
+        view.g.showLevel(level)
+        // a node may keep its text in another file at this level, or in none
+        FileContent.forget(view)
+        FileContent.reconcile(view)
+        view.shell.modesChanged()
+        view.repaint()
     }
 }

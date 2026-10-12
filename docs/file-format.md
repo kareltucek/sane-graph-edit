@@ -60,6 +60,39 @@ digraph storage {
 | `link-<letter>`, `link` | `path[:nodeid]` | Links to other graphs (or nodes), followed with `g<letter>`; see below. |
 | `attachTo`, `attachSide` | node id; `above` / `below` / `left` / `right` | Glue this node to another one; see below. |
 
+## `<attribute>-l<n>` — levels of detail
+
+A node can be a different thing at each level of detail. The editor
+shows one level at a time (`-` / `=` go down and up; level 0 when a
+file is opened). Five attributes are per level: `label`,
+`content-type`, `fontsize`, `color` and `fillcolor`. With `-l<n>`
+after the name they are of level `n`; without it, or with `-l0`, of
+level 0.
+
+```dot
+digraph G {
+  auth [label="Auth"; fillcolor="#C4E0F6";
+        "label-l1"="Auth\nOAuth2 + sessions, tokens in Redis"; "fontsize-l1"="9.231"; pos="0,0!"];
+  redis ["label-l1"="Redis"; pos="300,0!"];
+  auth -> redis;
+}
+```
+
+- Nothing is taken from another level: at level 1 `auth` above has no
+  `fillcolor`, so the default one. A missing `fontsize` or `color` is
+  the default too.
+- A node that has neither a `label` nor a `content-type` at a level is
+  not shown at that level, nor are the edges to and from it: `redis`
+  is there at level 1 only. In such a node the id does not stand in
+  for the missing `label`.
+- `pos`, `shape`, `marks`, links and all other attributes are the
+  same at every level, and so are the edges.
+- The names have a `-` in them, so the editor writes them quoted; it
+  reads them unquoted too.
+- The level shown is the editor's, not the file's: it is not saved. A
+  node made in the editor is made at the level shown, and what is
+  edited there is of that level.
+
 ## Custom attributes
 
 Any other attribute on a node or edge (`kind`, `src`, `via`, …) is

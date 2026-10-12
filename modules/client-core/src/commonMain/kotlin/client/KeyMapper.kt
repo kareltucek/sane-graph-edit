@@ -1441,8 +1441,8 @@ class KeyMapper(
             "zd" to "unfold",
             "za" to "toggle-fold",
             "zR" to "unhide-all",
-            "-" to "spring-shorter",
-            "=" to "spring-longer",
+            "-" to "detail-less",
+            "=" to "detail-more",
             "<Space>" to "edit-node",
             "<S-Space>" to "select-and-edit-node",
 

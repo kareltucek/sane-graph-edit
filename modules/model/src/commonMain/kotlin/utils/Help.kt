@@ -136,7 +136,7 @@ object Help {
                             # Layout
 
                             - `o` / `O` — optimise (free / restricted)
-                            - `-` / `=` — tighter / looser
+                            - `:spring-shorter` / `:spring-longer`
                             - `:set dynamic`
                         """,
                     ),
@@ -161,6 +161,7 @@ object Help {
 
                             - `h` / `H` — hide / unhide one level
                             - `zm` / `zr` / `zR` — the same / unhide all
+                            - `-` / `=` — less / more detail (`label-l1`, …)
                             - `x` — explore mode: click pins, right click folds
                             - `m!` / `m+!` / `m-!` / `'!` — the pinned nodes
                             - `zf{motion}` / `zd{motion}` / `za{motion}`

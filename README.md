@@ -256,6 +256,21 @@ writes the file. This is a first version.
 A node being edited in the Electron client is never bigger than the
 part of it that is on the screen; beyond that neovim scrolls.
 
+### Levels of detail: `-` / `=`
+
+A node can be a different thing at each level of detail: its label,
+content type, size and colours are kept once per level (`label-l1`,
+`fillcolor-l2`, … in the file; see [docs/file-format.md](docs/file-format.md)).
+The editor shows one level, 0 at first; `=` goes one up and `-` one
+down (`:detail-more`, `:detail-less`), and the status line says
+`[detail 1]`. Nothing is taken from another level: a node that has
+neither a label nor a content type at the level shown is not shown,
+with its edges. What is edited, and a node that is made, is of the
+level shown; positions and edges are the same at all levels. `=`
+goes as far as one above the highest level anything is at, which is
+how a new level is started. The level is of the view and is not
+saved.
+
 ### Depth: `z`
 
 A node can have a third coordinate, `z`, the third number of its

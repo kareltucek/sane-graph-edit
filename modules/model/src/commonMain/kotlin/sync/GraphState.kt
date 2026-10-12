@@ -4,6 +4,7 @@ import Graph
 import graph_tools.Edge
 import graph_tools.Node
 import graph_tools.NodeShape
+import graph_tools.NodeType
 import kotlinx.serialization.Serializable
 import utils.Utils
 import utils.Utils.toHexString
@@ -148,27 +149,41 @@ object NodeFields {
     /** Prefix of the fields holding DOT attributes the editor does not interpret. */
     const val ATTR = "attr:"
 
-    fun of(n: Node): Fields = listOf(
+    /** The fields there are one of for every level of detail ([Node.Detail]); the level is in their names as in DOT (`text-l1`). */
+    private val DETAIL = setOf(TEXT, BG, FG, SCALE, ATTR + NodeType.ATTRIBUTE)
+
+    private fun detail(d: Node.Detail, level: Int): List<Pair<String, String?>> = listOf(
+        TEXT to d.text,
+        BG to d.bg?.toHexString(),
+        FG to d.fg?.toHexString(),
+        SCALE to d.scale?.toString(),
+        ATTR + NodeType.ATTRIBUTE to d.contentType,
+    ).map { (k, v) -> Node.Detail.written(k, level) to v }
+
+    private fun with(d: Node.Detail, field: String, v: String?): Node.Detail = when (field) {
+        TEXT -> d.copy(text = v)
+        BG -> d.copy(bg = v?.let { Utils.fromHexString(it) })
+        FG -> d.copy(fg = v?.let { Utils.fromHexString(it) })
+        SCALE -> d.copy(scale = v?.toDouble())
+        else -> d.copy(contentType = v)
+    }
+
+    fun of(n: Node): Fields = (listOf(
         POS to "${n.position.x},${n.position.y}",
-        TEXT to n.attributes.text,
-        BG to n.attributes.bg?.toHexString(),
-        FG to n.attributes.fg?.toHexString(),
-        SCALE to n.attributes.nodeScale?.toString(),
+    ) + n.levels.flatMap { detail(n.detail(it), it) } + listOf(
         NAME to n.attributes.name.takeIf { it.isNotEmpty() },
         MARKS to n.attributes.marks.takeIf { it.isNotEmpty() },
         SESSION_MARKS to n.cache.sessionMarks.takeIf { it.isNotEmpty() },
         HIDE to n.cache.hideLevel.takeIf { it != 0 }?.toString(),
-    ).mapNotNull { (k, v) -> v?.let { k to it } }.toMap() +
-        n.attributes.other.mapNotNull { (k, v) -> v?.let { ATTR + k to it } }
+    )).mapNotNull { (k, v) -> v?.let { k to it } }.toMap() +
+        n.attributes.other.filterKeys { it != NodeType.ATTRIBUTE }.mapNotNull { (k, v) -> v?.let { ATTR + k to it } }
 
     fun apply(n: Node, changes: FieldChanges) {
-        changes.forEach { (k, v) ->
+        changes.forEach { (written, v) ->
+            val (k, level) = Node.Detail.split(written, DETAIL)
             when (k) {
+                in DETAIL -> n.setDetail(level, with(n.detail(level), k, v))
                 POS -> v?.split(",")?.let { n.position = Vector2(it[0].toDouble(), it[1].toDouble()) }
-                TEXT -> n.attributes.text = v.orEmpty()
-                BG -> n.attributes.bg = v?.let { Utils.fromHexString(it) }
-                FG -> n.attributes.fg = v?.let { Utils.fromHexString(it) }
-                SCALE -> n.attributes.nodeScale = v?.toDouble()
                 NAME -> n.attributes.name = v.orEmpty()
                 MARKS -> n.attributes.marks = v.orEmpty()
                 SESSION_MARKS -> n.cache.sessionMarks = v.orEmpty()
@@ -179,7 +194,12 @@ object NodeFields {
         }
     }
 
-    fun create(id: String, fields: Fields): Node = Node(Vector2.Zero, id = id).also { apply(it, fields) }
+    /** At level 0 of detail, whatever levels the fields are of. */
+    fun create(id: String, fields: Fields): Node = Node(Vector2.Zero, id = id).also {
+        // no label unless the fields have one
+        it.attributes.labelled = false
+        apply(it, fields)
+    }
 }
 
 object EdgeFields {
@@ -217,7 +237,7 @@ fun Graph.applyPatch(patch: Patch) {
     removeAllEdges(removed.flatMap { edgeMap[it].orEmpty() }.distinct())
     removeAllNodes(removed)
 
-    addAllNodes(patch.addNodes.filterKeys { node(it) == null }.map { (id, f) -> NodeFields.create(id, f) })
+    addAllNodes(patch.addNodes.filterKeys { node(it) == null }.map { (id, f) -> NodeFields.create(id, f).also { it.showLevel(level) } })
     patch.addNodes.forEach { (id, f) -> node(id)?.let { NodeFields.apply(it, GraphState.fieldChanges(NodeFields.of(it), f)) } }
     patch.setNodes.forEach { (id, c) -> node(id)?.let { NodeFields.apply(it, c) } }
     needsRecomputing((patch.addNodes.keys + patch.setNodes.keys).mapNotNull { node(it) })

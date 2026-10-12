@@ -27,6 +27,7 @@ object StatusLine {
         }
         val gesture = gestureName?.let { "-- TRANSFORM: $it$lockSuffix --" } ?: if (Explore.isOn(view)) "-- EXPLORE --" else ""
         val modes = listOfNotNull(
+            "[detail ${view.g.level}]".takeIf { view.g.level != 0 },
             "[unhide]".takeIf { graph_tools.ViewModes.unhide },
             "[show-parents]".takeIf { graph_tools.ViewModes.showParents },
             "[show-children]".takeIf { graph_tools.ViewModes.showChildren },

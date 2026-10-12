@@ -85,6 +85,8 @@ class Node(
          */
         var marks: String = "",
         var other: MutableMap<String, String?> = mutableMapOf(),
+        /** False when the node has no label at the level of detail it is at ([Detail.text]); an empty [text] may still be a label. */
+        var labelled: Boolean = true,
     ) {
         constructor(text: String, style: NodeStyle) : this(
             text = text,
@@ -105,8 +107,121 @@ class Node(
         this.attributes.nodeScale = style.nodeScale
     }
 
-    fun applyAttribute(l: String, r: String) {
-        when (l) {
+    /**
+     * What a node has once for every level of detail: in DOT the
+     * attributes `label`, `content-type`, `fontsize`, `color` and
+     * `fillcolor`, with `-l<level>` after the name (none, or `-l0`,
+     * is level 0). Null is "not given at this level": nothing is
+     * taken from another level, the defaults are used.
+     */
+    data class Detail(
+        val text: String? = null,
+        val contentType: String? = null,
+        val bg: Rgb? = null,
+        val fg: Rgb? = null,
+        val scale: Double? = null,
+    ) {
+        /** A node is not shown at a level where it has neither a label nor a content type. */
+        val isBlank: Boolean get() = text == null && contentType == null
+
+        /** This with the DOT attribute [name] set to [value]. */
+        fun with(name: String, value: String): Detail = when (name) {
+            "label" -> copy(text = value)
+            NodeType.ATTRIBUTE -> copy(contentType = value)
+            "fillcolor" -> copy(bg = Utils.fromHexString(value))
+            "color" -> copy(fg = Utils.fromHexString(value))
+            else -> copy(scale = log(value.toDouble() / Constants.defaultFontSize, Constants.fontSizeZoomCoef))
+        }
+
+        /** As DOT attributes, without the level in their names; in the order they are written in. */
+        fun attributes(): Map<String, String> = mapOf(
+            "fillcolor" to bg?.toHexString(),
+            "color" to fg?.toHexString(),
+            "fontsize" to scale?.let { Constants.fontSizeZoomCoef.pow(it) * Constants.defaultFontSize }?.toNiceString(),
+            "label" to text,
+            NodeType.ATTRIBUTE to contentType,
+        ).filterNotNull()
+
+        companion object {
+            val None = Detail()
+            val NAMES = setOf("label", NodeType.ATTRIBUTE, "fontsize", "color", "fillcolor")
+            private val LEVELLED = Regex("(.+)-l(\\d{1,3})")
+
+            /** A name as it is written, as the name proper and the level: `label-l2` is `label` at 2, `label` is it at 0. */
+            fun split(written: String, names: Set<String> = NAMES): Pair<String, Int> =
+                LEVELLED.matchEntire(written)
+                    ?.destructured
+                    ?.let { (name, level) -> name to level.toInt() }
+                    ?.takeIf { it.first in names }
+                    ?: (written to 0)
+
+            fun written(name: String, level: Int): String = if (level == 0) name else "$name-l$level"
+        }
+    }
+
+    /**
+     * The level of detail whose [Detail] is in [attributes]; those
+     * of the other levels are put aside. The graph's
+     * ([Graph.level]), kept here too so that a node can be read and
+     * written on its own.
+     */
+    var level: Int = 0
+
+    private val aside = mutableMapOf<Int, Detail>()
+
+    /** Whether DOT gave this node a label, rather than its name standing in for one. */
+    private var labelGiven = false
+
+    /** The levels this node has something at. */
+    val levels: List<Int> get() = (aside.keys + listOfNotNull(level.takeIf { detail() != Detail.None })).sorted()
+
+    fun detail(at: Int = level): Detail = when (at) {
+        level -> Detail(
+            text = attributes.text.takeIf { attributes.labelled || it.isNotEmpty() },
+            contentType = attributes.other[NodeType.ATTRIBUTE],
+            bg = attributes.bg,
+            fg = attributes.fg,
+            scale = attributes.nodeScale,
+        )
+        else -> aside[at] ?: Detail.None
+    }
+
+    fun setDetail(at: Int, d: Detail) {
+        when {
+            at == level -> {
+                attributes.text = d.text.orEmpty()
+                attributes.labelled = d.text != null
+                attributes.bg = d.bg
+                attributes.fg = d.fg
+                attributes.nodeScale = d.scale
+                if (d.contentType == null) attributes.other.remove(NodeType.ATTRIBUTE) else attributes.other[NodeType.ATTRIBUTE] = d.contentType
+            }
+            d == Detail.None -> aside.remove(at)
+            else -> aside[at] = d
+        }
+    }
+
+    /** Be at level [to]: what the node has there comes to [attributes], what it has here is put aside. */
+    fun showLevel(to: Int) {
+        if (to != level) {
+            val here = detail()
+            val there = detail(to)
+            aside.remove(to)
+            if (here != Detail.None) aside[level] = here
+            level = to
+            setDetail(to, there)
+        }
+    }
+
+    fun applyAttribute(written: String, r: String) {
+        val (l, at) = Detail.split(written)
+        val elsewhere = l in Detail.NAMES && at != level
+        if (elsewhere) {
+            setDetail(at, detail(at).with(l, r))
+            // in DOT a node without a label shows its name; one that is told what it is at
+            // another level and not at this one has nothing here
+            if (!labelGiven && attributes.text == attributes.name) setDetail(level, detail().copy(text = null))
+        } else when (l) {
             "shape" -> {
                 this.cache.shape = NodeShape.values().find { it.id == r }?.impl.orElse(NodeShape.defaultShape.impl)
                 attributes.other[l] = r
@@ -114,7 +229,11 @@ class Node(
 
             "fillcolor" -> attributes.bg = Utils.fromHexString(r)
             "color" -> attributes.fg = Utils.fromHexString(r)
-            "label" -> attributes.text = r
+            "label" -> {
+                attributes.text = r
+                attributes.labelled = true
+                labelGiven = true
+            }
             "marks" -> attributes.marks = r
             "fontsize" -> attributes.nodeScale = log(r.toDouble()/Constants.defaultFontSize, Constants.fontSizeZoomCoef)
             "pos" -> r
@@ -133,15 +252,16 @@ class Node(
     }
 
     fun retrieveAttributes(): Map<String, String> {
-        return mapOf(
-            "fillcolor" to attributes.bg?.toHexString(),
-            "color" to attributes.fg?.toHexString(),
-            "fontsize" to attributes.nodeScale?.let { Constants.fontSizeZoomCoef.pow(it)*Constants.defaultFontSize }?.toNiceString(),
-            "label" to attributes.text,
+        // the content type of this level is written where it always was, among the other attributes
+        val here = (detail().attributes() - NodeType.ATTRIBUTE).mapKeys { Detail.written(it.key, level) }
+        val other = attributes.other.filterNotNull().filterKeys { it != Depth.ATTRIBUTE }
+            .mapKeys { if (it.key == NodeType.ATTRIBUTE) Detail.written(it.key, level) else it.key }
+        val elsewhere = aside.keys.sorted().flatMap { at -> aside.getValue(at).attributes().map { Detail.written(it.key, at) to it.value } }
+        return here + mapOf(
             "marks" to attributes.marks.takeIf { it.isNotEmpty() },
             // the depth is the third number, for a node that has one
             "pos" to (listOf(position.x, position.y) + listOfNotNull(Depth.of(this).takeIf { it != 0.0 })).joinToString(",") { it.toNiceString() } + "!",
-        ).filterNotNull() + attributes.other.filterNotNull().filterKeys { it != Depth.ATTRIBUTE }
+        ).filterNotNull() + other + elsewhere
     }
 
     fun setSize(absolute: Double? = null, relative: Double? = null) {

@@ -177,8 +177,32 @@ class Graph(
 
     fun edge(id: String): Edge? = edgesById[id]
 
+    /**
+     * The level of detail shown: of every node what it has at this
+     * level ([Node.Detail]), and no node that has neither a label
+     * nor a content type there ([isVisible]). Of this graph as it is
+     * looked at here, not of the document.
+     */
+    var level: Int = 0
+        private set
+
+    /** The highest level any node has something at. */
+    val topLevel: Int get() = nodesRestricted.maxOfOrNull { it.levels.lastOrNull() ?: 0 } ?: 0
+
+    fun showLevel(to: Int) {
+        nodesRestricted.forEach { it.showLevel(to) }
+        level = to
+        unselectAll(selectedNodesRestricted.filter { it.detail().isBlank })
+        needsRecomputing(nodesRestricted)
+        attachmentOwnersCache = null
+        // what comes to be seen was not hidden before: it is not for [DynamicPlacement] to move
+        dynamicBaseline = null
+    }
+
     fun addAllNodes(i: Iterable<Node>) {
         attachmentOwnersCache = null
+        // a node made here is made at the level that is shown
+        i.forEach { it.level = level }
         nodesRestricted.addAll(i)
         i.forEach { nodesById[it.id] = it }
         edgeMapRestricted.putAll(i.map { it to mutableSetOf() })
@@ -319,7 +343,8 @@ class Graph(
         }
         // glued nodes inherit their owner's visibility, whatever their own state
         val owner = attachmentOwners[n]
-        return if (owner != null) isVisible(owner) else own
+        // a node that is nothing at this level of detail is not there at all
+        return !n.detail().isBlank && if (owner != null) isVisible(owner) else own
     }
 
     /**
