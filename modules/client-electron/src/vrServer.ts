@@ -23,6 +23,8 @@ export interface VrNode {
     height: number;
     fill: string;
     ink: string;
+    /** The links the node has: each as its letter and, after a space, where it leads. */
+    links?: string[];
     page?: number;
     /** The picture's rectangle on the page, in pixels, how many pixels a unit of the node is in it, and where in it the node's middle is. */
     px?: number;
@@ -88,7 +90,8 @@ function surfacesOf(text: string): VrSurface[] | null {
 const MAX_ID = 64;
 
 /** What a headset did with a controller: a button clicked on a node (0 the left one, 2 the right one), or explore mode asked into or out of. */
-type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "move"; id: string; x: number; y: number; z: number };
+type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "move"; id: string; x: number; y: number; z: number } |
+    { type: "follow"; id: string; letter: string } | { type: "jump"; back: boolean };
 
 /** A node is not put further from the graph's origin than this, in its units. */
 const MAX_PLACE = 1e7;
@@ -100,7 +103,10 @@ function doneOf(text: string): VrDone | null {
         const click = sent?.type === "click" && typeof sent.id === "string" && sent.id.length <= MAX_ID && (sent.button === 0 || sent.button === 2);
         const place = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= MAX_PLACE;
         const move = sent?.type === "move" && typeof sent.id === "string" && sent.id.length <= MAX_ID && place(sent.x) && place(sent.y) && place(sent.z);
-        return click ? { type: "click", id: sent.id, button: sent.button }
+        const follow = sent?.type === "follow" && typeof sent.id === "string" && sent.id.length <= MAX_ID && typeof sent.letter === "string" && /^[A-Za-z]$/.test(sent.letter);
+        return sent?.type === "jump" && typeof sent.back === "boolean" ? { type: "jump", back: sent.back }
+            : follow ? { type: "follow", id: sent.id, letter: sent.letter }
+            : click ? { type: "click", id: sent.id, button: sent.button }
             : move ? { type: "move", id: sent.id, x: sent.x, y: sent.y, z: sent.z }
             : sent?.type === "explore" ? { type: "explore" } : null;
     } catch {
@@ -114,6 +120,10 @@ export interface VrSource {
     click: (id: string, button: 0 | 2) => void;
     /** The node [id] was taken in a headset and put at x, y, z of the graph. */
     move: (id: string, x: number, y: number, z: number) => void;
+    /** A headset asks to follow the link [letter] of the node [id]. */
+    follow: (id: string, letter: string) => void;
+    /** A headset asks to go back to where a link was followed from, or forward again. */
+    jump: (back: boolean) => void;
     /** A headset asks into explore mode, or out of it. */
     explore: () => void;
     /** A headset told of the room it is in: the last to do so is believed. */
@@ -271,6 +281,8 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
                 if (surfaces !== null) source.room(surfaces);
                 else if (done?.type === "click") source.click(done.id, done.button);
                 else if (done?.type === "move") source.move(done.id, done.x, done.y, done.z);
+                else if (done?.type === "follow") source.follow(done.id, done.letter);
+                else if (done?.type === "jump") source.jump(done.back);
                 else if (done?.type === "explore") source.explore();
             });
         });

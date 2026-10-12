@@ -68,6 +68,9 @@ function show(got: VrScene) {
     const now = performance.now();
     [...placed].filter(([, place]) => place.until < now).forEach(([id]) => placed.delete(id));
     const sent: VrScene = { ...got, nodes: got.nodes.map((n) => placed.has(n.id) ? { ...n, ...placed.get(n.id)!.at } : n) };
+    // another graph altogether (a link was followed, another tab is shown): its middle is put before the eyes, as the first one's was
+    const before = new Set(shown?.nodes.map((n) => n.id));
+    if (shown !== null && sent.nodes.length > 0 && !sent.nodes.some((n) => before.has(n.id))) centred = false;
     shown = sent;
     const byPage = new Map<number, VrNode[]>();
     sent.nodes.filter((n) => n.page !== undefined).forEach((n) => byPage.set(n.page!, [...(byPage.get(n.page!) ?? []), n]));
@@ -548,7 +551,7 @@ const hands = [0, 1].map((index) => {
     ray.scale.z = RAY_LENGTH;
     hand.add(ray);
     scene.add(hand);
-    const state = { hand, ray, side: "none" as XRHandedness, source: null as XRInputSource | null, x: false, y: false };
+    const state = { hand, ray, side: "none" as XRHandedness, source: null as XRInputSource | null, x: false, y: false, a: false, b: false };
     hand.addEventListener("connected", (event) => {
         state.source = event.data as XRInputSource;
         state.side = state.source.handedness;
@@ -576,15 +579,100 @@ const hands = [0, 1].map((index) => {
             tell?.(JSON.stringify({ type: "move", id: was.id, ...place.at }));
         } else if (was !== null && state.side === "right") tell?.(JSON.stringify({ type: "click", id: was.id, button: 0 }));
     });
+    // the right grip, out of explore mode, on a node that has links: its one link is followed; of several, a menu is held open
     hand.addEventListener("squeezestart", () => {
+        const links = state.side === "right" && shown?.exploring !== true ? pointed?.links ?? [] : [];
         if (state.side === "left") hand.attach(graph);
+        else if (links.length === 1 && pointed !== null) tell?.(JSON.stringify({ type: "follow", id: pointed.id, letter: links[0][0] }));
+        else if (links.length > 1 && pointed !== null) openMenu(pointed, links);
         else click(2);
     });
     hand.addEventListener("squeezeend", () => {
         if (state.side === "left") scene.attach(graph);
+        else closeMenu(true);
     });
     return state;
 });
+
+// --- the links of a node, as a menu around it: open while the right grip is held, and what the ray points at when it is let go of is followed ---
+
+const MENU_ITEM = [0.24, 0.045];
+/** How far from the node's middle the links are put, sideways and up or down, in metres. */
+const MENU_AROUND = [0.24, 0.13];
+const MENU_PIXELS = [640, 120];
+
+let menu: { id: string; items: { letter: string; shown: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> }[]; chosen: number } | null = null;
+
+function openMenu(node: VrNode, links: string[]) {
+    closeMenu(false);
+    const i = laid?.index.get(node);
+    if (laid !== null && i !== undefined) {
+        // around the node, in the room, turned as the node is: to whoever looks
+        const middle = graph.localToWorld(new THREE.Vector3(node.x, node.y, node.z).add(offset));
+        const eyes = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+        const head = new THREE.Vector3().setFromMatrixPosition(eyes.matrixWorld);
+        const towards = head.clone().sub(middle).normalize();
+        const right = new THREE.Vector3(0, 1, 0).cross(towards).normalize();
+        const up = towards.clone().cross(right);
+        const items = links.map((link, k) => {
+            const picture = document.createElement("canvas");
+            [picture.width, picture.height] = MENU_PIXELS;
+            const pen = picture.getContext("2d")!;
+            pen.fillStyle = "#202020";
+            pen.fillRect(0, 0, picture.width, picture.height);
+            pen.font = "44px monospace";
+            pen.textBaseline = "middle";
+            pen.fillStyle = "#dddddd";
+            // as text, whatever is in it
+            pen.fillText(link, 20, picture.height / 2);
+            const texture = new THREE.CanvasTexture(picture);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            const shown = new THREE.Mesh(new THREE.PlaneGeometry(MENU_ITEM[0], MENU_ITEM[1]), new THREE.MeshBasicMaterial({ map: texture, depthTest: false }));
+            shown.renderOrder = 8;
+            // from the top, clockwise
+            const angle = 2 * Math.PI * k / links.length;
+            shown.position.copy(middle).addScaledVector(right, Math.sin(angle) * MENU_AROUND[0]).addScaledVector(up, Math.cos(angle) * MENU_AROUND[1])
+                .addScaledVector(towards, 0.02);
+            shown.lookAt(shown.position.clone().add(towards));
+            scene.add(shown);
+            return { letter: link[0], shown };
+        });
+        menu = { id: node.id, items, chosen: -1 };
+    }
+}
+
+/** Put the menu away; if it is to be [followed], the link the ray points at is. */
+function closeMenu(followed: boolean) {
+    const was = menu;
+    menu = null;
+    if (was !== null) {
+        if (followed && was.chosen >= 0) tell?.(JSON.stringify({ type: "follow", id: was.id, letter: was.items[was.chosen].letter }));
+        was.items.forEach((it) => {
+            scene.remove(it.shown);
+            it.shown.material.map?.dispose();
+            it.shown.material.dispose();
+            it.shown.geometry.dispose();
+        });
+    }
+}
+
+/** Which link of the menu the right controller's ray points at: that one is shown brighter. */
+function pointInMenu() {
+    const now = menu;
+    const right = hands.find((it) => it.side === "right");
+    if (now !== null && right !== undefined) {
+        const from = new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld);
+        const ray = new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld);
+        now.chosen = now.items.findIndex((it) => {
+            const facing = new THREE.Vector3(0, 0, 1).transformDirection(it.shown.matrixWorld);
+            const closing = ray.dot(facing);
+            const along = closing === 0 ? -1 : it.shown.position.clone().sub(from).dot(facing) / closing;
+            const on = it.shown.worldToLocal(from.clone().addScaledVector(ray, along));
+            return along > 0 && Math.abs(on.x) <= MENU_ITEM[0] / 2 && Math.abs(on.y) <= MENU_ITEM[1] / 2;
+        });
+        now.items.forEach((it, k) => it.shown.material.color.set(k === now.chosen ? 0xffffff : 0x999999));
+    }
+}
 
 /** The node the right controller points at, where on it (in the graph) and how far along the ray that is (metres); and a frame around it. */
 let pointed: VrNode | null = null;
@@ -685,6 +773,13 @@ function buttons() {
         const y = it.side === "left" && pad?.buttons[BUTTON_Y]?.pressed === true;
         if (y && !it.y) (renderer.xr.getSession() as unknown as { initiateRoomCapture?: () => Promise<void> } | null)?.initiateRoomCapture?.().catch(() => {});
         it.y = y;
+        // of the right controller, where those two buttons are A and B: A forward again, B back to where a link was followed from
+        const a = it.side === "right" && pad?.buttons[BUTTON_X]?.pressed === true;
+        const b = it.side === "right" && pad?.buttons[BUTTON_Y]?.pressed === true;
+        if (a && !it.a) tell?.(JSON.stringify({ type: "jump", back: false }));
+        if (b && !it.b) tell?.(JSON.stringify({ type: "jump", back: true }));
+        it.a = a;
+        it.b = b;
     });
 }
 
@@ -716,6 +811,7 @@ renderer.setAnimationLoop((_time, frame) => {
     buttons();
     face();
     point();
+    pointInMenu();
     placeStatus();
     renderer.render(scene, camera);
 });

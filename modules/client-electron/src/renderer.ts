@@ -725,10 +725,15 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         vrAtlas.prepare(world.nodes, VR_PIXELS_PER_UNIT, pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit), true);
     }
     const atlas = vrAtlas;
+    const links: { [id: string]: string[] } = view ? view.links() : {};
     return world === null || atlas === null ? null : {
         nodes: world.nodes.map((n) => {
             const place = atlas.placeOf(n.id);
-            const node = { id: n.id, x: n.x, y: n.y, z: n.z, width: n.width, height: n.height, fill: n.bg ?? colours().background, ink: inkOf(n) };
+            const leads: string[] | undefined = links[n.id];
+            const node = {
+                id: n.id, x: n.x, y: n.y, z: n.z, width: n.width, height: n.height, fill: n.bg ?? colours().background, ink: inkOf(n),
+                ...(leads === undefined ? {} : { links: leads.slice(0, MAX_VR_LINKS).map((it) => it.slice(0, MAX_VR_LINK)) }),
+            };
             return place === null ? node : {
                 ...node, page: place.page, px: place.x, py: place.y, pw: place.width, ph: place.height,
                 pixelsPerUnit: place.pixelsPerUnit, middleX: place.middleX, middleY: place.middleY,
@@ -746,6 +751,9 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
 /** The status line as it was last shown, for a headset to show too; no more of it than this. */
 let statusText = "";
 const MAX_VR_STATUS = 200;
+/** Of a node's links a headset is told this many, and this much of each. */
+const MAX_VR_LINKS = 12;
+const MAX_VR_LINK = 80;
 
 /** The pictures of the nodes for headsets, and how many pixels a unit of the graph (in a headset: a millimetre) is in them. */
 let vrAtlas: SpaceRenderer<SpaceSceneNode> | null = null;
@@ -1076,6 +1084,9 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             // what a headset says is only that: a node that is not there is not clicked
             click: (id: string, button: 0 | 2) => app.current()?.clickNode(id, button),
             move: (id: string, x: number, y: number, z: number) => app.current()?.dragNode(id, x, y, z),
+            follow: (id: string, letter: string) => app.current()?.followLink(id, letter),
+            // as the keys of the window: Ctrl+O back, Ctrl+I forward
+            jump: (back: boolean) => app.current()?.keyDown(back ? "o" : "i", true, false),
             explore: () => app.current()?.toggleExplore(),
         };
         // what is typed in the headset: four digits, good for a few tries only

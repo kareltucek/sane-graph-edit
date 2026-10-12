@@ -376,6 +376,28 @@ class JsView internal constructor(
         view.pointer.dragged(id, Point3(x, y, z))
     }
 
+    /** The links of the nodes shown that have any: by the node's id, each link as its letter and, after a space, where it leads. */
+    fun links(): dynamic {
+        val o: dynamic = js("({})")
+        view.g.visibleNodes().forEach { n ->
+            val letters = FileLink.letters(n)
+            if (letters.isNotEmpty()) o[n.id] = letters.map { "$it ${FileLink.of(n, it).orEmpty()}" }.toTypedArray()
+        }
+        return o
+    }
+
+    /** Follow the link [letter] of the node [id], into a new tab: nothing of this one is lost, and nothing is asked. */
+    fun followLink(id: String, letter: String) {
+        val node = view.g.visibleNodes().firstOrNull { it.id == id }
+        val l = letter.singleOrNull()
+        if (node != null && l != null && l in FileLink.letters(node) && !view.content.isBusy) {
+            keys.activeView = view
+            view.endNodeEdit()
+            view.g.cleanSelect(listOf(node))
+            view.content.followFileLinkInTab(l)
+        }
+    }
+
     /** Into explore mode, or out of it. */
     fun toggleExplore() {
         keys.activeView = view
