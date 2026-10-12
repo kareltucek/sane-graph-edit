@@ -8,6 +8,8 @@ import type { VrNode, VrScene } from "./vrServer";
 /** Where the middle of the graph is put when it arrives. */
 const START = new THREE.Vector3(...GRAPH_AT);
 const ARROW = 5;
+/** How wide an edge is, in the graph's units (in a headset: millimetres). */
+const EDGE_WIDTH = 2;
 
 const canvas = document.getElementById("view") as HTMLCanvasElement;
 const state = document.getElementById("state") as HTMLSpanElement;
@@ -29,9 +31,13 @@ const textures: THREE.Texture[] = [];
 const pictured: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>[] = [];
 /** The nodes that have no picture yet, as plain rectangles; and the edges. */
 const plain = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
-const edges = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial());
+const edges = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
 const heads = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
 graph.add(plain, edges, heads);
+// what they are made of changes: where they were when first drawn says nothing of whether they are in view
+[plain, edges, heads].forEach((it) => {
+    it.frustumCulled = false;
+});
 
 let shown: VrScene | null = null;
 let centred = false;
@@ -114,7 +120,12 @@ function show(sent: VrScene) {
         const into = length > 0 ? Math.min(reach(b, dx, dy), length / 2) : 0;
         const x2 = b.x - dx * into;
         const y2 = b.y - dy * into;
-        lines.push(a.x + dx * out, a.y + dy * out, a.z, x2, y2, b.z);
+        // a strip, not a line: a line is a pixel wide however near it is. Flat as the nodes are; across x for one that goes straight away
+        const wx = (length > 0 ? -dy : 1) * EDGE_WIDTH / 2;
+        const wy = (length > 0 ? dx : 0) * EDGE_WIDTH / 2;
+        const x1 = a.x + dx * out;
+        const y1 = a.y + dy * out;
+        lines.push(x1 - wx, y1 - wy, a.z, x1 + wx, y1 + wy, a.z, x2 - wx, y2 - wy, b.z, x1 + wx, y1 + wy, a.z, x2 + wx, y2 + wy, b.z, x2 - wx, y2 - wy, b.z);
         arrows.push(x2, y2, b.z, x2 - dx * ARROW * 2 - dy * ARROW, y2 - dy * ARROW * 2 + dx * ARROW, b.z, x2 - dx * ARROW * 2 + dy * ARROW, y2 - dy * ARROW * 2 - dx * ARROW, b.z);
     });
     edges.geometry.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
@@ -348,6 +359,7 @@ const RAY_LENGTH = 0.5;
 const FRAMEBUFFER_SCALE = 1.5;
 /** The button X of the left controller, as a headset numbers the buttons of one. */
 const BUTTON_X = 4;
+const BUTTON_Y = 5;
 
 const hands = [0, 1].map((index) => {
     const hand = renderer.xr.getController(index);
@@ -358,7 +370,7 @@ const hands = [0, 1].map((index) => {
     ray.scale.z = RAY_LENGTH;
     hand.add(ray);
     scene.add(hand);
-    const state = { hand, ray, side: "none" as XRHandedness, source: null as XRInputSource | null, x: false };
+    const state = { hand, ray, side: "none" as XRHandedness, source: null as XRInputSource | null, x: false, y: false };
     hand.addEventListener("connected", (event) => {
         state.source = event.data as XRInputSource;
         state.side = state.source.handedness;
@@ -432,6 +444,10 @@ function buttons() {
         const x = it.side === "left" && pad?.buttons[BUTTON_X]?.pressed === true;
         if (x && !it.x) tell?.(JSON.stringify({ type: "explore" }));
         it.x = x;
+        // Y: the headset's own scan of the room, anew, where its browser can start that (once in a session)
+        const y = it.side === "left" && pad?.buttons[BUTTON_Y]?.pressed === true;
+        if (y && !it.y) (renderer.xr.getSession() as unknown as { initiateRoomCapture?: () => Promise<void> } | null)?.initiateRoomCapture?.().catch(() => {});
+        it.y = y;
     });
 }
 

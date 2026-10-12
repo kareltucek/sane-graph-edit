@@ -565,7 +565,9 @@ the page outlines them with what they are (`wall`, `floor`, `desk`…)
 and tells the window of them: `:room` lists them, with their sizes
 and where they are. Nothing is laid out by them yet. Where it has
 the scanned shape of the room too (furniture and all), the page
-shows that as a faint net; the window is not told of it yet.
+shows that as a faint net; the window is not told of it yet. Y on
+the left controller asks the headset to scan the room anew, where
+its browser can (once after entering).
 
 The window draws that room too, in 3D mode, as outlines around the
 graph (a unit of the graph is a millimetre; the middle of the graph
