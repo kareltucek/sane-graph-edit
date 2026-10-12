@@ -40,11 +40,14 @@ export class Recent<V> {
     }
 }
 
-/** A drawing of more pixels than this is kept at a lower scale. */
-const MAX_BITMAP_PIXELS = 4e6;
+/** A drawing longer or higher than this many pixels is kept at a lower scale: a canvas, and a texture of the graphics card, is no bigger. */
+const MAX_BITMAP_SIDE = 16384;
+
+/** The drawings kept take no more than this (1 GB); over it, those used longest ago are let go of. */
+const MAX_KEPT_PIXELS = 2 ** 30 / 4;
 
 export class Bitmaps {
-    /** By what they are drawings of. All are kept, however many: there is no limit. */
+    /** By what they are drawings of, the one used longest ago first. */
     private readonly kept = new Map<string, { bitmap: Bitmap; pixels: number }>();
     private pixels = 0;
 
@@ -60,7 +63,7 @@ export class Bitmaps {
 
     /** The scale a drawing of [width] by [height] units is kept at, when [native] is what it would be unless that is too big. */
     scaleOf(width: number, height: number, native: number): number {
-        return Math.min(native, Math.sqrt(MAX_BITMAP_PIXELS / Math.max(1, width * height)));
+        return Math.min(native, MAX_BITMAP_SIDE / Math.max(1, width, height));
     }
 
     /**
@@ -72,13 +75,17 @@ export class Bitmaps {
         const found = this.kept.get(key);
         // one that is finer than asked for does as well; a coarser one is replaced
         const fits = found !== undefined && found.bitmap.scale >= scale;
-        if (found !== undefined && !fits) this.drop(key);
+        if (found !== undefined) {
+            this.kept.delete(key);
+            if (fits) this.kept.set(key, found);
+            else this.release(found);
+        }
         return fits ? found.bitmap : this.make(key, width, height, scale, draw);
     }
 
     private make(key: string, width: number, height: number, scale: number, draw: (ctx: OffscreenCanvasRenderingContext2D) => void): Bitmap {
-        const pixelWidth = Math.max(1, Math.ceil(width * scale));
-        const pixelHeight = Math.max(1, Math.ceil(height * scale));
+        const pixelWidth = Math.min(MAX_BITMAP_SIDE, Math.max(1, Math.ceil(width * scale)));
+        const pixelHeight = Math.min(MAX_BITMAP_SIDE, Math.max(1, Math.ceil(height * scale)));
         const canvas = new OffscreenCanvas(pixelWidth, pixelHeight);
         const ctx = canvas.getContext("2d")!;
         ctx.scale(scale, scale);
@@ -86,15 +93,20 @@ export class Bitmaps {
         const bitmap = { image: canvas.transferToImageBitmap(), scale };
         this.kept.set(key, { bitmap, pixels: pixelWidth * pixelHeight });
         this.pixels += pixelWidth * pixelHeight;
+        // the one just made stays, whatever it takes
+        [...this.kept.keys()].slice(0, -1).every((old) => {
+            const over = this.pixels > MAX_KEPT_PIXELS;
+            if (over) {
+                this.release(this.kept.get(old)!);
+                this.kept.delete(old);
+            }
+            return over;
+        });
         return bitmap;
     }
 
-    private drop(key: string) {
-        const entry = this.kept.get(key);
-        if (entry !== undefined) {
-            entry.bitmap.image.close();
-            this.pixels -= entry.pixels;
-            this.kept.delete(key);
-        }
+    private release(entry: { bitmap: Bitmap; pixels: number }) {
+        entry.bitmap.image.close();
+        this.pixels -= entry.pixels;
     }
 }

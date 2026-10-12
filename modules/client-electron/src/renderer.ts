@@ -785,7 +785,7 @@ function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
     const space = spaceRenderer?.stats(lastSpaceIds) ?? null;
     // 2D cache: the text of a node as 2D mode draws it. 3D closeup nodes: those seen at more than half their size, drawn at the
     // size they are seen at. 3D node cache: every node at its size at zoom 1, which is kept on the pages of the texture atlas,
-    // here (RAM) and on the graphics card (VRAM). None of them has a limit.
+    // here (RAM) and on the graphics card (VRAM). The 2D cache keeps at most 1 GB; the others have no limit.
     return [
         `drawing now: ${threeD ? "3d" : "2d"}`,
         "",

@@ -611,14 +611,13 @@ export class GridEditor {
         painting.rows.forEach((cells, row) => {
             const top = at.top + row * at.cellHeight;
             cells.forEach((cell, column) => {
-                const left = at.left + column * at.cellWidth;
                 // a little more than the cell: no hairline between two cells of one colour
                 if (cell.background !== painting.background) {
                     ctx.fillStyle = cell.background;
-                    ctx.fillRect(left, top, at.cellWidth + 0.5, at.cellHeight + 0.5);
+                    ctx.fillRect(at.left + column * at.cellWidth, top, at.cellWidth + 0.5, at.cellHeight + 0.5);
                 }
-                GridEditor.drawText(ctx, at, cell, left, top);
             });
+            GridEditor.runsOf(cells).forEach((run) => GridEditor.drawText(ctx, at, run.cell, at.left + run.column * at.cellWidth, top, run.length));
         });
         over();
         ctx.restore();
@@ -632,8 +631,30 @@ export class GridEditor {
         return h.reverse ? { ...h, foreground: background, background: foreground } : { ...h, foreground, background };
     }
 
-    private static drawText(ctx: Canvas2D, at: Cells, cell: PaintedCell, left: number, top: number) {
-        if (cell.text !== "" && cell.text !== " ") {
+    /**
+     * The cells of a row as runs that are drawn at once: neighbours
+     * that look the same, each a single character of the plain
+     * ones, which are all one cell wide. Anything else is a run of
+     * its own, drawn in its own cell.
+     */
+    private static runsOf(cells: PaintedCell[]): { cell: PaintedCell; column: number; length: number }[] {
+        const plain = (cell: PaintedCell) => /^[\x20-\x7e]+$/.test(cell.text);
+        const alike = (a: PaintedCell, b: PaintedCell) =>
+            a.foreground === b.foreground && a.special === b.special && !a.bold === !b.bold && !a.italic === !b.italic &&
+            !a.underline === !b.underline && !a.undercurl === !b.undercurl && !a.strikethrough === !b.strikethrough;
+        return cells.reduce<{ cell: PaintedCell; column: number; length: number }[]>((runs, cell, column) => {
+            const last = runs[runs.length - 1];
+            if (last !== undefined && plain(cell) && plain(last.cell) && alike(cell, last.cell)) {
+                last.cell = { ...last.cell, text: last.cell.text + cell.text };
+                last.length += 1;
+            } else runs.push({ cell, column, length: 1 });
+            return runs;
+        }, []);
+    }
+
+    /** The text of [cell] from [left], and what is drawn under or through it, [length] cells long. */
+    private static drawText(ctx: Canvas2D, at: Cells, cell: PaintedCell, left: number, top: number, length: number = 1) {
+        if (cell.text.trim() !== "") {
             ctx.font = `${cell.italic ? "italic " : ""}${cell.bold ? "bold " : ""}${at.font}`;
             ctx.fillStyle = cell.foreground;
             ctx.fillText(cell.text, left, top + at.baseline);
@@ -641,7 +662,7 @@ export class GridEditor {
         if (cell.underline || cell.undercurl || cell.strikethrough) {
             ctx.fillStyle = cell.special ?? cell.foreground;
             const thickness = Math.max(1, at.cellHeight / 16);
-            ctx.fillRect(left, top + (cell.strikethrough ? at.cellHeight / 2 : at.baseline + thickness), at.cellWidth, thickness);
+            ctx.fillRect(left, top + (cell.strikethrough ? at.cellHeight / 2 : at.baseline + thickness), at.cellWidth * length, thickness);
         }
     }
 
