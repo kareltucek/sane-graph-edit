@@ -1063,14 +1063,17 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             pages: () => spaceRenderer?.atlas ?? [],
             room: setRoom,
         };
-        startVr(Number(vr) || 0, token, lan, source, (address, error) => {
+        // what is typed in the headset: four digits, good for a few tries only
+        const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");
+        startVr(Number(vr) || 0, token, pin, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
                 : lan
                     ? `VR: answering on the local network. With the headset on the same Wi-Fi, open in its browser\n    ${address}\n` +
-                        "and go on past its warning about the certificate (this machine made it for itself)."
-                    : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\nand open in the headset's browser\n    ${address}`;
+                        `go on past its warning about the certificate (this machine made it for itself), and give the PIN ${pin}`
+                    : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\n` +
+                        `open in the headset's browser\n    ${address}\nand give the PIN ${pin}`;
             // where the application was started from, and in the window
             process.stdout.write(`sane-graph-edit: ${text}\n`);
             showMessage(text);

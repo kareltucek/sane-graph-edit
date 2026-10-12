@@ -146,13 +146,17 @@ function certificate(): { key: Buffer; cert: Buffer } {
     return { key: fs.readFileSync(key), cert: fs.readFileSync(cert) };
 }
 
+/** How many times in all a wrong PIN may be given. */
+const PIN_TRIES = 5;
+
 /**
  * Start answering at [port] (0: any free one) for headsets that know
- * [token]: on this machine only, or with [lan] on the local network,
- * over TLS. [told] gets the address to open in the headset once the
- * server listens, or what went wrong.
+ * [token], which one that is given the [pin] is told: on this machine
+ * only, or with [lan] on the local network, over TLS. [told] gets the
+ * address to open in the headset once the server listens, or what
+ * went wrong.
  */
-export function startVr(port: number, token: string, lan: boolean, source: VrSource, told: (address: string | null, error: string | null) => void) {
+export function startVr(port: number, token: string, pin: string, lan: boolean, source: VrSource, told: (address: string | null, error: string | null) => void) {
     // loaded here, not bundled: Node's own, and a module of Node's kind
     const http: typeof import("http") = require("http");
     const https: typeof import("https") = require("https");
@@ -167,6 +171,27 @@ export function startVr(port: number, token: string, lan: boolean, source: VrSou
         const wanted = Buffer.from(token);
         return given.length === wanted.length && crypto.timingSafeEqual(given, wanted);
     };
+
+    /**
+     * The PIN is what a person types in the headset; who gives it is sent on to the address with the token. It is short, so
+     * it may be got wrong only [PIN_TRIES] times in all: after that no PIN is taken until the application is started again.
+     */
+    let triesLeft = PIN_TRIES;
+    const pinOf = (request: IncomingMessage) => new URL(request.url ?? "/", "http://localhost").searchParams.get("pin");
+    const pinRight = (given: string) => {
+        const a = Buffer.from(given);
+        const b = Buffer.from(pin);
+        const right = triesLeft > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
+        if (!right && triesLeft > 0) triesLeft -= 1;
+        return right;
+    };
+    const pinPage = (wrong: boolean) =>
+        `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>sane-graph-edit</title>` +
+        `<body style="font: 28px sans-serif; background: #222; color: #ddd; text-align: center; padding-top: 3em">` +
+        (triesLeft > 0
+            ? `<form method="get" action="/">PIN <input name="pin" inputmode="numeric" maxlength="4" size="4" autofocus style="font: inherit"> ` +
+                `<button style="font: inherit">Open</button></form>` + (wrong ? `<p>Wrong PIN; ${triesLeft} more tries.</p>` : "")
+            : `<p>Too many wrong PINs. Start the application again.</p>`);
 
     const host = lan ? lanAddress() : "127.0.0.1";
     if (host === null) {
@@ -186,7 +211,9 @@ export function startVr(port: number, token: string, lan: boolean, source: VrSou
         if (request.method !== "GET" || asked === undefined) {
             response.writeHead(404).end();
         } else if (!asked.open && !knows(request)) {
-            response.writeHead(403).end();
+            const given = pinOf(request);
+            if (given !== null && pinRight(given)) response.writeHead(302, { Location: `/?token=${token}`, "Cache-Control": "no-store" }).end();
+            else response.writeHead(given === null ? 200 : 403, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(pinPage(given !== null));
         } else {
             // only these two files, by name: nothing of what is asked is made into a path
             response.writeHead(200, { "Content-Type": asked.type, "Cache-Control": "no-store" });
@@ -247,6 +274,6 @@ export function startVr(port: number, token: string, lan: boolean, source: VrSou
     server.listen(port, host, () => {
         const at = server.address();
         const where = lan ? `https://${host}` : "http://localhost";
-        told(typeof at === "object" && at !== null ? `${where}:${at.port}/?token=${token}` : null, null);
+        told(typeof at === "object" && at !== null ? `${where}:${at.port}` : null, null);
     });
 }

@@ -526,7 +526,8 @@ says what to do next: with the headset on its USB cable,
 adb reverse tcp:8765 tcp:8765
 ```
 
-and then the address it prints, in the headset's browser. The page
+and then the address it prints, in the headset's browser, and there
+the four-digit PIN it prints with it. The page
 shows the graph of the tab that is shown in the window, as that
 changes, and offers to enter with the room visible (passthrough) or
 hidden. Squeezing a controller takes the graph in that hand; a
@@ -535,14 +536,17 @@ headset only places pictures the window makes of the nodes: it holds
 nothing, and reloading its page loses nothing.
 
 It is off unless asked for, answers on this machine only and only
-to who knows the token in the address; the cable is what lets the
-headset reach it, and nothing is opened to the network.
+to who gives the PIN (which sends the browser on to an address with
+a long token in it); the cable is what lets the headset reach it,
+and nothing is opened to the network. The PIN is new each time the
+application starts, and after five wrong ones none is taken until
+it is started again.
 
 Without a cable: `--vr 8765 --vr-lan` answers on the local network
 instead, for a headset on the same Wi-Fi. This does open a port to
 that network: on the one address this machine has there, over TLS
-(`https://192.168.…:8765/?token=…`, as it prints), and still only to
-who knows the token. The certificate is one the application makes
+(`https://192.168.…:8765`, as it prints), and still only to
+who gives the PIN. The certificate is one the application makes
 for itself with `openssl` and keeps in its configuration directory
 (`vr-cert.pem`, `vr-key.pem`), so the headset's browser warns about
 it once and has to be told to go on.
