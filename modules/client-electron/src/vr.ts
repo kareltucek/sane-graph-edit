@@ -180,8 +180,11 @@ function connect() {
 // --- in the headset: enter, and take the graph in the hand ---
 
 function enter(mode: "immersive-ar" | "immersive-vr") {
-    navigator.xr!.requestSession(mode, { optionalFeatures: ["local-floor", "plane-detection"] }).then((session) => {
+    navigator.xr!.requestSession(mode, { optionalFeatures: ["local-floor", "plane-detection", "mesh-detection"] }).then((session) => {
         renderer.xr.setReferenceSpaceType("local-floor");
+        // text is read here: more pixels than a headset draws with unless asked, and as many at the rim of the view as in its middle
+        renderer.xr.setFramebufferScaleFactor(FRAMEBUFFER_SCALE);
+        renderer.xr.setFoveation(0);
         // with the room visible nothing is drawn behind the graph
         scene.background = mode === "immersive-vr" && shown !== null ? new THREE.Color(shown.background) : null;
         return renderer.xr.setSession(session);
@@ -293,24 +296,142 @@ function report(planes: XRPlaneSet) {
     }
 }
 
-// Squeezing a controller takes the graph in that hand: it goes where the hand goes, turned as the hand turns, until let go.
-[0, 1].forEach((index) => {
+// --- the room's shape: what the headset has scanned of it (furniture too), as a net of faint lines. Shown only; the window is not told of it yet ---
+
+/** As WebXR gives a scanned shape; not in the types this is built with. */
+interface ScannedMesh {
+    meshSpace: XRSpace;
+    vertices: Float32Array;
+    indices: Uint32Array;
+    lastChangedTime: number;
+}
+
+const scanned = new Map<ScannedMesh, { shown: THREE.LineSegments; changed: number }>();
+
+function showScanned(frame: XRFrame) {
+    const meshes: Set<ScannedMesh> = (frame as unknown as { detectedMeshes?: Set<ScannedMesh> }).detectedMeshes ?? new Set();
+    const space = renderer.xr.getReferenceSpace();
+    [...scanned.keys()].filter((it) => !meshes.has(it)).forEach((gone) => {
+        forget(scanned.get(gone)!.shown as unknown as THREE.Group);
+        scanned.delete(gone);
+    });
+    meshes.forEach((mesh) => {
+        const had = scanned.get(mesh);
+        if (had === undefined || had.changed !== mesh.lastChangedTime) {
+            if (had !== undefined) forget(had.shown as unknown as THREE.Group);
+            const shape = new THREE.BufferGeometry();
+            shape.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
+            shape.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
+            const shown = new THREE.LineSegments(new THREE.WireframeGeometry(shape), new THREE.LineBasicMaterial({ color: ROOM_COLOUR, transparent: true, opacity: 0.25 }));
+            shape.dispose();
+            shown.matrixAutoUpdate = false;
+            room.add(shown);
+            scanned.set(mesh, { shown, changed: mesh.lastChangedTime });
+        }
+        const pose = space === null ? undefined : frame.getPose(mesh.meshSpace, space);
+        const shown = scanned.get(mesh)!.shown;
+        shown.visible = pose !== undefined && pose !== null;
+        if (pose) shown.matrix.fromArray(pose.transform.matrix);
+    });
+}
+
+// --- the controllers ---
+// Left: its grip takes the graph in that hand (it goes where the hand goes, turned as the hand turns, until let go); X asks into
+// explore mode or out of it. Right: it points, and on the node it points at its trigger is the left button of a mouse and its grip
+// the right one. What a button then does is the window's to say; here a node is only pointed at.
+
+const RAY = 0x8899aa;
+const RAY_EXPLORING = 0xe0a030;
+/** How far a ray is drawn when it points at nothing, in metres. */
+const RAY_LENGTH = 0.5;
+/** How many times the pixels a headset draws with unless asked. */
+const FRAMEBUFFER_SCALE = 1.5;
+/** The button X of the left controller, as a headset numbers the buttons of one. */
+const BUTTON_X = 4;
+
+const hands = [0, 1].map((index) => {
     const hand = renderer.xr.getController(index);
+    const ray = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
+        new THREE.LineBasicMaterial({ color: RAY }),
+    );
+    ray.scale.z = RAY_LENGTH;
+    hand.add(ray);
     scene.add(hand);
-    hand.add(new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -0.5)]),
-        new THREE.LineBasicMaterial({ color: 0x8899aa }),
-    ));
-    hand.addEventListener("squeezestart", () => hand.attach(graph));
-    hand.addEventListener("squeezeend", () => scene.attach(graph));
+    const state = { hand, ray, side: "none" as XRHandedness, source: null as XRInputSource | null, x: false };
+    hand.addEventListener("connected", (event) => {
+        state.source = event.data as XRInputSource;
+        state.side = state.source.handedness;
+    });
+    hand.addEventListener("disconnected", () => {
+        state.source = null;
+        state.side = "none";
+    });
+    const click = (button: 0 | 2) => {
+        if (state.side === "right" && pointed !== null) tell?.(JSON.stringify({ type: "click", id: pointed.id, button }));
+    };
+    hand.addEventListener("selectstart", () => click(0));
+    hand.addEventListener("squeezestart", () => {
+        if (state.side === "left") hand.attach(graph);
+        else click(2);
+    });
+    hand.addEventListener("squeezeend", () => {
+        if (state.side === "left") scene.attach(graph);
+    });
+    return state;
 });
 
-/** A thumbstick pushed forward or back makes the graph bigger or smaller, where it is. */
-function resize() {
-    const session = renderer.xr.getSession();
-    session?.inputSources.forEach((source) => {
-        const push = source.gamepad?.axes[3] ?? 0;
+/** The node the right controller points at, and a frame around it. */
+let pointed: VrNode | null = null;
+const frameAround = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, -0.5, 0), new THREE.Vector3(0.5, -0.5, 0), new THREE.Vector3(0.5, 0.5, 0), new THREE.Vector3(-0.5, 0.5, 0)]),
+    new THREE.LineBasicMaterial({ color: RAY_EXPLORING, depthTest: false }),
+);
+frameAround.visible = false;
+graph.add(frameAround);
+
+/** Find what the right controller points at: of the nodes its ray goes through, the nearest. The ray is drawn up to it. */
+function point() {
+    const right = hands.find((it) => it.side === "right");
+    let nearest: { node: VrNode; along: number } | null = null;
+    if (right !== undefined && shown !== null) {
+        // the ray in the graph's own space, where a node is a rectangle at its depth
+        graph.updateMatrixWorld();
+        right.hand.updateMatrixWorld();
+        const into = graph.matrixWorld.clone().invert();
+        const from = new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld).applyMatrix4(into).sub(offset);
+        const towards = new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld).add(new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld))
+            .applyMatrix4(into).sub(offset).sub(from);
+        shown.nodes.forEach((n) => {
+            // [along] in metres: [towards] is a metre of the ray
+            const along = towards.z === 0 ? -1 : (n.z - from.z) / towards.z;
+            const hit = along > 0 && (nearest === null || along < nearest.along) &&
+                Math.abs(from.x + towards.x * along - n.x) <= n.width / 2 && Math.abs(from.y + towards.y * along - n.y) <= n.height / 2;
+            if (hit) nearest = { node: n, along };
+        });
+    }
+    const found = nearest as { node: VrNode; along: number } | null;
+    pointed = found?.node ?? null;
+    frameAround.visible = found !== null;
+    if (found !== null) {
+        frameAround.position.set(found.node.x, found.node.y, found.node.z).add(offset);
+        frameAround.scale.set(found.node.width + 6, found.node.height + 6, 1);
+    }
+    hands.forEach((it) => {
+        it.ray.scale.z = it === right && found !== null ? found.along : RAY_LENGTH;
+        it.ray.material.color.set(it === right && shown?.exploring ? RAY_EXPLORING : RAY);
+    });
+}
+
+/** A thumbstick pushed forward or back makes the graph bigger or smaller, where it is; X of the left controller, when it goes down, asks into explore mode or out of it. */
+function buttons() {
+    hands.forEach((it) => {
+        const pad = it.source?.gamepad;
+        const push = pad?.axes[3] ?? 0;
         if (Math.abs(push) > 0.2) graph.scale.multiplyScalar(1 - push * 0.02);
+        const x = it.side === "left" && pad?.buttons[BUTTON_X]?.pressed === true;
+        if (x && !it.x) tell?.(JSON.stringify({ type: "explore" }));
+        it.x = x;
     });
 }
 
@@ -326,7 +447,8 @@ canvas.addEventListener("wheel", (e) => {
     if (!renderer.xr.isPresenting) graph.scale.multiplyScalar(e.deltaY < 0 ? 1.1 : 1 / 1.1);
 });
 
-renderer.setAnimationLoop(() => {
+renderer.setAnimationLoop((_time, frame) => {
+    if (frame) showScanned(frame);
     if (!renderer.xr.isPresenting) {
         const width = canvas.clientWidth;
         const height = canvas.clientHeight;
@@ -338,7 +460,8 @@ renderer.setAnimationLoop(() => {
         }
         scene.background = shown !== null ? new THREE.Color(shown.background) : null;
     }
-    resize();
+    buttons();
+    point();
     renderer.render(scene, camera);
 });
 

@@ -366,6 +366,19 @@ class JsView internal constructor(
         view.repaint()
     }
 
+    /** A button clicked on the node [id], by what points at nodes (a headset's controller). */
+    fun clickNode(id: String, domButton: Int) {
+        button(domButton)?.let { view.pointer.clicked(id, it) }
+    }
+
+    /** Into explore mode, or out of it. */
+    fun toggleExplore() {
+        keys.activeView = view
+        Explore.set(view, !Explore.isOn(view))
+    }
+
+    val exploring: Boolean get() = Explore.isOn(view)
+
     fun pointerUp(x: Double, y: Double, domButton: Int, control: Boolean) {
         button(domButton)?.let { view.pointer.released(Vector2(x, y), Vector2(x, y), it, control) }
     }

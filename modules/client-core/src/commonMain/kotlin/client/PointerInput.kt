@@ -50,6 +50,24 @@ class PointerInput(private val view: EditorView) {
         }
     }
 
+    /**
+     * [button] was clicked on the node [id] by something that points
+     * at nodes and not at places of the view (a headset's
+     * controller): what the button is mapped to, as [mapped]; if
+     * nothing, the left one selects the node and the right one does
+     * nothing. A node that is not shown is not clicked.
+     */
+    fun clicked(id: String, button: Button) {
+        val under = view.g.visibleNodes().filter { it.id == id }
+        val key = if (button == Button.Left) KeyMapper.LEFT_MOUSE else KeyMapper.RIGHT_MOUSE
+        if (under.isNotEmpty() && button != Button.Middle && !view.content.isBusy && gestures.state == null) {
+            view.endNodeEdit()
+            view.endStylePicker()
+            if (!mouseKey(key) { view.g.cleanSelect(under) } && button == Button.Left) view.g.cleanSelect(under)
+            view.repaint()
+        }
+    }
+
     private fun press(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
         val asKey = button == Button.Right && !control && gestures.state == null
         if (asKey && mapped(workspace(screen), KeyMapper.RIGHT_MOUSE)) view.repaint()

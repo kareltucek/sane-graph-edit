@@ -530,8 +530,13 @@ and then the address it prints, in the headset's browser, and there
 the four-digit PIN it prints with it. The page
 shows the graph of the tab that is shown in the window, as that
 changes, and offers to enter with the room visible (passthrough) or
-hidden. Squeezing a controller takes the graph in that hand; a
-thumbstick pushed forward or back makes it bigger or smaller. The
+hidden. The grip of the left controller takes the graph in that
+hand; a thumbstick pushed forward or back makes it bigger or
+smaller. The right controller points: on the node it points at, its
+trigger is the left button of a mouse and its grip the right one,
+so a node is selected with the trigger, and in explore mode opened
+with the trigger and folded with the grip. X on the left controller
+goes into explore mode (from the node selected) and out of it. The
 headset only places pictures the window makes of the nodes: it holds
 nothing, and reloading its page loses nothing.
 
@@ -555,7 +560,9 @@ Where the headset knows the flat surfaces of its room (on a Quest:
 after its space setup, and when its browser is allowed to see them),
 the page outlines them with what they are (`wall`, `floor`, `desk`…)
 and tells the window of them: `:room` lists them, with their sizes
-and where they are. Nothing is laid out by them yet.
+and where they are. Nothing is laid out by them yet. Where it has
+the scanned shape of the room too (furniture and all), the page
+shows that as a faint net; the window is not told of it yet.
 
 The window draws that room too, in 3D mode, as outlines around the
 graph (a unit of the graph is a millimetre; the middle of the graph

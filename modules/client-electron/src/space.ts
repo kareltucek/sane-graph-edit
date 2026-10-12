@@ -343,7 +343,16 @@ export class SpaceRenderer<N extends SpaceNode> {
     // going somewhere else in the graph finds its pictures made. It starts when a graph is first drawn with depth.
 
     /** The nodes of the graph as it was last drawn, and how to make their pictures. */
-    private toFill: { nodes: N[]; dpr: number; keyOf: (n: N) => string; paint: (n: N, pixelsPerUnit: number) => NodePicture } | null = null;
+    private toFill: { nodes: N[]; dpr: number; keyOf: (n: N) => string; paint: (n: N, pixelsPerUnit: number) => NodePicture; fit?: boolean } | null = null;
+
+    /**
+     * How fine the picture of [n] is on a page when pictures are [dpr] pixels to a unit: that, for one that is no bigger than
+     * [MAX_ON_PAGE] so; null for a bigger one, which is not put on a page, unless [fit]: then as fine as a page has room for.
+     */
+    private static onPage(n: SpaceNode, dpr: number, fit: boolean): number | null {
+        const side = Math.max(n.width, n.height);
+        return side * dpr <= MAX_ON_PAGE ? dpr : fit ? Math.min(dpr, (PAGE - 8) / (side + 8)) : null;
+    }
     /** Which graph the background work is for or was last done for: it is not done again for the same one. */
     private filledFor = "";
     private filling = false;
@@ -366,11 +375,12 @@ export class SpaceRenderer<N extends SpaceNode> {
         let made = false;
         while (work !== null && this.fillNext < work.nodes.length && performance.now() - start < FILL_SLICE_MS) {
             const n = work.nodes[this.fillNext++];
-            if (Math.max(n.width, n.height) * work.dpr <= MAX_ON_PAGE) {
+            const fine = SpaceRenderer.onPage(n, work.dpr, work.fit === true);
+            if (fine !== null) {
                 const key = work.keyOf(n);
                 const slot = this.slots.get(n.id);
                 if (slot === undefined || slot.key !== key) {
-                    this.put(n, key, work.paint(n, work.dpr), slot);
+                    this.put(n, key, work.paint(n, fine), slot);
                     made = true;
                 }
             }
@@ -618,10 +628,11 @@ export class SpaceRenderer<N extends SpaceNode> {
     /**
      * Have the pictures of [nodes] made in the background although
      * the graph is not drawn with depth here: somebody else shows it.
+     * With [fit] every node gets one, a big node a coarser one.
      */
-    prepare(nodes: N[], dpr: number, keyOf: (n: N) => string, paint: (n: N, pixelsPerUnit: number) => NodePicture) {
-        this.toFill = { nodes, dpr, keyOf, paint };
-        const stale = nodes.some((n) => Math.max(n.width, n.height) * dpr <= MAX_ON_PAGE && this.slots.get(n.id)?.key !== keyOf(n));
+    prepare(nodes: N[], dpr: number, keyOf: (n: N) => string, paint: (n: N, pixelsPerUnit: number) => NodePicture, fit = false) {
+        this.toFill = { nodes, dpr, keyOf, paint, fit };
+        const stale = nodes.some((n) => SpaceRenderer.onPage(n, dpr, fit) !== null && this.slots.get(n.id)?.key !== keyOf(n));
         if (stale && !this.filling) this.refill();
     }
 

@@ -720,10 +720,11 @@ function endEdit(view: client.JsView) {
 function vrScene(view: client.JsView | null | undefined, grid: client.GridMetrics): VrScene | null {
     const world = view ? view.world() as SpaceScene<SpaceSceneNode> : null;
     if (world !== null) {
-        spaceRenderer ??= new SpaceRenderer(spaceCanvas, () => page.repaint());
-        spaceRenderer.prepare(world.nodes, window.devicePixelRatio, pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit));
+        // pictures of its own, finer than the window's: a headset shows a node from near
+        vrAtlas ??= new SpaceRenderer(document.createElement("canvas"), () => {});
+        vrAtlas.prepare(world.nodes, VR_PIXELS_PER_UNIT, pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit), true);
     }
-    const atlas = spaceRenderer;
+    const atlas = vrAtlas;
     return world === null || atlas === null ? null : {
         nodes: world.nodes.map((n) => {
             const place = atlas.placeOf(n.id);
@@ -737,8 +738,13 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         pageSide: atlas.pageSide,
         background: canvasColour(colours().background),
         ink: colours().foreground,
+        exploring: view!.exploring,
     };
 }
+
+/** The pictures of the nodes for headsets, and how many pixels a unit of the graph (in a headset: a millimetre) is in them. */
+let vrAtlas: SpaceRenderer<SpaceSceneNode> | null = null;
+const VR_PIXELS_PER_UNIT = 3;
 
 /** The nodes of the graph as it was last drawn with depth. */
 let lastSpaceIds: string[] = [];
@@ -1060,8 +1066,11 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         const lan = query.get("vrLan") !== null;
         const source = {
             scene: () => vrScene(app.current(), grid),
-            pages: () => spaceRenderer?.atlas ?? [],
+            pages: () => vrAtlas?.atlas ?? [],
             room: setRoom,
+            // what a headset says is only that: a node that is not there is not clicked
+            click: (id: string, button: 0 | 2) => app.current()?.clickNode(id, button),
+            explore: () => app.current()?.toggleExplore(),
         };
         // what is typed in the headset: four digits, good for a few tries only
         const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");

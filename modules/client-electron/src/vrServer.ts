@@ -41,6 +41,8 @@ export interface VrScene {
     pageSide: number;
     background: string;
     ink: string;
+    /** The view is in explore mode. */
+    exploring: boolean;
 }
 
 /**
@@ -80,8 +82,29 @@ function surfacesOf(text: string): VrSurface[] | null {
     }
 }
 
+/** A node's id is short; a longer one is not looked for. */
+const MAX_ID = 64;
+
+/** What a headset did with a controller: a button clicked on a node (0 the left one, 2 the right one), or explore mode asked into or out of. */
+type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" };
+
+/** That, in what a headset sent, or null when it is something else. */
+function doneOf(text: string): VrDone | null {
+    try {
+        const sent = JSON.parse(text);
+        const click = sent?.type === "click" && typeof sent.id === "string" && sent.id.length <= MAX_ID && (sent.button === 0 || sent.button === 2);
+        return click ? { type: "click", id: sent.id, button: sent.button } : sent?.type === "explore" ? { type: "explore" } : null;
+    } catch {
+        return null;
+    }
+}
+
 /** What is asked of the page that has the graph. */
 export interface VrSource {
+    /** A button was clicked on the node [id] in a headset (0 the left one, 2 the right one); the id is whatever the headset said. */
+    click: (id: string, button: 0 | 2) => void;
+    /** A headset asks into explore mode, or out of it. */
+    explore: () => void;
     /** A headset told of the room it is in: the last to do so is believed. */
     room: (surfaces: VrSurface[]) => void;
     /** What to show now; null when there is nothing. */
@@ -231,8 +254,12 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
             ws.on("close", () => headsets.delete(ws));
             ws.on("error", () => headsets.delete(ws));
             ws.on("message", (data, binary) => {
-                const surfaces = binary ? null : surfacesOf(data.toString());
+                const text = binary ? "" : data.toString();
+                const surfaces = surfacesOf(text);
+                const done = surfaces === null ? doneOf(text) : null;
                 if (surfaces !== null) source.room(surfaces);
+                else if (done?.type === "click") source.click(done.id, done.button);
+                else if (done?.type === "explore") source.explore();
             });
         });
         else socket.destroy();
