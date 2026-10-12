@@ -118,10 +118,14 @@ apps. The user does **not** need Java installed.
 # run it directly
 build/dist/sane-graph-edit/bin/sane-graph-edit
 
-# or install system-wide (also available via `make install`)
+# or install system-wide (also available via `make install-swing`)
 sudo cp -r build/dist/sane-graph-edit /opt/
 sudo ln -sf /opt/sane-graph-edit/bin/sane-graph-edit /usr/local/bin/sane-graph-edit
 ```
+
+That is the Swing client. The Electron client has no package yet:
+`make electron` builds it and `sudo make install` installs a
+`sane-graph-edit` command that starts it from this source tree.
 
 For a `.deb` or `.rpm` installer instead of a plain directory:
 

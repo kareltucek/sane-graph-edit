@@ -17,8 +17,9 @@
 #   make appimage   - build a single .AppImage file (~54 MB, no Java needed)
 #   make deb        - build a .deb installer
 #   make rpm        - build a .rpm installer
-#   make install    - install the native app-image to PREFIX (default /usr/local)
-#   make uninstall  - remove what `make install` put in place
+#   make install    - install a launcher of the Electron client in this tree to PREFIX (default /usr/local)
+#   make install-swing - install the Swing client's native app-image to PREFIX
+#   make uninstall  - remove what either of them put in place
 #   make release    - clean build + test + fat jar + AppImage
 #   make clean      - remove all build artefacts
 
@@ -29,9 +30,10 @@ GRADLE     := ./gradlew
 BUILD_DIST := build/dist/sane-graph-edit
 FAT_JAR    := build/libs/sane-graph-edit-*-all.jar
 ELECTRON   := modules/client-electron
+LAUNCHER   := build/sane-graph-edit-launcher
 ARGS       ?=
 
-.PHONY: all compile run electron run-swing run-jar test jar package appimage deb rpm install uninstall release clean
+.PHONY: all compile run electron run-swing run-jar test jar package appimage deb rpm install install-swing uninstall release clean
 
 # --- primary targets ---
 
@@ -76,9 +78,22 @@ deb:
 rpm:
 	$(GRADLE) jpackage -Ptype=rpm
 
-# --- install / uninstall (from app-image) ---
+# --- install / uninstall ---
 
-install: package
+# The Electron client is not packaged yet: what is installed is a launcher of the
+# client in this source tree, so the tree has to stay, and what is built in it is what runs.
+# It builds nothing (`make electron` does): run as root, a build would leave root's files in the tree.
+install:
+	install -d build $(dir $(BINLINK))
+	printf '#!/bin/sh\nexec "%s/node_modules/.bin/electron" --no-sandbox "%s" "$$@"\n' \
+		"$(abspath $(ELECTRON))" "$(abspath $(ELECTRON))" > $(LAUNCHER)
+	# not through the link a Swing install left there
+	rm -f $(BINLINK)
+	install -m 755 $(LAUNCHER) $(BINLINK)
+	@echo "Installed a launcher of $(abspath $(ELECTRON)). Run with: sane-graph-edit"
+
+# the Swing client, from the app-image
+install-swing: package
 	@echo "Installing to $(APPDIR) ..."
 	install -d $(APPDIR)
 	# replace files instead of writing into them: a running editor keeps its
