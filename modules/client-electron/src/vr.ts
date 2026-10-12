@@ -551,7 +551,18 @@ const hands = [0, 1].map((index) => {
     ray.scale.z = RAY_LENGTH;
     hand.add(ray);
     scene.add(hand);
-    const state = { hand, ray, side: "none" as XRHandedness, source: null as XRInputSource | null, x: false, y: false, a: false, b: false };
+    // around the node this controller points at
+    const frame = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: RAY_EXPLORING, depthTest: false, side: THREE.DoubleSide }));
+    frame.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(24), 3));
+    frame.geometry.setIndex([0, 1, 2, 3].flatMap((k) => [k, (k + 1) % 4, 4 + k, 4 + k, (k + 1) % 4, 4 + (k + 1) % 4]));
+    frame.visible = false;
+    frame.frustumCulled = false;
+    frame.renderOrder = 5;
+    graph.add(frame);
+    const state = {
+        hand, ray, frame, side: "none" as XRHandedness, source: null as XRInputSource | null, pointed: null as VrNode | null,
+        x: false, y: false, a: false, b: false,
+    };
     hand.addEventListener("connected", (event) => {
         state.source = event.data as XRInputSource;
         state.side = state.source.handedness;
@@ -564,32 +575,34 @@ const hands = [0, 1].map((index) => {
         if (state.side === "right" && pointed !== null) tell?.(JSON.stringify({ type: "click", id: pointed.id, button }));
     };
     // the trigger takes the node pointed at; let go where it was taken, that was a click, elsewhere, the node is put there
+    // The left trigger, on a node that has links: its one link is followed; of several, a menu is held open until it is let go of.
     hand.addEventListener("selectstart", () => {
+        const on = state.pointed;
+        const links = on?.links ?? [];
         if (state.side === "right" && pointed !== null && pointedAt !== null) {
             const middle = new THREE.Vector3(pointed.x, pointed.y, pointed.z);
             held = { id: pointed.id, along: pointedAt.along, grip: pointedAt.at.clone().sub(middle), from: middle, moved: false };
-        }
+        } else if (state.side === "left" && on !== null && links.length === 1) tell?.(JSON.stringify({ type: "follow", id: on.id, letter: links[0][0] }));
+        else if (state.side === "left" && on !== null && links.length > 1) openMenu(on, links);
     });
     hand.addEventListener("selectend", () => {
-        const was = held;
-        held = null;
-        const place = was === null ? undefined : placed.get(was.id);
-        if (was !== null && was.moved && place !== undefined) {
-            place.until = performance.now() + KEPT_AFTER_MS;
-            tell?.(JSON.stringify({ type: "move", id: was.id, ...place.at }));
-        } else if (was !== null && state.side === "right") tell?.(JSON.stringify({ type: "click", id: was.id, button: 0 }));
+        if (state.side === "left") closeMenu(true);
+        else {
+            const was = held;
+            held = null;
+            const place = was === null ? undefined : placed.get(was.id);
+            if (was !== null && was.moved && place !== undefined) {
+                place.until = performance.now() + KEPT_AFTER_MS;
+                tell?.(JSON.stringify({ type: "move", id: was.id, ...place.at }));
+            } else if (was !== null && state.side === "right") tell?.(JSON.stringify({ type: "click", id: was.id, button: 0 }));
+        }
     });
-    // the right grip, out of explore mode, on a node that has links: its one link is followed; of several, a menu is held open
     hand.addEventListener("squeezestart", () => {
-        const links = state.side === "right" && shown?.exploring !== true ? pointed?.links ?? [] : [];
         if (state.side === "left") hand.attach(graph);
-        else if (links.length === 1 && pointed !== null) tell?.(JSON.stringify({ type: "follow", id: pointed.id, letter: links[0][0] }));
-        else if (links.length > 1 && pointed !== null) openMenu(pointed, links);
         else click(2);
     });
     hand.addEventListener("squeezeend", () => {
         if (state.side === "left") scene.attach(graph);
-        else closeMenu(true);
     });
     return state;
 });
@@ -659,7 +672,7 @@ function closeMenu(followed: boolean) {
 /** Which link of the menu the right controller's ray points at: that one is shown brighter. */
 function pointInMenu() {
     const now = menu;
-    const right = hands.find((it) => it.side === "right");
+    const right = hands.find((it) => it.side === "left");
     if (now !== null && right !== undefined) {
         const from = new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld);
         const ray = new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld);
@@ -689,19 +702,13 @@ const KEPT_AFTER_MS = 800;
 /** The frame: a band around the node, [FRAME_WIDTH] of the graph's units wide and [FRAME_AWAY] from it; its corners, the outer four and then the inner four. */
 const FRAME_WIDTH = 2;
 const FRAME_AWAY = 3;
-const frameAround = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: RAY_EXPLORING, depthTest: false, side: THREE.DoubleSide }));
-frameAround.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(24), 3));
-frameAround.geometry.setIndex([0, 1, 2, 3].flatMap((k) => [k, (k + 1) % 4, 4 + k, 4 + k, (k + 1) % 4, 4 + (k + 1) % 4]));
-frameAround.visible = false;
-frameAround.frustumCulled = false;
-frameAround.renderOrder = 5;
-graph.add(frameAround);
 
-/** Find what the right controller points at: of the nodes its ray goes through, the nearest. The ray is drawn up to it. */
-function point() {
-    const right = hands.find((it) => it.side === "right");
+/** Find what the controller [right] points at (either of them: the name is of the one that also holds nodes): of the nodes its ray goes through, the nearest. The ray is drawn up to it. */
+function pointWith(right: typeof hands[number]) {
+    const frameAround = right.frame;
     let nearest: { node: VrNode; along: number } | null = null;
-    if (right !== undefined && shown !== null) {
+    let at: { at: THREE.Vector3; along: number } | null = null;
+    if (right.side !== "none" && shown !== null) {
         // the ray in the graph's own space, where a node is a rectangle at its depth
         graph.updateMatrixWorld();
         right.hand.updateMatrixWorld();
@@ -709,7 +716,7 @@ function point() {
         const from = new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld).applyMatrix4(into).sub(offset);
         const towards = new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld).add(new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld))
             .applyMatrix4(into).sub(offset).sub(from);
-        const holding = held;
+        const holding = right.side === "right" ? held : null;
         const axes = laid?.axes;
         if (holding !== null) {
             // the node held stays as far along the ray as it was taken, and goes where the ray goes
@@ -732,12 +739,15 @@ function point() {
             if (hit) nearest = { node: n, along };
         });
         const hit = nearest as { node: VrNode; along: number } | null;
-        pointedAt = hit === null ? null : { at: from.clone().addScaledVector(towards, hit.along), along: hit.along };
+        at = hit === null ? null : { at: from.clone().addScaledVector(towards, hit.along), along: hit.along };
     }
     const found = nearest as { node: VrNode; along: number } | null;
-    if (found === null) pointedAt = null;
-    pointed = found?.node ?? null;
-    const i =found === null ? undefined : laid?.index.get(found.node);
+    right.pointed = found?.node ?? null;
+    if (right.side === "right") {
+        pointed = right.pointed;
+        pointedAt = found === null ? null : at;
+    }
+    const i = found === null ? undefined : laid?.index.get(found.node);
     frameAround.visible = found !== null && i !== undefined;
     if (found !== null && laid !== null && i !== undefined) {
         // turned as the node is
@@ -754,10 +764,17 @@ function point() {
         corners.needsUpdate = true;
         frameAround.position.copy(offset);
     }
-    hands.forEach((it) => {
-        it.ray.scale.z = it === right && found !== null ? found.along : RAY_LENGTH;
-        it.ray.material.color.set(it === right && shown?.exploring ? RAY_EXPLORING : RAY);
-    });
+    right.ray.scale.z = found !== null ? found.along : RAY_LENGTH;
+    right.ray.material.color.set(right.side === "right" && shown?.exploring ? RAY_EXPLORING : RAY);
+}
+
+function point() {
+    // with no right controller there is nothing it points at
+    if (!hands.some((it) => it.side === "right")) {
+        pointed = null;
+        pointedAt = null;
+    }
+    hands.forEach(pointWith);
 }
 
 /** A thumbstick pushed forward or back makes the graph bigger or smaller, where it is; X of the left controller, when it goes down, asks into explore mode or out of it. */
