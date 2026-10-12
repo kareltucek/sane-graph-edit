@@ -371,6 +371,11 @@ class JsView internal constructor(
         button(domButton)?.let { view.pointer.clicked(id, it) }
     }
 
+    /** The node [id] taken and put at x, y, z of the graph, by what holds nodes in space (a headset's controller). */
+    fun dragNode(id: String, x: Double, y: Double, z: Double) {
+        view.pointer.dragged(id, Point3(x, y, z))
+    }
+
     /** Into explore mode, or out of it. */
     fun toggleExplore() {
         keys.activeView = view

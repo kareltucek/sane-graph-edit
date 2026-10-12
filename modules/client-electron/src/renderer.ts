@@ -1075,6 +1075,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             room: setRoom,
             // what a headset says is only that: a node that is not there is not clicked
             click: (id: string, button: 0 | 2) => app.current()?.clickNode(id, button),
+            move: (id: string, x: number, y: number, z: number) => app.current()?.dragNode(id, x, y, z),
             explore: () => app.current()?.toggleExplore(),
         };
         // what is typed in the headset: four digits, good for a few tries only

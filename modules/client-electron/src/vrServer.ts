@@ -88,14 +88,21 @@ function surfacesOf(text: string): VrSurface[] | null {
 const MAX_ID = 64;
 
 /** What a headset did with a controller: a button clicked on a node (0 the left one, 2 the right one), or explore mode asked into or out of. */
-type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" };
+type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "move"; id: string; x: number; y: number; z: number };
+
+/** A node is not put further from the graph's origin than this, in its units. */
+const MAX_PLACE = 1e7;
 
 /** That, in what a headset sent, or null when it is something else. */
 function doneOf(text: string): VrDone | null {
     try {
         const sent = JSON.parse(text);
         const click = sent?.type === "click" && typeof sent.id === "string" && sent.id.length <= MAX_ID && (sent.button === 0 || sent.button === 2);
-        return click ? { type: "click", id: sent.id, button: sent.button } : sent?.type === "explore" ? { type: "explore" } : null;
+        const place = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= MAX_PLACE;
+        const move = sent?.type === "move" && typeof sent.id === "string" && sent.id.length <= MAX_ID && place(sent.x) && place(sent.y) && place(sent.z);
+        return click ? { type: "click", id: sent.id, button: sent.button }
+            : move ? { type: "move", id: sent.id, x: sent.x, y: sent.y, z: sent.z }
+            : sent?.type === "explore" ? { type: "explore" } : null;
     } catch {
         return null;
     }
@@ -105,6 +112,8 @@ function doneOf(text: string): VrDone | null {
 export interface VrSource {
     /** A button was clicked on the node [id] in a headset (0 the left one, 2 the right one); the id is whatever the headset said. */
     click: (id: string, button: 0 | 2) => void;
+    /** The node [id] was taken in a headset and put at x, y, z of the graph. */
+    move: (id: string, x: number, y: number, z: number) => void;
     /** A headset asks into explore mode, or out of it. */
     explore: () => void;
     /** A headset told of the room it is in: the last to do so is believed. */
@@ -261,6 +270,7 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
                 const done = surfaces === null ? doneOf(text) : null;
                 if (surfaces !== null) source.room(surfaces);
                 else if (done?.type === "click") source.click(done.id, done.button);
+                else if (done?.type === "move") source.move(done.id, done.x, done.y, done.z);
                 else if (done?.type === "explore") source.explore();
             });
         });

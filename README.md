@@ -537,7 +537,10 @@ hand; a thumbstick pushed forward or back makes it bigger or
 smaller. The right controller points: on the node it points at, its
 trigger is the left button of a mouse and its grip the right one,
 so a node is selected with the trigger, and in explore mode opened
-with the trigger and folded with the grip. X on the left controller
+with the trigger and folded with the grip. A node the trigger is
+held on goes where the controller points until it is let go of: it
+is put there, with the other selected nodes if it is one of them.
+The nodes face whoever looks, from wherever. X on the left controller
 goes into explore mode (from the node selected, or from the roots
 of the graph) and out of it. The window's status line is shown on a
 strip before and below the eyes: it stays where it is in the room,

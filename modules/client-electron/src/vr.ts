@@ -40,6 +40,9 @@ graph.add(plain, edges, heads);
 });
 
 let shown: VrScene | null = null;
+/** The scene as the window sent it, and the nodes that are shown elsewhere than it says, each until when. */
+let received: VrScene | null = null;
+const placed = new Map<string, { at: { x: number; y: number; z: number }; until: number }>();
 let centred = false;
 
 function textureOf(page: number): THREE.Texture {
@@ -59,21 +62,21 @@ function textureOf(page: number): THREE.Texture {
 }
 
 /** Lay out what was sent: the nodes of each page as rectangles with their part of the page on them, the rest plain, and the edges. */
-function show(sent: VrScene) {
+function show(got: VrScene) {
+    received = got;
+    // a node that is held, or was just let go of, is where the hand put it: the window says so only a little later
+    const now = performance.now();
+    [...placed].filter(([, place]) => place.until < now).forEach(([id]) => placed.delete(id));
+    const sent: VrScene = { ...got, nodes: got.nodes.map((n) => placed.has(n.id) ? { ...n, ...placed.get(n.id)!.at } : n) };
     shown = sent;
     const byPage = new Map<number, VrNode[]>();
     sent.nodes.filter((n) => n.page !== undefined).forEach((n) => byPage.set(n.page!, [...(byPage.get(n.page!) ?? []), n]));
+    // where the corners are is said anew at every frame ([face]): a node faces whoever looks
     byPage.forEach((nodes, page) => {
         textureOf(page);
-        const positions: number[] = [];
         const places: number[] = [];
         const indices: number[] = [];
         nodes.forEach((n, i) => {
-            const left = n.x - n.middleX! / n.pixelsPerUnit!;
-            const top = n.y - n.middleY! / n.pixelsPerUnit!;
-            const right = left + n.pw! / n.pixelsPerUnit!;
-            const bottom = top + n.ph! / n.pixelsPerUnit!;
-            positions.push(left, top, n.z, right, top, n.z, left, bottom, n.z, right, bottom, n.z);
             const u1 = n.px! / sent.pageSide;
             const u2 = (n.px! + n.pw!) / sent.pageSide;
             const v1 = n.py! / sent.pageSide;
@@ -82,7 +85,7 @@ function show(sent: VrScene) {
             indices.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 1, i * 4 + 3, i * 4 + 2);
         });
         const geometry = pictured[page].geometry;
-        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(nodes.length * 12), 3));
         geometry.setAttribute("uv", new THREE.Float32BufferAttribute(places, 2));
         geometry.setIndex(indices);
     });
@@ -90,47 +93,22 @@ function show(sent: VrScene) {
         mesh.visible = byPage.has(page);
     });
 
-    const positions: number[] = [];
     const colours: number[] = [];
     const indices: number[] = [];
-    sent.nodes.filter((n) => n.page === undefined).forEach((n, i) => {
+    const unpictured = sent.nodes.filter((n) => n.page === undefined);
+    unpictured.forEach((n, i) => {
         const c = new THREE.Color(n.fill);
-        positions.push(n.x - n.width / 2, n.y - n.height / 2, n.z, n.x + n.width / 2, n.y - n.height / 2, n.z,
-            n.x - n.width / 2, n.y + n.height / 2, n.z, n.x + n.width / 2, n.y + n.height / 2, n.z);
         for (let k = 0; k < 4; k++) colours.push(c.r, c.g, c.b);
         indices.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4 + 1, i * 4 + 3, i * 4 + 2);
     });
-    plain.geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    plain.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(unpictured.length * 12), 3));
     plain.geometry.setAttribute("color", new THREE.Float32BufferAttribute(colours, 3));
     plain.geometry.setIndex(indices);
+    laid = { index: new Map(sent.nodes.map((n, i) => [n, i])), pages: byPage, plain: unpictured, axes: new Float32Array(sent.nodes.length * 9) };
 
-    // an edge from border to border, as a line, with a small triangle where it arrives
-    const lines: number[] = [];
-    const arrows: number[] = [];
-    const reach = (n: VrNode, dx: number, dy: number) =>
-        Math.min(dx === 0 ? Infinity : n.width / 2 / Math.abs(dx), dy === 0 ? Infinity : n.height / 2 / Math.abs(dy));
-    sent.edges.forEach(([from, to]) => {
-        const a = sent.nodes[from];
-        const b = sent.nodes[to];
-        const length = Math.hypot(b.x - a.x, b.y - a.y);
-        // two nodes one behind the other: from middle to middle
-        const dx = length > 0 ? (b.x - a.x) / length : 0;
-        const dy = length > 0 ? (b.y - a.y) / length : 0;
-        const out = length > 0 ? Math.min(reach(a, dx, dy), length / 2) : 0;
-        const into = length > 0 ? Math.min(reach(b, dx, dy), length / 2) : 0;
-        const x2 = b.x - dx * into;
-        const y2 = b.y - dy * into;
-        // a strip, not a line: a line is a pixel wide however near it is. Flat as the nodes are; across x for one that goes straight away
-        const wx = (length > 0 ? -dy : 1) * EDGE_WIDTH / 2;
-        const wy = (length > 0 ? dx : 0) * EDGE_WIDTH / 2;
-        const x1 = a.x + dx * out;
-        const y1 = a.y + dy * out;
-        lines.push(x1 - wx, y1 - wy, a.z, x1 + wx, y1 + wy, a.z, x2 - wx, y2 - wy, b.z, x1 + wx, y1 + wy, a.z, x2 + wx, y2 + wy, b.z, x2 - wx, y2 - wy, b.z);
-        arrows.push(x2, y2, b.z, x2 - dx * ARROW * 2 - dy * ARROW, y2 - dy * ARROW * 2 + dx * ARROW, b.z, x2 - dx * ARROW * 2 + dy * ARROW, y2 - dy * ARROW * 2 - dx * ARROW, b.z);
-    });
-    edges.geometry.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+    edges.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(sent.edges.length * 18), 3));
     edges.material.color.set(sent.ink);
-    heads.geometry.setAttribute("position", new THREE.Float32BufferAttribute(arrows, 3));
+    heads.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(sent.edges.length * 9), 3));
     heads.material.color.set(sent.ink);
 
     if (!centred && sent.nodes.length > 0) {
@@ -144,6 +122,7 @@ function show(sent: VrScene) {
     pictured.forEach((mesh) => mesh.position.copy(offset));
     state.textContent = `${sent.nodes.length} nodes`;
     writeStatus(sent.status ?? "");
+    face();
 }
 
 // --- the status line: a strip that stays where it is in the room, before and below the eyes, and comes along when one turns or walks away from it ---
@@ -151,12 +130,12 @@ function show(sent: VrScene) {
 const STATUS_PIXELS = [1536, 64];
 /** How wide and high the strip is, how far before the eyes and how far below them, in metres. */
 const STATUS_SIZE = [0.9, 0.0375];
-const STATUS_AWAY = 0.9;
-const STATUS_BELOW = 0.35;
+const STATUS_AWAY = 1;
+const STATUS_BELOW = 0.5;
 /** It comes along when it is further to the side than this (radians), or nearer or further than these (metres). */
 const STATUS_ASIDE = 0.7;
-const STATUS_NEAR = 0.5;
-const STATUS_FAR = 1.4;
+const STATUS_NEAR = 0.6;
+const STATUS_FAR = 1.5;
 
 const statusPicture = document.createElement("canvas");
 [statusPicture.width, statusPicture.height] = STATUS_PIXELS;
@@ -201,19 +180,142 @@ function placeStatus() {
             ahead.normalize();
             const to = statusGoal === null ? null : statusGoal.clone().sub(head).setY(0);
             const fine = to !== null && to.length() >= STATUS_NEAR && to.length() <= STATUS_FAR && to.angleTo(ahead) <= STATUS_ASIDE;
-            if (!fine) {
+            // once it comes along it does so all the way, to wherever one is facing by then: not in steps
+            statusComing = statusComing || !fine;
+            if (statusComing) {
                 const first = statusGoal === null;
                 statusGoal = head.clone().addScaledVector(ahead, STATUS_AWAY).setY(head.y - STATUS_BELOW);
                 if (first) statusStrip.position.copy(statusGoal);
             }
         }
-        if (statusGoal !== null) statusStrip.position.lerp(statusGoal, 0.08);
+        const now = performance.now();
+        const seconds = Math.min(0.1, (now - statusMovedAt) / 1000);
+        statusMovedAt = now;
+        if (statusGoal !== null) {
+            // as a damped spring: it sets off gently and arrives gently, the same at any frame rate
+            const omega = 2 / STATUS_EASE_S;
+            const x = omega * seconds;
+            const decay = 1 / (1 + x + 0.48 * x * x + 0.235 * x * x * x);
+            const off = statusStrip.position.clone().sub(statusGoal);
+            const step = statusSpeed.clone().addScaledVector(off, omega).multiplyScalar(seconds);
+            statusSpeed.addScaledVector(step, -omega).multiplyScalar(decay);
+            statusStrip.position.copy(statusGoal).add(off.add(step).multiplyScalar(decay));
+            if (statusStrip.position.distanceTo(statusGoal) < STATUS_ARRIVED && statusSpeed.length() < STATUS_ARRIVED) statusComing = false;
+        }
         statusStrip.lookAt(head);
     }
 }
 
+/** The strip is on its way to before the eyes; how fast it moves (metres a second), and when it was last moved. */
+let statusComing = false;
+const statusSpeed = new THREE.Vector3();
+let statusMovedAt = 0;
+/** About how long it takes to come along, in seconds; and how near its place (metres) it has arrived. */
+const STATUS_EASE_S = 0.6;
+const STATUS_ARRIVED = 0.03;
+
 /** Where the graph's own origin is in the group: the middle of the graph is put at the group's. */
 const offset = new THREE.Vector3();
+
+/**
+ * What [show] laid out, for [face] to put in place: which node is which in the scene, the nodes of each page and the plain
+ * ones in the order their rectangles are in, and for each node of the scene which way it faces: what is right, up and towards
+ * whoever looks, three numbers each.
+ */
+let laid: { index: Map<VrNode, number>; pages: Map<number, VrNode[]>; plain: VrNode[]; axes: Float32Array } | null = null;
+
+/**
+ * Turn every node to whoever looks, as the window does: upright, its face to the eyes, so that it is read from anywhere and
+ * never from behind. The edges, strips and not lines (a line is a pixel wide however near it is), go from border to border of
+ * the nodes as they are turned, and show their width to the eyes too.
+ */
+function face() {
+    const sent = shown;
+    const now = laid;
+    if (sent !== null && now !== null) {
+        // in the graph's own space, as the nodes are
+        graph.updateMatrixWorld();
+        const into = graph.matrixWorld.clone().invert();
+        const eyes = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+        const head = new THREE.Vector3().setFromMatrixPosition(eyes.matrixWorld).applyMatrix4(into).sub(offset);
+        const upright = new THREE.Vector3(0, 1, 0).transformDirection(into);
+        const towards = new THREE.Vector3();
+        const right = new THREE.Vector3();
+        const up = new THREE.Vector3();
+        const axes = now.axes;
+        sent.nodes.forEach((n, i) => {
+            towards.set(head.x - n.x, head.y - n.y, head.z - n.z).normalize();
+            right.crossVectors(upright, towards);
+            // seen from right above or below: any way is upright
+            if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
+            right.normalize();
+            up.crossVectors(towards, right);
+            axes.set([right.x, right.y, right.z, up.x, up.y, up.z, towards.x, towards.y, towards.z], i * 9);
+        });
+        // a corner of the node [i]: [a] to the right of its middle and [c] below it
+        const corner = (to: Float32Array, at: number, n: VrNode, i: number, a: number, c: number) => {
+            to[at] = n.x + axes[i * 9] * a - axes[i * 9 + 3] * c;
+            to[at + 1] = n.y + axes[i * 9 + 1] * a - axes[i * 9 + 4] * c;
+            to[at + 2] = n.z + axes[i * 9 + 2] * a - axes[i * 9 + 5] * c;
+        };
+        const rectangle = (to: Float32Array, k: number, n: VrNode, left: number, top: number, wide: number, high: number) => {
+            const i = now.index.get(n)!;
+            corner(to, k * 12, n, i, left, top);
+            corner(to, k * 12 + 3, n, i, left + wide, top);
+            corner(to, k * 12 + 6, n, i, left, top + high);
+            corner(to, k * 12 + 9, n, i, left + wide, top + high);
+        };
+        now.pages.forEach((nodes, page) => {
+            const positions = pictured[page].geometry.getAttribute("position") as THREE.BufferAttribute;
+            nodes.forEach((n, k) => rectangle(positions.array as Float32Array, k, n,
+                -n.middleX! / n.pixelsPerUnit!, -n.middleY! / n.pixelsPerUnit!, n.pw! / n.pixelsPerUnit!, n.ph! / n.pixelsPerUnit!));
+            positions.needsUpdate = true;
+        });
+        const plains = plain.geometry.getAttribute("position") as THREE.BufferAttribute;
+        now.plain.forEach((n, k) => rectangle(plains.array as Float32Array, k, n, -n.width / 2, -n.height / 2, n.width, n.height));
+        plains.needsUpdate = true;
+
+        const strips = edges.geometry.getAttribute("position") as THREE.BufferAttribute;
+        const arrows = heads.geometry.getAttribute("position") as THREE.BufferAttribute;
+        const along = new THREE.Vector3();
+        const across = new THREE.Vector3();
+        const p1 = new THREE.Vector3();
+        const p2 = new THREE.Vector3();
+        // how far from the middle of the node [i] its border is, going along [along]
+        const reach = (n: VrNode, i: number) => {
+            const sideways = Math.abs(along.x * axes[i * 9] + along.y * axes[i * 9 + 1] + along.z * axes[i * 9 + 2]);
+            const upwards = Math.abs(along.x * axes[i * 9 + 3] + along.y * axes[i * 9 + 4] + along.z * axes[i * 9 + 5]);
+            return Math.min(sideways < 1e-6 ? Infinity : n.width / 2 / sideways, upwards < 1e-6 ? Infinity : n.height / 2 / upwards);
+        };
+        const put = (to: THREE.BufferAttribute, at: number, p: THREE.Vector3, side: number, back: number) =>
+            to.setXYZ(at, p.x + across.x * side - along.x * back, p.y + across.y * side - along.y * back, p.z + across.z * side - along.z * back);
+        sent.edges.forEach(([from, to], e) => {
+            const a = sent.nodes[from];
+            const b = sent.nodes[to];
+            along.set(b.x - a.x, b.y - a.y, b.z - a.z);
+            const length = along.length();
+            if (length > 0) along.divideScalar(length);
+            p1.set(a.x, a.y, a.z).addScaledVector(along, Math.min(reach(a, from), length / 2));
+            p2.set(b.x, b.y, b.z).addScaledVector(along, -Math.min(reach(b, to), length / 2));
+            // across the edge and across the line of sight: its width is what is seen
+            across.crossVectors(along, towards.set(head.x - p2.x, head.y - p2.y, head.z - p2.z));
+            if (across.lengthSq() < 1e-9) across.set(1, 0, 0);
+            across.normalize();
+            const half = EDGE_WIDTH / 2;
+            put(strips, e * 6, p1, -half, 0);
+            put(strips, e * 6 + 1, p1, half, 0);
+            put(strips, e * 6 + 2, p2, -half, 0);
+            put(strips, e * 6 + 3, p1, half, 0);
+            put(strips, e * 6 + 4, p2, half, 0);
+            put(strips, e * 6 + 5, p2, -half, 0);
+            put(arrows, e * 3, p2, 0, 0);
+            put(arrows, e * 3 + 1, p2, ARROW, ARROW * 2);
+            put(arrows, e * 3 + 2, p2, -ARROW, ARROW * 2);
+        });
+        strips.needsUpdate = true;
+        arrows.needsUpdate = true;
+    }
+}
 
 // --- what the server sends: the scene as text, a page as its number and then its picture ---
 
@@ -313,12 +415,23 @@ function forget(shown: THREE.Group) {
     });
 }
 
+/** How wide the outline of a surface is drawn, and a controller's ray, in metres. */
+const OUTLINE_WIDTH = 0.01;
+const RAY_WIDTH = 0.003;
+
 /** The outline of a surface in its own space, where it lies flat (y is its normal), and its name in the middle. */
 function outline(plane: XRPlane): THREE.Group {
     const shown = new THREE.Group();
     shown.matrixAutoUpdate = false;
     const corners = plane.polygon.map((p) => new THREE.Vector3(p.x, 0, p.z));
-    shown.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(corners), new THREE.LineBasicMaterial({ color: ROOM_COLOUR })));
+    // a strip along each side, lying in the surface: a line would be a pixel wide however near it is
+    const strips = corners.flatMap((from, i) => {
+        const to = corners[(i + 1) % corners.length];
+        const side = new THREE.Vector3(to.z - from.z, 0, from.x - to.x).normalize().multiplyScalar(OUTLINE_WIDTH / 2);
+        const [a, b, c, d] = [from.clone().sub(side), from.clone().add(side), to.clone().sub(side), to.clone().add(side)];
+        return [a, b, c, b, d, c];
+    });
+    shown.add(new THREE.Mesh(new THREE.BufferGeometry().setFromPoints(strips), new THREE.MeshBasicMaterial({ color: ROOM_COLOUR, side: THREE.DoubleSide })));
     const name = word(plane.semanticLabel ?? plane.orientation);
     name.position.copy(new THREE.Box3().setFromPoints(corners).getCenter(new THREE.Vector3()));
     shown.add(name);
@@ -430,10 +543,8 @@ const BUTTON_Y = 5;
 
 const hands = [0, 1].map((index) => {
     const hand = renderer.xr.getController(index);
-    const ray = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
-        new THREE.LineBasicMaterial({ color: RAY }),
-    );
+    // a thin bar from the hand forward, a metre long before it is made as long as the ray is
+    const ray = new THREE.Mesh(new THREE.BoxGeometry(RAY_WIDTH, RAY_WIDTH, 1).translate(0, 0, -0.5), new THREE.MeshBasicMaterial({ color: RAY }));
     ray.scale.z = RAY_LENGTH;
     hand.add(ray);
     scene.add(hand);
@@ -449,7 +560,22 @@ const hands = [0, 1].map((index) => {
     const click = (button: 0 | 2) => {
         if (state.side === "right" && pointed !== null) tell?.(JSON.stringify({ type: "click", id: pointed.id, button }));
     };
-    hand.addEventListener("selectstart", () => click(0));
+    // the trigger takes the node pointed at; let go where it was taken, that was a click, elsewhere, the node is put there
+    hand.addEventListener("selectstart", () => {
+        if (state.side === "right" && pointed !== null && pointedAt !== null) {
+            const middle = new THREE.Vector3(pointed.x, pointed.y, pointed.z);
+            held = { id: pointed.id, along: pointedAt.along, grip: pointedAt.at.clone().sub(middle), from: middle, moved: false };
+        }
+    });
+    hand.addEventListener("selectend", () => {
+        const was = held;
+        held = null;
+        const place = was === null ? undefined : placed.get(was.id);
+        if (was !== null && was.moved && place !== undefined) {
+            place.until = performance.now() + KEPT_AFTER_MS;
+            tell?.(JSON.stringify({ type: "move", id: was.id, ...place.at }));
+        } else if (was !== null && state.side === "right") tell?.(JSON.stringify({ type: "click", id: was.id, button: 0 }));
+    });
     hand.addEventListener("squeezestart", () => {
         if (state.side === "left") hand.attach(graph);
         else click(2);
@@ -460,13 +586,27 @@ const hands = [0, 1].map((index) => {
     return state;
 });
 
-/** The node the right controller points at, and a frame around it. */
+/** The node the right controller points at, where on it (in the graph) and how far along the ray that is (metres); and a frame around it. */
 let pointed: VrNode | null = null;
-const frameAround = new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.5, -0.5, 0), new THREE.Vector3(0.5, -0.5, 0), new THREE.Vector3(0.5, 0.5, 0), new THREE.Vector3(-0.5, 0.5, 0)]),
-    new THREE.LineBasicMaterial({ color: RAY_EXPLORING, depthTest: false }),
-);
+let pointedAt: { at: THREE.Vector3; along: number } | null = null;
+/**
+ * The node the trigger holds: how far along the ray, where on it it was taken (from its middle), where its middle was then, and
+ * whether it has been moved since, which is what tells a node that is put somewhere from one that is clicked.
+ */
+let held: { id: string; along: number; grip: THREE.Vector3; from: THREE.Vector3; moved: boolean } | null = null;
+/** A node held is moved once it is this far from where it was, in the graph's units. */
+const MOVED_FROM = 8;
+/** A node let go of is shown where it was put for this long: until the window says so too. */
+const KEPT_AFTER_MS = 800;
+/** The frame: a band around the node, [FRAME_WIDTH] of the graph's units wide and [FRAME_AWAY] from it; its corners, the outer four and then the inner four. */
+const FRAME_WIDTH = 2;
+const FRAME_AWAY = 3;
+const frameAround = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: RAY_EXPLORING, depthTest: false, side: THREE.DoubleSide }));
+frameAround.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(24), 3));
+frameAround.geometry.setIndex([0, 1, 2, 3].flatMap((k) => [k, (k + 1) % 4, 4 + k, 4 + k, (k + 1) % 4, 4 + (k + 1) % 4]));
 frameAround.visible = false;
+frameAround.frustumCulled = false;
+frameAround.renderOrder = 5;
 graph.add(frameAround);
 
 /** Find what the right controller points at: of the nodes its ray goes through, the nearest. The ray is drawn up to it. */
@@ -481,20 +621,50 @@ function point() {
         const from = new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld).applyMatrix4(into).sub(offset);
         const towards = new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld).add(new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld))
             .applyMatrix4(into).sub(offset).sub(from);
-        shown.nodes.forEach((n) => {
-            // [along] in metres: [towards] is a metre of the ray
-            const along = towards.z === 0 ? -1 : (n.z - from.z) / towards.z;
+        const holding = held;
+        const axes = laid?.axes;
+        if (holding !== null) {
+            // the node held stays as far along the ray as it was taken, and goes where the ray goes
+            const middle = from.clone().addScaledVector(towards, holding.along).sub(holding.grip);
+            holding.moved = holding.moved || middle.distanceTo(holding.from) > MOVED_FROM;
+            if (holding.moved && received !== null) {
+                placed.set(holding.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
+                show(received);
+            }
+            const node = shown.nodes.find((n) => n.id === holding.id);
+            if (node !== undefined) nearest = { node, along: holding.along };
+        } else if (axes !== undefined) shown.nodes.forEach((n, i) => {
+            // where the ray meets the plane the node is turned into ([face]), and whether that is on the node. [along] in metres: [towards] is a metre of the ray
+            const [rx, ry, rz, ux, uy, uz, fx, fy, fz] = axes.subarray(i * 9, i * 9 + 9);
+            const closing = towards.x * fx + towards.y * fy + towards.z * fz;
+            const along = closing === 0 ? -1 : ((n.x - from.x) * fx + (n.y - from.y) * fy + (n.z - from.z) * fz) / closing;
+            const [dx, dy, dz] = [from.x + towards.x * along - n.x, from.y + towards.y * along - n.y, from.z + towards.z * along - n.z];
             const hit = along > 0 && (nearest === null || along < nearest.along) &&
-                Math.abs(from.x + towards.x * along - n.x) <= n.width / 2 && Math.abs(from.y + towards.y * along - n.y) <= n.height / 2;
+                Math.abs(dx * rx + dy * ry + dz * rz) <= n.width / 2 && Math.abs(dx * ux + dy * uy + dz * uz) <= n.height / 2;
             if (hit) nearest = { node: n, along };
         });
+        const hit = nearest as { node: VrNode; along: number } | null;
+        pointedAt = hit === null ? null : { at: from.clone().addScaledVector(towards, hit.along), along: hit.along };
     }
     const found = nearest as { node: VrNode; along: number } | null;
+    if (found === null) pointedAt = null;
     pointed = found?.node ?? null;
-    frameAround.visible = found !== null;
-    if (found !== null) {
-        frameAround.position.set(found.node.x, found.node.y, found.node.z).add(offset);
-        frameAround.scale.set(found.node.width + 6, found.node.height + 6, 1);
+    const i =found === null ? undefined : laid?.index.get(found.node);
+    frameAround.visible = found !== null && i !== undefined;
+    if (found !== null && laid !== null && i !== undefined) {
+        // turned as the node is
+        const n = found.node;
+        const axes = laid.axes;
+        const corners = frameAround.geometry.getAttribute("position") as THREE.BufferAttribute;
+        [FRAME_AWAY + FRAME_WIDTH, FRAME_AWAY].forEach((away, ring) => {
+            [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], k) => {
+                const a = sx * (n.width / 2 + away);
+                const c = sy * (n.height / 2 + away);
+                corners.setXYZ(ring * 4 + k, n.x + axes[i * 9] * a + axes[i * 9 + 3] * c, n.y + axes[i * 9 + 1] * a + axes[i * 9 + 4] * c, n.z + axes[i * 9 + 2] * a + axes[i * 9 + 5] * c);
+            });
+        });
+        corners.needsUpdate = true;
+        frameAround.position.copy(offset);
     }
     hands.forEach((it) => {
         it.ray.scale.z = it === right && found !== null ? found.along : RAY_LENGTH;
@@ -544,6 +714,7 @@ renderer.setAnimationLoop((_time, frame) => {
         scene.background = shown !== null ? new THREE.Color(shown.background) : null;
     }
     buttons();
+    face();
     point();
     placeStatus();
     renderer.render(scene, camera);

@@ -68,6 +68,33 @@ class PointerInput(private val view: EditorView) {
         }
     }
 
+    /**
+     * The node [id] was taken and put at [to] (in the graph, not as
+     * the view sees it) by something that holds nodes in space (a
+     * headset's controller). If it is one of several selected nodes,
+     * they all go along. One undo step.
+     */
+    fun dragged(id: String, to: Point3) {
+        val held = view.g.visibleNodes().firstOrNull { it.id == id }
+        if (held != null && !view.content.isBusy && gestures.state == null) {
+            view.endNodeEdit()
+            view.endStylePicker()
+            val all = view.g.selectedNodes.toList().takeIf { held in it } ?: listOf(held)
+            val before = all.associateWith { it.position }
+            val depthBefore = all.associateWith { graph_tools.Depth.of(it) }
+            val by = to.xy - held.position
+            val deeper = to.z - graph_tools.Depth.of(held)
+            all.forEach {
+                it.position = it.position + by
+                graph_tools.Depth.set(it, depthBefore.getValue(it) + deeper)
+                view.g.needsRecomputing(it)
+            }
+            if (held !in view.g.selectedNodes) view.g.cleanSelect(all)
+            view.commitMoved(before, depthBefore)
+            view.repaint()
+        }
+    }
+
     private fun press(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
         val asKey = button == Button.Right && !control && gestures.state == null
         if (asKey && mapped(workspace(screen), KeyMapper.RIGHT_MOUSE)) view.repaint()
