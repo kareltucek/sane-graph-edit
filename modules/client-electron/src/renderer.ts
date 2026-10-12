@@ -330,7 +330,13 @@ interface Content {
     top: number;
     width: number;
     height: number;
-    draw: (to: Canvas2D) => void;
+    /** Draws it; when only a part is [seen] (from where to where, top to bottom), no more than that needs drawing. */
+    draw: (to: Canvas2D, seen?: Seen) => void;
+}
+
+interface Seen {
+    top: number;
+    bottom: number;
 }
 
 /**
@@ -367,14 +373,19 @@ function textContent(n: SceneNode, grid: client.GridMetrics, painting: Painting 
     };
     const ink = inkOf(n);
     return painting !== null
-        ? { key: `painting ${nameOf(painting)} ${n.fontSize}`, ...box, draw: (to) => GridEditor.drawPainting(to, cells, painting) }
+        ? { key: `painting ${nameOf(painting)} ${n.fontSize}`, ...box, draw: (to, seen) => GridEditor.drawPainting(to, cells, painting, undefined, seen) }
         : {
             key: ["text", n.fontSize, ink, ...n.lines].join("\n"),
             ...box,
-            draw: (to) => {
+            draw: (to, seen) => {
                 to.fillStyle = ink;
                 to.font = cells.font;
-                n.lines.forEach((line, i) => to.fillText(line, textLeft, textTop + cells.baseline + i * cells.cellHeight));
+                n.lines.forEach((line, i) => {
+                    const top = textTop + i * cells.cellHeight;
+                    // a line more on each side: what reaches out of its cell
+                    const drawn = seen === undefined || (top + 2 * cells.cellHeight >= seen.top && top - cells.cellHeight <= seen.bottom);
+                    if (drawn) to.fillText(line, textLeft, top + cells.baseline);
+                });
             },
         };
 }
@@ -410,7 +421,8 @@ function drawContent(content: Content, scene: View, dpr: number) {
         })
         : null;
     const kept = bitmap?.scale ?? finest;
-    if (bitmap === null) content.draw(ctx);
+    // drawn as it is: only the part in the view
+    if (bitmap === null) content.draw(ctx, { top: -scene.offsetY / scene.scale, bottom: (ctx.canvas.height / dpr - scene.offsetY) / scene.scale });
     else if (needed >= kept / SAME_SCALE) {
         // pixel for pixel, at whole pixels: nothing is blurred
         ctx.save();

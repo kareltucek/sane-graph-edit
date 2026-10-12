@@ -601,14 +601,21 @@ export class GridEditor {
         return { rows: this.cells.map((cells) => cells.map((cell) => ({ text: cell.text, ...this.style(cell.highlight) }))), background: this.defaults.background };
     }
 
-    /** Draw [painting] at [at], inside its clip; [over] draws on top of it within the same clip (the cursor). */
-    static drawPainting(ctx: Canvas2D, at: Cells, painting: Painting, over: () => void = () => {}) {
+    /**
+     * Draw [painting] at [at], inside its clip; [over] draws on top of it within the same clip (the cursor).
+     * Of a painting only partly [seen] (from where to where, top to bottom), the rows that are.
+     */
+    static drawPainting(ctx: Canvas2D, at: Cells, painting: Painting, over: () => void = () => {}, seen?: { top: number; bottom: number }) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(at.clip.left, at.clip.top, at.clip.width, at.clip.height);
         ctx.clip();
         ctx.textBaseline = "alphabetic";
-        painting.rows.forEach((cells, row) => {
+        // a row more on each side: what reaches out of its cell
+        const first = seen === undefined ? 0 : Math.max(0, Math.floor((seen.top - at.top) / at.cellHeight) - 1);
+        const end = seen === undefined ? painting.rows.length : Math.ceil((seen.bottom - at.top) / at.cellHeight) + 1;
+        painting.rows.slice(first, Math.max(first, end)).forEach((cells, index) => {
+            const row = first + index;
             const top = at.top + row * at.cellHeight;
             cells.forEach((cell, column) => {
                 // a little more than the cell: no hairline between two cells of one colour
