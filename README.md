@@ -331,15 +331,20 @@ while on:
   selected node. Display only; hide levels are untouched. A hidden
   node that is seen so is drawn faint, half as strong (not by the
   Swing client).
-- `explore` — for walking through a graph. Turning it on hides every
-  node that is not selected (one undo step; with nothing selected,
-  all but the last active node) and turns `show-parents` and
-  `show-children` on, so the neighbours of what is shown are seen,
-  faint. A click shows: a faint node, or the children of a node that
-  is shown already (`:explore-show`). A right click hides: the
-  children of the node that are shown (one generation), or with none
-  shown the node itself (`:explore-hide`). Turning the mode off puts the two
-  show modes back; what is hidden stays hidden (undo, or `zR`).
+- `explore` (key `x`) — explore mode, for walking through a graph;
+  of the graph shown, not of all tabs. Only the pinned nodes are
+  shown, at first the selected ones (with nothing selected, the last
+  active node), and their parents and children faint. A click pins: a
+  faint node, or the children of a node that is pinned already
+  (`:explore-show`). A right click folds: everything pinned below the
+  node, but for what is also below another pinned node; with nothing
+  to fold, the node itself (`:explore-hide`). A right click on a
+  faint node does nothing. The pinned nodes are the mark `!`: `m!`
+  pins the selection and nothing else, `m+!` / `m-!` add to it and
+  take from it, `'!` selects them. Nodes that come to be seen are
+  moved next to their neighbours, as with `dynamic` below. Apart
+  from those moves nothing is changed, saved or undone: leaving the
+  mode shows what was shown before.
 - `dynamic` — a node that becomes visible (by any of the above, or
   `H`) is moved next to its visible neighbours, left to right: a
   child in a column right of its parents, a parent left of its

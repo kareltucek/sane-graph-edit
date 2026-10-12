@@ -106,6 +106,7 @@ fun registerEditingCommands() {
     r.register("hide") { impl.hideSelected(it) }
     r.register("unhide") { impl.unhideOneLevel(it) }
     r.register("unhide-all") { ZCommands.unhideAll(it) }
+    r.register("explore") { Explore.set(it, !Explore.isOn(it)) }
     r.register("explore-show") { Explore.show(it) }
     r.register("explore-hide") { Explore.hide(it) }
 

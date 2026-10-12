@@ -38,7 +38,8 @@ object DynamicPlacement {
      * what's already on screen.
      */
     fun place(g: Graph) {
-        val visible = if (ViewModes.dynamic) g.visibleNodes() else null
+        // explore mode ([Graph.pinned]) places what it shows, whatever the setting
+        val visible = if (ViewModes.dynamic || g.pinned != null) g.visibleNodes() else null
         val before = g.dynamicBaseline
         g.dynamicBaseline = visible
         // While undoing / redoing (redo stack non-empty), a new command would wipe the redo history.

@@ -303,13 +303,20 @@ class Graph(
      * [n] is also visible when it is shown, or a parent / child of a
      * shown node. An attached node ([Attachments]) is visible exactly
      * when its owner is.
+     *
+     * In explore mode ([pinned]) none of that counts: the pinned
+     * nodes are visible, and the parents and children of those.
      */
     fun isVisible(n: Node): Boolean {
+        val pins = pinned
         val shown = { m: Node -> !m.isHidden || m in selectedNodesRestricted }
         val anyMode = ViewModes.showParents || ViewModes.showChildren
         val parentOfShown = ViewModes.showParents && findOutEdges(n).any { shown(it.dst) }
         val childOfShown = ViewModes.showChildren && findInEdges(n).any { shown(it.src) }
-        val own = !n.isHidden || (anyMode && shown(n)) || parentOfShown || childOfShown
+        val own = when (pins) {
+            null -> !n.isHidden || (anyMode && shown(n)) || parentOfShown || childOfShown
+            else -> n in pins || findOutEdges(n).any { it.dst in pins } || findInEdges(n).any { it.src in pins }
+        }
         // glued nodes inherit their owner's visibility, whatever their own state
         val owner = attachmentOwners[n]
         return if (owner != null) isVisible(owner) else own
@@ -318,13 +325,24 @@ class Graph(
     /**
      * True when [n] is seen although it is hidden: with
      * [ViewModes.showParents] / [ViewModes.showChildren], as a parent
-     * or a child of a shown node, or selected. Such a node is drawn
-     * faint. An attached node is as its owner is.
+     * or a child of a shown node, or selected. In explore mode
+     * ([pinned]): seen and not pinned. Such a node is drawn faint. An
+     * attached node is as its owner is.
      */
     fun isFaint(n: Node): Boolean {
         val owner = attachmentOwners[n]
-        return if (owner != null) isFaint(owner) else n.isHidden && isVisible(n)
+        val hidden = pinned?.let { n !in it } ?: n.isHidden
+        return if (owner != null) isFaint(owner) else hidden && isVisible(n)
     }
+
+    /**
+     * Explore mode: the nodes that are shown in full while it is on,
+     * null while it is off. Of this graph as it is looked at here:
+     * not in the document, not in its history, and the hide levels
+     * are left alone, so that leaving the mode brings back what was
+     * seen before.
+     */
+    var pinned: Set<Node>? = null
 
     /** All nodes passing [isVisible]; linear in nodes + edges. */
     fun visibleNodes(): Set<Node> = nodesRestricted.filter { isVisible(it) }.toSet()

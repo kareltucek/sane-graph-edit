@@ -223,7 +223,8 @@ class KeyMapper(
      * button then does what it does out of the box.
      */
     fun mouseKey(key: String, select: () -> Unit): Boolean {
-        val mapping = mappings[key] ?: EXPLORE_MOUSE[key]?.takeIf { graph_tools.ViewModes.explore }?.let { Mapping(it, recursive = false) }
+        val exploring = activeView?.let { Explore.isOn(it) } == true
+        val mapping = mappings[key] ?: EXPLORE_MOUSE[key]?.takeIf { exploring }?.let { Mapping(it, recursive = false) }
         mapping?.let {
             select()
             replayRhs(it.rhs, it.recursive)
@@ -356,6 +357,15 @@ class KeyMapper(
             if (prefix == PrefixAction.SetMark && (key == "+" || key == "-")) {
                 // `m+a`, `m-a`: the letter is still to come
                 waitingForPrefix = if (key == "+") PrefixAction.AddMark else PrefixAction.RemoveMark
+            } else if (key == PINNED_MARK) {
+                // the nodes pinned in explore mode, not a mark kept on the nodes
+                when (prefix) {
+                    PrefixAction.SetMark -> activeView?.let { Explore.mark(it, MarkChange.Set) }
+                    PrefixAction.AddMark -> activeView?.let { Explore.mark(it, MarkChange.Add) }
+                    PrefixAction.RemoveMark -> activeView?.let { Explore.mark(it, MarkChange.Remove) }
+                    PrefixAction.RecallMark -> activeView?.let { Explore.recall(it) }
+                    else -> Unit
+                }
             } else if (letter != null && letter.isLetterOrDigit() && key.length == 1) {
                 when (prefix) {
                     PrefixAction.RecordMacro -> startRecording(letter)
@@ -952,8 +962,8 @@ class KeyMapper(
             "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
-            "explore" -> activeView?.let { Explore.set(it, change(graph_tools.ViewModes.explore)) }
             // of the graph shown, not of all of them
+            "explore" -> activeView?.let { Explore.set(it, change(Explore.isOn(it))) }
             "3d" -> activeView?.let { it.viewTransform.threeD = change(it.viewTransform.threeD) }
             else -> applicationFlags[name]?.let { flag ->
                 flag.on = change(flag.on)
@@ -1131,14 +1141,19 @@ class KeyMapper(
         sb.appendLine("  show-children     Same, for children. Alias: show-childs.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.showChildren) "on" else "off"}.")
         sb.appendLine()
-        sb.appendLine("  explore           Walk through the graph: hides all but the selected")
-        sb.appendLine("                    nodes (one undo step) and turns show-parents and")
-        sb.appendLine("                    show-children on. A click shows: a faint node, or")
-        sb.appendLine("                    the children of a shown one (:explore-show). A right")
-        sb.appendLine("                    click hides: the shown children of the node, or with")
-        sb.appendLine("                    none shown the node itself (:explore-hide).")
+        sb.appendLine("  explore           Explore mode (key `x`), of the graph shown: only the")
+        sb.appendLine("                    pinned nodes are shown, at first the selected ones,")
+        sb.appendLine("                    with their parents and children faint. A click pins:")
+        sb.appendLine("                    a faint node, or the children of a pinned one")
+        sb.appendLine("                    (:explore-show). A right click folds: all pinned")
+        sb.appendLine("                    below the node that is not below another pinned")
+        sb.appendLine("                    node too, or with none the node itself")
+        sb.appendLine("                    (:explore-hide). The pinned nodes are the mark `!`")
+        sb.appendLine("                    (m! m+! m-! '!). Nodes that come to be seen are placed")
+        sb.appendLine("                    as with `dynamic`. Nothing is hidden for real: leaving")
+        sb.appendLine("                    the mode shows what was shown before.")
         sb.appendLine("                    The buttons can be mapped: <LeftMouse>, <RightMouse>.")
-        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.explore) "on" else "off"}.")
+        sb.appendLine("                    Current: ${if (activeView?.let { Explore.isOn(it) } == true) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("  dynamic           Nodes that become visible are moved next to")
         sb.appendLine("                    their visible neighbours, left to right:")
@@ -1378,6 +1393,9 @@ class KeyMapper(
         const val LEFT_MOUSE = "<LeftMouse>"
         const val RIGHT_MOUSE = "<RightMouse>"
 
+        /** The mark that stands for the nodes pinned in explore mode: `m!`, `m+!`, `m-!`, `'!` ([Explore.mark], [Explore.recall]). */
+        const val PINNED_MARK = "!"
+
         /** What the buttons of the mouse stand for in explore mode ([Explore]), unless the user mapped them: the left one shows, the right one hides. */
         val EXPLORE_MOUSE = mapOf(LEFT_MOUSE to ":explore-show<CR>", RIGHT_MOUSE to ":explore-hide<CR>")
 
@@ -1430,6 +1448,7 @@ class KeyMapper(
             // Filtering
             "h" to "hide",
             "H" to "unhide",
+            "x" to "explore",
 
             // Style
             "f" to "paste-format",

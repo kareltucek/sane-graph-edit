@@ -161,6 +161,8 @@ object Help {
 
                             - `h` / `H` — hide / unhide one level
                             - `zm` / `zr` / `zR` — the same / unhide all
+                            - `x` — explore mode: click pins, right click folds
+                            - `m!` / `m+!` / `m-!` / `'!` — the pinned nodes
                             - `zf{motion}` / `zd{motion}` / `za{motion}`
                               — fold / unfold / toggle
                             - `{motion}` — `t` / `T` / `l` / `L`

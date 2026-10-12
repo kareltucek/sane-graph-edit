@@ -203,6 +203,17 @@ class HideTest {
     }
 
     @Test
+    fun `in explore mode the pinned nodes and their neighbours are seen, whatever is hidden or selected`() {
+        val (g, ns) = chain("B")
+        g.pinned = setOf(ns.getValue("B"))
+        g.select(ns.getValue("D"))
+        assertEquals(setOf("A", "B", "C"), g.visibleNodes().map { it.attributes.text }.toSet())
+        assertEquals(setOf("A", "C"), g.nodes.filter { g.isFaint(it) }.map { it.attributes.text }.toSet())
+        g.pinned = null
+        assertEquals(setOf("A", "C", "D"), g.visibleNodes().map { it.attributes.text }.toSet())
+    }
+
+    @Test
     fun `show-parents shows parents, not children`() = withModes(showParents = true) {
         val (g, ns) = chain("A", "B", "D")          // only C is not hidden
         assertTrue(g.isVisible(ns.getValue("B")))   // parent of C
