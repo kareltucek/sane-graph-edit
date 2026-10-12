@@ -143,6 +143,73 @@ function show(sent: VrScene) {
     }
     pictured.forEach((mesh) => mesh.position.copy(offset));
     state.textContent = `${sent.nodes.length} nodes`;
+    writeStatus(sent.status ?? "");
+}
+
+// --- the status line: a strip that stays where it is in the room, before and below the eyes, and comes along when one turns or walks away from it ---
+
+const STATUS_PIXELS = [1536, 64];
+/** How wide and high the strip is, how far before the eyes and how far below them, in metres. */
+const STATUS_SIZE = [0.9, 0.0375];
+const STATUS_AWAY = 0.9;
+const STATUS_BELOW = 0.35;
+/** It comes along when it is further to the side than this (radians), or nearer or further than these (metres). */
+const STATUS_ASIDE = 0.7;
+const STATUS_NEAR = 0.5;
+const STATUS_FAR = 1.4;
+
+const statusPicture = document.createElement("canvas");
+[statusPicture.width, statusPicture.height] = STATUS_PIXELS;
+const statusTexture = new THREE.CanvasTexture(statusPicture);
+statusTexture.colorSpace = THREE.SRGBColorSpace;
+const statusStrip = new THREE.Mesh(
+    new THREE.PlaneGeometry(STATUS_SIZE[0], STATUS_SIZE[1]),
+    new THREE.MeshBasicMaterial({ map: statusTexture, transparent: true, depthTest: false }),
+);
+statusStrip.renderOrder = 10;
+statusStrip.visible = false;
+scene.add(statusStrip);
+let statusWritten: string | null = null;
+/** Where the strip is going; null until it is first put somewhere. */
+let statusGoal: THREE.Vector3 | null = null;
+
+/** Draw [text] on the strip: as text, whatever is in it. */
+function writeStatus(text: string) {
+    if (text !== statusWritten) {
+        statusWritten = text;
+        const pen = statusPicture.getContext("2d")!;
+        pen.clearRect(0, 0, statusPicture.width, statusPicture.height);
+        pen.fillStyle = "rgba(20, 20, 20, 0.8)";
+        pen.fillRect(0, 0, statusPicture.width, statusPicture.height);
+        pen.font = "36px monospace";
+        pen.textBaseline = "middle";
+        pen.fillStyle = "#dddddd";
+        pen.fillText(text, 16, statusPicture.height / 2);
+        statusTexture.needsUpdate = true;
+    }
+}
+
+/** Keep the strip before whoever looks: left where it is while it is about there, moved (not at once) when it no longer is. */
+function placeStatus() {
+    statusStrip.visible = renderer.xr.isPresenting;
+    if (renderer.xr.isPresenting) {
+        const eyes = renderer.xr.getCamera();
+        const head = new THREE.Vector3().setFromMatrixPosition(eyes.matrixWorld);
+        const ahead = new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld).setY(0);
+        // looking straight up or down says nothing of where one faces: it stays
+        if (ahead.lengthSq() > 0.01) {
+            ahead.normalize();
+            const to = statusGoal === null ? null : statusGoal.clone().sub(head).setY(0);
+            const fine = to !== null && to.length() >= STATUS_NEAR && to.length() <= STATUS_FAR && to.angleTo(ahead) <= STATUS_ASIDE;
+            if (!fine) {
+                const first = statusGoal === null;
+                statusGoal = head.clone().addScaledVector(ahead, STATUS_AWAY).setY(head.y - STATUS_BELOW);
+                if (first) statusStrip.position.copy(statusGoal);
+            }
+        }
+        if (statusGoal !== null) statusStrip.position.lerp(statusGoal, 0.08);
+        statusStrip.lookAt(head);
+    }
 }
 
 /** Where the graph's own origin is in the group: the middle of the graph is put at the group's. */
@@ -478,6 +545,7 @@ renderer.setAnimationLoop((_time, frame) => {
     }
     buttons();
     point();
+    placeStatus();
     renderer.render(scene, camera);
 });
 

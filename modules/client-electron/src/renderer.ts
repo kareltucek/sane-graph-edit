@@ -739,8 +739,13 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         background: canvasColour(colours().background),
         ink: colours().foreground,
         exploring: view!.exploring,
+        status: statusText.slice(0, MAX_VR_STATUS),
     };
 }
+
+/** The status line as it was last shown, for a headset to show too; no more of it than this. */
+let statusText = "";
+const MAX_VR_STATUS = 200;
 
 /** The pictures of the nodes for headsets, and how many pixels a unit of the graph (in a headset: a millimetre) is in them. */
 let vrAtlas: SpaceRenderer<SpaceSceneNode> | null = null;
@@ -1218,6 +1223,7 @@ const page: {
         // a space keeps the line's height
         const shown = text === "" ? " " : text;
         if (statusLine.textContent !== shown) statusLine.textContent = shown;
+        statusText = text;
     },
 };
 

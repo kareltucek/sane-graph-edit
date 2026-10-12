@@ -43,6 +43,8 @@ export interface VrScene {
     ink: string;
     /** The view is in explore mode. */
     exploring: boolean;
+    /** The window's status line. */
+    status: string;
 }
 
 /**

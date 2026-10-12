@@ -539,7 +539,9 @@ trigger is the left button of a mouse and its grip the right one,
 so a node is selected with the trigger, and in explore mode opened
 with the trigger and folded with the grip. X on the left controller
 goes into explore mode (from the node selected, or from the roots
-of the graph) and out of it. The
+of the graph) and out of it. The window's status line is shown on a
+strip before and below the eyes: it stays where it is in the room,
+and comes along when one turns or walks away from it. The
 headset only places pictures the window makes of the nodes: it holds
 nothing, and reloading its page loses nothing.
 
