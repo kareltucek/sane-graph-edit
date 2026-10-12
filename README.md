@@ -331,8 +331,8 @@ while on:
   selected node. Display only; hide levels are untouched. A hidden
   node that is seen so is drawn faint, half as strong (not by the
   Swing client).
-- `explore` (key `x`) — explore mode, for walking through a graph;
-  of the graph shown, not of all tabs. Only the pinned nodes are
+- `explore` (key `x`; `x` or Escape leaves it) — explore mode, for
+  walking through a graph; of the graph shown, not of all tabs. Only the pinned nodes are
   shown, at first the selected ones (with nothing selected, the last
   active node), and their parents and children faint. A click pins: a
   faint node, or the children of a node that is pinned already

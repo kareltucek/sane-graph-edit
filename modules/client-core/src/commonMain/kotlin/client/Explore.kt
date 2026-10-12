@@ -5,7 +5,7 @@ import graph_tools.GraphTools
 import graph_tools.Node
 
 /**
- * Explore mode (`x`, `:set explore`): walking through a graph from
+ * Explore mode (`x`, `:set explore`; `x` or Escape leaves it): walking through a graph from
  * the nodes one has selected, seeing little else.
  *
  * While it is on, the view has a set of pinned nodes

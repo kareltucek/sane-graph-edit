@@ -124,6 +124,17 @@ class ExploreTest {
     }
 
     @Test
+    fun `escape leaves the mode and keeps the selection`() {
+        select(a)
+        Explore.set(view, true)
+        Actions.unselectAll(view)
+        assertFalse(Explore.isOn(view))
+        assertEquals(setOf(a), g.selectedNodes.toSet())
+        Actions.unselectAll(view)
+        assertTrue(g.selectedNodes.isEmpty())
+    }
+
+    @Test
     fun `the pinned nodes are the mark !`() {
         select(a)
         Explore.set(view, true)

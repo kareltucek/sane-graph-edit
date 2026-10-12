@@ -356,10 +356,15 @@ object Actions {
         // Escape cancels any active modal drag / rotation
         // first — so the first Escape aborts a grab or
         // rotate, and a subsequent one clears the selection
-        // as usual.
+        // as usual. Explore mode is left the same way, before
+        // the selection is touched.
         if (graphView.gestures.cancelActiveModal()) return
-        graphView.g.cleanSelect(emptySet())
-        graphView.repaint()
+        if (Explore.isOn(graphView)) {
+            Explore.set(graphView, false)
+        } else {
+            graphView.g.cleanSelect(emptySet())
+            graphView.repaint()
+        }
     }
 
     fun centerScreen(graphView: EditorView) {
