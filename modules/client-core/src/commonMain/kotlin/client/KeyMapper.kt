@@ -938,6 +938,7 @@ class KeyMapper(
             "spring-scale" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScale = it }
             "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
             "picker" -> FilePicker.command = value.ifBlank { FilePicker.DEFAULT_COMMAND }
+            "wall-scale" -> value.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }?.let { graph_tools.ViewModes.wallScale = it.coerceIn(0.05, 20.0) }
             else -> applicationSettings[name]?.invoke(value) ?: utils.Platform.warn("sane-graph-edit: unknown setting '$name'")
         }
     }
@@ -1170,6 +1171,10 @@ class KeyMapper(
         sb.appendLine("                    it is as big as it is. Nothing is moved.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.walls) "on" else "off"}.")
         sb.appendLine()
+        sb.appendLine("  wall-scale=<n>    How many millimetres of a wall a unit of the graph")
+        sb.appendLine("                    is (walls). 1: a node 150 units wide is 15 cm.")
+        sb.appendLine("                    Current: ${graph_tools.ViewModes.wallScale}.")
+        sb.appendLine()
         sb.appendLine("  discard           Never ask about unsaved changes: opening,")
         sb.appendLine("                    following links, reloading, jumping, closing")
         sb.appendLine("                    tabs and quitting discard them silently.")
@@ -1386,7 +1391,7 @@ class KeyMapper(
         val MOUSE_GESTURES = setOf("grab", "scale", "rotate")
 
         /** `:set <name>=<value>` settings ([applySetting]). */
-        val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker")
+        val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker", "wall-scale")
 
         /** The names of the settings that are the application's own ([applicationSettings]), for completion: it adds them. */
         val APPLICATION_SETTINGS = mutableSetOf<String>()

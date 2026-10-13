@@ -291,14 +291,14 @@ class JsView internal constructor(
      */
     fun worldOnWalls(walls: DoubleArray, standing: DoubleArray): dynamic {
         val scene = view.spaceScene(measurer, asSeen = false)
-        val made = walls.toList() to Explore.isOn(view)
+        val made = Triple(walls.toList(), Explore.isOn(view), graph_tools.ViewModes.wallScale)
         val strip = if (!graph_tools.ViewModes.walls || scene.nodes.isEmpty()) null else
             WallStrip.of(walls.asList().chunked(4).map { (x1, z1, x2, z2) -> Wall(Vector2(x1, z1), Vector2(x2, z2)) }, Vector2(standing[0], standing[1]), Vector2(standing[2], standing[3]))
         if (strip == null) onWalls = null
         else if (onWalls?.first != made) {
             val from = Vector2(scene.nodes.minOf { it.position.x - it.shapeBounds.x / 2 }, scene.nodes.minOf { it.position.y - it.shapeBounds.y / 2 })
             val to = Vector2(scene.nodes.maxOf { it.position.x + it.shapeBounds.x / 2 }, scene.nodes.maxOf { it.position.y + it.shapeBounds.y / 2 })
-            onWalls = made to OnWalls.of(strip, from, to, fitted = !Explore.isOn(view))
+            onWalls = made to OnWalls.of(strip, from, to, fitted = !Explore.isOn(view), atMost = graph_tools.ViewModes.wallScale)
         }
         return onWalls?.second?.let { on ->
             val o = spaceOf(scene)

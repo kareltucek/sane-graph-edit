@@ -409,6 +409,9 @@ while on:
   child in a column right of its parents, a parent left of its
   children, stacked vertically without overlapping anything visible.
   A real move: one undo step per batch, saved with the file.
+- `wall-scale=<n>` — with `walls`, how many millimetres of a wall a
+  unit of the graph is: 1 (a node 150 units wide is 15 cm) unless set;
+  0.5 shows everything half as big.
 - `walls` — in a headset (`--vr`) the graph is on the walls of the
   room instead of before the eyes: flat as it is, bent around the
   room along the walls, its middle on the wall one looks at when

@@ -30,6 +30,9 @@ object ViewModes {
     /** `:set walls` — where there is a room (a headset), the graph is shown on its walls. */
     var walls: Boolean = false
 
+    /** `:set wall-scale=<n>` — how many millimetres of a wall a unit of the graph is ([walls]), at most: 1 is as the graph is. */
+    var wallScale: Double = 1.0
+
     /**
      * `:set discard` — never ask about unsaved changes: opening,
      * following links, reloading, jumping, closing tabs and quitting

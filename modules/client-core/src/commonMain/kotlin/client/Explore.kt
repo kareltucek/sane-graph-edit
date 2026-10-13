@@ -121,7 +121,7 @@ object Explore {
     }
 
     /** How high a column of nodes the mode starts from is at most: about what is seen at once, on a screen or on a wall. */
-    private const val COLUMN_HEIGHT = 1500.0
+    private const val COLUMN_HEIGHT = graph_tools.DynamicPlacement.EXPLORE_HEIGHT
 
     /** Room between two such nodes, beyond what their neighbours need; and between two columns, for what is unfolded from them. */
     private const val BETWEEN = 40.0
@@ -150,8 +150,12 @@ object Explore {
     private fun inColumns(g: Graph, pins: Set<Node>, nodes: List<Node>, middle: Vector2): Map<Node, Vector2> {
         val parents = { n: Node -> g.findInEdges(n).map { it.src }.filter { it !in pins && !it.detail().isBlank }.distinct() }
         val children = { n: Node -> g.findOutEdges(n).map { it.dst }.filter { it !in pins && !it.detail().isBlank }.distinct() }
-        val stacked = { of: List<Node> -> of.sumOf { it.cache.shapeBounds.y + NEIGHBOUR_GAP } }
-        val widest = { of: List<Node> -> of.maxOfOrNull { it.cache.shapeBounds.x + NEIGHBOUR_AWAY } ?: 0.0 }
+        // neighbours are stacked no higher than a column is, and go on in further columns beside ([graph_tools.DynamicPlacement])
+        val all = { of: List<Node> -> of.sumOf { it.cache.shapeBounds.y + NEIGHBOUR_GAP } }
+        val stacked = { of: List<Node> -> all(of).coerceAtMost(COLUMN_HEIGHT) }
+        val widest = { of: List<Node> ->
+            (of.maxOfOrNull { it.cache.shapeBounds.x + NEIGHBOUR_AWAY } ?: 0.0) * kotlin.math.ceil(all(of) / COLUMN_HEIGHT).coerceAtLeast(1.0)
+        }
         val height = { n: Node -> maxOf(n.cache.shapeBounds.y, stacked(parents(n)), stacked(children(n))) + BETWEEN }
         // columns: each takes nodes until it is full
         val columns = nodes.fold(listOf(emptyList<Node>())) { done, n ->

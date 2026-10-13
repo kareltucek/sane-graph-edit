@@ -138,6 +138,26 @@ class DynamicPlacementTest {
     }
 
     @Test
+    fun `explore mode - many children are stacked no higher than a column is, in columns side by side`() {
+        val g = Graph()
+        val hub = Node("hub", Vector2(0, 0))
+        val kids = (0 until 120).map { Node("kid $it", Vector2(9000, 100 * it)) }
+        (kids + hub).forEach { g.add(it) }
+        kids.forEach { g.add(Edge(hub, it)) }
+        g.ensureCachesFresh(force = true)
+
+        g.pinned = setOf(hub)
+        g.dynamicBaseline = setOf(hub)
+        DynamicPlacement.place(g)
+
+        val high = kids.maxOf { it.position.y } - kids.minOf { it.position.y }
+        assertTrue(high <= DynamicPlacement.EXPLORE_HEIGHT, "the stack is $high high")
+        assertTrue(kids.map { it.position.x }.distinct().size > 1, "several columns")
+        assertTrue(kids.all { it.position.x > hub.position.x }, "all right of their parent")
+        kids.forEachIndexed { i, a -> kids.drop(i + 1).forEach { b -> assertFalse(overlap(a, b), "nodes at ${a.position} and ${b.position} overlap") } }
+    }
+
+    @Test
     fun `no placement while there is something to redo`() {
         val (g, ns, b) = graph()
         ViewModes.dynamic = true

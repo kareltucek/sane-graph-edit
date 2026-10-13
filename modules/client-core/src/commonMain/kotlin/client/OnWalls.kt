@@ -50,11 +50,12 @@ class OnWalls(private val strip: WallStrip, private val middle: Vector2, val sca
          * [fitted], so much smaller that all of it is seen, once around
          * the room at most and [BAND] high; otherwise as big as it is,
          * going around again over itself when it is longer than the walls.
+         * "As big as it is" is [atMost] millimetres to a unit (`:set wall-scale`).
          */
-        fun of(strip: WallStrip, from: Vector2, to: Vector2, fitted: Boolean): OnWalls {
+        fun of(strip: WallStrip, from: Vector2, to: Vector2, fitted: Boolean, atMost: Double = 1.0): OnWalls {
             val size = (to - from) * METRES_PER_UNIT
-            val fits = listOf(1.0, strip.length / size.x.coerceAtLeast(1e-9), BAND / size.y.coerceAtLeast(1e-9)).min()
-            return OnWalls(strip, (from + to) / 2, if (fitted) fits else 1.0)
+            val fits = listOf(atMost, strip.length / size.x.coerceAtLeast(1e-9), BAND / size.y.coerceAtLeast(1e-9)).min()
+            return OnWalls(strip, (from + to) / 2, if (fitted) fits else atMost)
         }
     }
 }

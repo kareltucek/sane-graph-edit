@@ -33,6 +33,14 @@ object DynamicPlacement {
     private const val MAX_ROWS = 500
 
     /**
+     * In explore mode what is put beside a node is stacked no higher
+     * than this: about what is seen at once, on a screen or on a wall
+     * (a unit is a millimetre there). And in no more columns than these.
+     */
+    const val EXPLORE_HEIGHT = 1500.0
+    private const val MAX_COLUMNS = 50
+
+    /**
      * Place the nodes that became visible since the last call. Tracks
      * nothing while the mode is off, so turning it on doesn't move
      * what's already on screen.
@@ -52,7 +60,7 @@ object DynamicPlacement {
             val fixed = visible!! - appeared
             // explore mode: a faint node is not in the way of a new one, it gets out of it ([settled])
             val yielding = if (g.pinned != null) fixed.filter { g.isFaint(it) }.toSet() else emptySet()
-            val placed = positionsFor(g, fresh, fixed, yielding)
+            val placed = positionsFor(g, fresh, fixed, yielding, tall = EXPLORE_HEIGHT.takeIf { exploring })
             val targets = if (g.pinned != null) settled(g, placed, visible) else placed
             if (exploring) {
                 targets.forEach { (n, p) ->
@@ -89,8 +97,11 @@ object DynamicPlacement {
         return after
     }
 
-    /** New positions for [fresh] nodes, given the [fixed] visible ones; those of them that are [yielding] may be overlapped. */
-    fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>, yielding: Set<Node> = emptySet()): Map<Node, Vector2> {
+    /**
+     * New positions for [fresh] nodes, given the [fixed] visible ones; those of them that are [yielding] may be overlapped.
+     * With [tall] the nodes put beside one node are stacked no higher than that, in as many columns as it takes.
+     */
+    fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>, yielding: Set<Node> = emptySet(), tall: Double? = null): Map<Node, Vector2> {
         // attached nodes first: a node's box is its whole block (it + what's glued to it), measured
         // relative to it, so the fanning out below starts from the block's edges
         Attachments.reglue(g)
@@ -104,7 +115,7 @@ object DynamicPlacement {
         var layer = fresh.filter { n -> (parents(n) + children(n)).any { it in placed } }.sortedWith(topToBottom)
         while (layer.isNotEmpty()) {
             layer.forEach { n ->
-                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed, boxes, yielding)
+                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed, boxes, yielding, tall)
                 placed[n] = target
                 result[n] = target
             }
@@ -124,6 +135,7 @@ object DynamicPlacement {
         placed: Map<Node, Vector2>,
         boxes: Map<Node, Attachments.Box>,
         yielding: Set<Node>,
+        tall: Double?,
     ): Vector2 {
         val box = { m: Node -> boxes.getValue(m) }
         val pos = { m: Node -> placed.getValue(m) }
@@ -141,9 +153,13 @@ object DynamicPlacement {
         val anchors = visibleParents + visibleChildren
         val y = anchors.sumOf { pos(it).y } / anchors.size
         val step = box(n).size.y + GAP
-        val rows = (0..MAX_ROWS).asSequence().flatMap { k -> if (k == 0) sequenceOf(0) else sequenceOf(k, -k) }
-        return rows
-            .map { k -> Vector2(x, y + k * step) }
+        // a stack no higher than [tall]: what does not fit in it goes on in a column further from the neighbours
+        val most = if (tall == null) MAX_ROWS else (tall / 2 / step).toInt().coerceIn(1, MAX_ROWS)
+        val rows = (0..most).asSequence().flatMap { k -> if (k == 0) sequenceOf(0) else sequenceOf(k, -k) }
+        val away = if (rightOfParents != null) 1 else -1
+        val columns = if (tall == null) sequenceOf(0) else (0..MAX_COLUMNS).asSequence()
+        return columns
+            .flatMap { column -> rows.map { k -> Vector2(x + away * column * (box(n).size.x + COLUMN_GAP), y + k * step) } }
             .firstOrNull { spot -> placed.none { (m, p) -> m !in yielding && overlaps(box(n), spot, box(m), p) } }
             ?: Vector2(x, y)
     }
