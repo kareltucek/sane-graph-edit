@@ -35,7 +35,7 @@ class SettlingTest {
     @Test
     fun `a node in the way that may move does, what may not stays`() {
         val f = Fixture()
-        val moved = Settling.settle(f.g, setOf(f.fresh), f.all) { it == f.inTheWay || it == f.far }
+        val moved = Settling.settle(f.g, setOf(f.fresh), f.all, yields = { it == f.inTheWay || it == f.far })
         assertEquals(setOf(f.fresh, f.inTheWay), moved)
         assertFalse(overlap(f.fresh, f.inTheWay))
         assertFalse(overlap(f.fresh, f.parent))
@@ -47,18 +47,30 @@ class SettlingTest {
     @Test
     fun `a node in the way that may not move pushes the new one off`() {
         val f = Fixture()
-        val moved = Settling.settle(f.g, setOf(f.fresh), f.all) { false }
+        val moved = Settling.settle(f.g, setOf(f.fresh), f.all, yields = { false })
         assertEquals(setOf(f.fresh), moved)
         assertEquals(Vector2(205, 3), f.inTheWay.position)
         assertFalse(overlap(f.fresh, f.inTheWay))
     }
 
     @Test
+    fun `where a node is by the document holds on to it, but no harder than the edge that brings it in`() {
+        val f = Fixture()
+        // by the document far to the right of its parent, and up
+        val home = Vector2(4000, -1000)
+        f.fresh.position = home
+        Settling.settle(f.g, setOf(f.fresh), setOf(f.parent, f.fresh), yields = { false }) { if (it == f.fresh) home else null }
+        assertTrue(f.fresh.position.length() < 600, "brought in: ${f.fresh.position}")
+        assertTrue(f.fresh.position.toUnit().dot(home.toUnit()) > 0.95, "in the direction it was: ${f.fresh.position}")
+        assertFalse(overlap(f.fresh, f.parent))
+    }
+
+    @Test
     fun `settled nodes rest`() {
         val f = Fixture()
-        Settling.settle(f.g, setOf(f.fresh), f.all) { it == f.inTheWay }
+        Settling.settle(f.g, setOf(f.fresh), f.all, yields = { it == f.inTheWay })
         val before = f.all.associateWith { it.position }
-        Settling.settle(f.g, setOf(f.fresh), f.all) { it == f.inTheWay }
+        Settling.settle(f.g, setOf(f.fresh), f.all, yields = { it == f.inTheWay })
         assertTrue(f.all.all { (it.position - before.getValue(it)).length() < 5.0 })
     }
 }

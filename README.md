@@ -392,8 +392,13 @@ while on:
   faint node does nothing. The pinned nodes are the mark `!`: `m!`
   pins the selection and nothing else, `m+!` / `m-!` add to it and
   take from it, `'!` selects them. Nodes that come to be seen are
-  moved next to their neighbours, as with `dynamic` below, the faint
-  ones on entering the mode too. Several nodes to start from are
+  brought next to their neighbours, the faint ones on entering the
+  mode too: each starts where the document has it from its parent
+  and is brought to rest by the springs of the layout optimizer (the
+  edges pull it in, the nodes around push it off) and by one that
+  holds it to where it started from, direction and distance, but no
+  harder than a fixed pull; so a node far away in the document comes
+  near and stays in its direction. Several nodes to start from are
   themselves put together then, around the middle of the view: in
   columns side by side, each some 1500 units high, in the order they
   were in from top to bottom, with room to unfold between the

@@ -121,23 +121,19 @@ object Explore {
     }
 
     /** How high a column of nodes the mode starts from is at most: about what is seen at once, on a screen or on a wall. */
-    private const val COLUMN_HEIGHT = graph_tools.DynamicPlacement.EXPLORE_HEIGHT
+    private const val COLUMN_HEIGHT = 1500.0
 
     /** Room between two such nodes, beyond what their neighbours need; and between two columns, for what is unfolded from them. */
     private const val BETWEEN = 40.0
     private const val UNFOLD_ROOM = 600.0
-
-    /** What [graph_tools.DynamicPlacement] leaves between a node and the column of its neighbours, and between two of those. */
-    private const val NEIGHBOUR_AWAY = 60.0
-    private const val NEIGHBOUR_GAP = 12.0
 
     /**
      * Where the nodes the mode starts from go, when there are several:
      * not where they are in the graph, which may be all over it, but
      * together, in columns side by side, around the middle of what
      * the view shows. In a column they are in the order they were in
-     * from top to bottom, each with the room its parents (left of it)
-     * and children (right of it) take; a column that is full is
+     * from top to bottom, each with the room its parents and children
+     * take around it; a column that is full is
      * followed by the next, further right by what a few unfolded
      * levels take. One node alone stays where it is.
      */
@@ -148,26 +144,21 @@ object Explore {
     }
 
     private fun inColumns(g: Graph, pins: Set<Node>, nodes: List<Node>, middle: Vector2): Map<Node, Vector2> {
-        val parents = { n: Node -> g.findInEdges(n).map { it.src }.filter { it !in pins && !it.detail().isBlank }.distinct() }
-        val children = { n: Node -> g.findOutEdges(n).map { it.dst }.filter { it !in pins && !it.detail().isBlank }.distinct() }
-        // neighbours are stacked no higher than a column is, and go on in further columns beside ([graph_tools.DynamicPlacement])
-        val all = { of: List<Node> -> of.sumOf { it.cache.shapeBounds.y + NEIGHBOUR_GAP } }
-        val stacked = { of: List<Node> -> all(of).coerceAtMost(COLUMN_HEIGHT) }
-        val widest = { of: List<Node> ->
-            (of.maxOfOrNull { it.cache.shapeBounds.x + NEIGHBOUR_AWAY } ?: 0.0) * kotlin.math.ceil(all(of) / COLUMN_HEIGHT).coerceAtLeast(1.0)
+        val around = { n: Node ->
+            (g.findInEdges(n).map { it.src } + g.findOutEdges(n).map { it.dst }).filter { it !in pins && !it.detail().isBlank }.distinct()
         }
-        val height = { n: Node -> maxOf(n.cache.shapeBounds.y, stacked(parents(n)), stacked(children(n))) + BETWEEN }
+        // the neighbours gather around their node ([graph_tools.Settling]), each with as much room again as it is big: so much room, as a square
+        val room = { n: Node -> kotlin.math.sqrt((around(n) + n).sumOf { 4 * it.cache.shapeBounds.x * it.cache.shapeBounds.y }) }
+        val height = { n: Node -> maxOf(n.cache.shapeBounds.y, room(n)) + BETWEEN }
         // columns: each takes nodes until it is full
         val columns = nodes.fold(listOf(emptyList<Node>())) { done, n ->
             val last = done.last()
             if (last.isNotEmpty() && last.sumOf(height) + height(n) > COLUMN_HEIGHT) done + listOf(listOf(n)) else done.dropLast(1) + listOf(last + n)
         }
-        val widths = columns.map { column ->
-            column.maxOf { widest(parents(it)) } + column.maxOf { it.cache.shapeBounds.x } + column.maxOf { widest(children(it)) } + UNFOLD_ROOM
-        }
+        val widths = columns.map { column -> column.maxOf { maxOf(it.cache.shapeBounds.x, room(it)) } + UNFOLD_ROOM }
         val lefts = widths.runningFold(0.0) { sum, w -> sum + w }
         val placed = columns.flatMapIndexed { i, column ->
-            val x = lefts[i] + column.maxOf { widest(parents(it)) } + column.maxOf { it.cache.shapeBounds.x } / 2
+            val x = lefts[i] + (widths[i] - UNFOLD_ROOM) / 2
             val tops = column.runningFold(0.0) { sum, n -> sum + height(n) }
             column.mapIndexed { k, n -> n to Vector2(x, tops[k] + height(n) / 2) }
         }

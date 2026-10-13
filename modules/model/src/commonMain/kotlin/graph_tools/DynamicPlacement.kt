@@ -33,14 +33,6 @@ object DynamicPlacement {
     private const val MAX_ROWS = 500
 
     /**
-     * In explore mode what is put beside a node is stacked no higher
-     * than this: about what is seen at once, on a screen or on a wall
-     * (a unit is a millimetre there). And in no more columns than these.
-     */
-    const val EXPLORE_HEIGHT = 1500.0
-    private const val MAX_COLUMNS = 50
-
-    /**
      * Place the nodes that became visible since the last call. Tracks
      * nothing while the mode is off, so turning it on doesn't move
      * what's already on screen.
@@ -56,18 +48,10 @@ object DynamicPlacement {
         val appeared = if (visible != null && before != null && (exploring || !g.history.canRedo)) visible - before else emptySet()
         // attached nodes follow their owner (Attachments.reglue), they aren't placed themselves
         val fresh = appeared.filter { it !in g.attachmentOwners }.toSet()
-        if (fresh.isNotEmpty()) {
-            val fixed = visible!! - appeared
-            // explore mode: a faint node is not in the way of a new one, it gets out of it ([settled])
-            val yielding = if (g.pinned != null) fixed.filter { g.isFaint(it) }.toSet() else emptySet()
-            val placed = positionsFor(g, fresh, fixed, yielding, tall = EXPLORE_HEIGHT.takeIf { exploring })
-            val targets = if (g.pinned != null) settled(g, placed, visible) else placed
-            if (exploring) {
-                targets.forEach { (n, p) ->
-                    n.position = p
-                    g.needsRecomputing(n)
-                }
-            } else if (targets.isNotEmpty()) {
+        if (fresh.isNotEmpty() && exploring) explore(g, fresh, visible!!, visible - appeared)
+        else if (fresh.isNotEmpty()) {
+            val targets = positionsFor(g, fresh, visible!! - appeared)
+            if (targets.isNotEmpty()) {
                 g.commit(
                     MoveNodesCommand(
                         g,
@@ -81,27 +65,39 @@ object DynamicPlacement {
     }
 
     /**
-     * Explore mode: where the nodes [placed] and the faint ones in
-     * their way come to rest ([Settling]), among the [visible] ones.
-     * The pinned nodes that were seen before stay. Nothing is moved
-     * here: the nodes are back where they were when this returns.
+     * Explore mode: the nodes [fresh] among the [visible] ones are
+     * not put in columns but where the user has them: each starts
+     * where it is in the document relative to its neighbours that are
+     * seen (those of [fixed] first, then outwards from them), and
+     * from there the springs bring it to rest ([Settling]): the edges
+     * pull it in, the nodes around push it off, and where it started
+     * from holds on to it. Faint nodes in its way give way, the pinned
+     * ones that were seen before stay. The nodes are moved as they
+     * are, with no command: where nodes are in the mode is not the
+     * document's ([Graph.beforeExplore]).
      */
-    private fun settled(g: Graph, placed: Map<Node, Vector2>, visible: Set<Node>): Map<Node, Vector2> {
+    private fun explore(g: Graph, fresh: Set<Node>, visible: Set<Node>, fixed: Set<Node>) {
         val among = visible.filter { it !in g.attachmentOwners }.toSet()
-        val before = among.associateWith { it.position }
-        placed.forEach { (n, p) -> n.position = p }
-        val moved = Settling.settle(g, placed.keys, among) { g.isFaint(it) }
-        val after = (placed.keys + moved).associateWith { it.position }
-        before.forEach { (n, p) -> n.position = p }
+        val document = g.beforeExplore.orEmpty()
+        val neighbours = { n: Node -> (g.findInEdges(n).map { it.src } + g.findOutEdges(n).map { it.dst }).filter { it != n }.distinct() }
+        // where [n] would be if it were to its neighbours [by] as it is in the document; null when the document has neither
+        val home = { n: Node, by: List<Node> ->
+            val places = by.mapNotNull { m -> document[n]?.let { own -> document[m]?.let { theirs -> m.position + (own - theirs) } } }
+            if (places.isEmpty()) null else places.reduce(Vector2::plus) / places.size
+        }
+        tailrec fun start(placed: Set<Node>, left: Set<Node>) {
+            val next = left.filter { n -> neighbours(n).any { it in placed } }
+            next.forEach { n -> home(n, neighbours(n).filter { it in placed })?.let { n.position = it } }
+            if (next.isNotEmpty()) start(placed + next, left - next.toSet())
+        }
+        start(fixed, fresh)
+        val moved = Settling.settle(g, fresh, among, { g.isFaint(it) }) { n -> home(n, neighbours(n).filter { it in among }) }
+        (fresh + moved).forEach { g.needsRecomputing(it) }
         Attachments.reglue(g)
-        return after
     }
 
-    /**
-     * New positions for [fresh] nodes, given the [fixed] visible ones; those of them that are [yielding] may be overlapped.
-     * With [tall] the nodes put beside one node are stacked no higher than that, in as many columns as it takes.
-     */
-    fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>, yielding: Set<Node> = emptySet(), tall: Double? = null): Map<Node, Vector2> {
+    /** New positions for [fresh] nodes, given the [fixed] visible ones. */
+    fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>): Map<Node, Vector2> {
         // attached nodes first: a node's box is its whole block (it + what's glued to it), measured
         // relative to it, so the fanning out below starts from the block's edges
         Attachments.reglue(g)
@@ -115,7 +111,7 @@ object DynamicPlacement {
         var layer = fresh.filter { n -> (parents(n) + children(n)).any { it in placed } }.sortedWith(topToBottom)
         while (layer.isNotEmpty()) {
             layer.forEach { n ->
-                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed, boxes, yielding, tall)
+                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed, boxes)
                 placed[n] = target
                 result[n] = target
             }
@@ -134,8 +130,6 @@ object DynamicPlacement {
         visibleChildren: List<Node>,
         placed: Map<Node, Vector2>,
         boxes: Map<Node, Attachments.Box>,
-        yielding: Set<Node>,
-        tall: Double?,
     ): Vector2 {
         val box = { m: Node -> boxes.getValue(m) }
         val pos = { m: Node -> placed.getValue(m) }
@@ -153,14 +147,10 @@ object DynamicPlacement {
         val anchors = visibleParents + visibleChildren
         val y = anchors.sumOf { pos(it).y } / anchors.size
         val step = box(n).size.y + GAP
-        // a stack no higher than [tall]: what does not fit in it goes on in a column further from the neighbours
-        val most = if (tall == null) MAX_ROWS else (tall / 2 / step).toInt().coerceIn(1, MAX_ROWS)
-        val rows = (0..most).asSequence().flatMap { k -> if (k == 0) sequenceOf(0) else sequenceOf(k, -k) }
-        val away = if (rightOfParents != null) 1 else -1
-        val columns = if (tall == null) sequenceOf(0) else (0..MAX_COLUMNS).asSequence()
-        return columns
-            .flatMap { column -> rows.map { k -> Vector2(x + away * column * (box(n).size.x + COLUMN_GAP), y + k * step) } }
-            .firstOrNull { spot -> placed.none { (m, p) -> m !in yielding && overlaps(box(n), spot, box(m), p) } }
+        val rows = (0..MAX_ROWS).asSequence().flatMap { k -> if (k == 0) sequenceOf(0) else sequenceOf(k, -k) }
+        return rows
+            .map { k -> Vector2(x, y + k * step) }
+            .firstOrNull { spot -> placed.none { (m, p) -> overlaps(box(n), spot, box(m), p) } }
             ?: Vector2(x, y)
     }
 

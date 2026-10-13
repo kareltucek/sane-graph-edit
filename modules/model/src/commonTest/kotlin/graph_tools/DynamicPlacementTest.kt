@@ -107,55 +107,84 @@ class DynamicPlacementTest {
         assertEquals(Vector2(5000, 3000), c.position)
     }
 
+    /** [g] in explore mode from [pins] on, as entering the mode sets it up. */
+    private fun explore(g: Graph, pins: Set<Node>) {
+        g.beforeExplore = g.nodes.associateWith { it.position }
+        g.pinned = pins
+        g.dynamicBaseline = pins
+        DynamicPlacement.place(g)
+    }
+
     @Test
-    fun `explore mode - what is unfolded pushes the faint nodes in its way off, the pinned ones stay, with nothing to undo`() {
+    fun `explore mode - a node that comes to be seen is where the document has it from its parent, but near, with nothing to undo`() {
         val g = Graph()
         val root = Node("root", Vector2(0, 0))
-        // the last kid is where the grandkids are going to be put
-        val kids = (0..2).map { Node("kid $it", Vector2(150, -60 + 40 * it)) } + Node("kid 3", Vector2(285, -20))
-        val grandkids = (0..2).map { Node("grandkid $it", Vector2(9000, 9000 + 100 * it)) }
-        (kids + grandkids + root).forEach { g.add(it) }
+        // far away in the document, each in a direction of its own
+        val kids = listOf(Node("right", Vector2(3000, 0)), Node("up", Vector2(0, -4000)), Node("down left", Vector2(-2500, 2500)))
+        (kids + root).forEach { g.add(it) }
         kids.forEach { g.add(Edge(root, it)) }
-        grandkids.forEach { g.add(Edge(kids[1], it)) }
         g.ensureCachesFresh(force = true)
-        val before = g.nodes.associateWith { it.position }
+        val document = g.nodes.associateWith { it.position }
 
-        g.pinned = setOf(root)
-        DynamicPlacement.place(g)
-        g.pinned = setOf(root, kids[1])
+        explore(g, setOf(root))
+
+        assertEquals(Vector2(0, 0), root.position)
+        kids.forEach { kid ->
+            assertTrue(kid.position.length() < 600, "${document.getValue(kid)} was brought in: ${kid.position}")
+            assertTrue(kid.position.toUnit().dot(document.getValue(kid).toUnit()) > 0.95, "${document.getValue(kid)} kept its direction: ${kid.position}")
+            assertFalse(overlap(kid, root))
+        }
+        // where nodes are in explore mode is not the document's: nothing to undo
+        assertFalse(g.history.canUndo)
+    }
+
+    @Test
+    fun `explore mode - what is unfolded pushes a faint node in its way off, the pinned ones stay`() {
+        val g = Graph()
+        val root = Node("root", Vector2(0, 0))
+        val kid = Node("kid", Vector2(200, 0))
+        // where the grandkid is going to be: right of the kid
+        val other = Node("other kid", Vector2(330, 5))
+        val grandkid = Node("grandkid", Vector2(9200, 0))
+        listOf(root, kid, other, grandkid).forEach { g.add(it) }
+        g.add(Edge(root, kid))
+        g.add(Edge(root, other))
+        g.add(Edge(kid, grandkid))
+        g.ensureCachesFresh(force = true)
+        kid.position = Vector2(200, 0)
+
+        explore(g, setOf(root))
+        val kidWas = kid.position
+        val otherWas = other.position
+        g.beforeExplore = g.beforeExplore!! + (grandkid to (g.beforeExplore!!.getValue(kid) + Vector2(130, 0)))
+        g.pinned = setOf(root, kid)
         DynamicPlacement.place(g)
 
         val seen = g.visibleNodes().toList()
         assertEquals(g.nodes.toSet(), seen.toSet())
         seen.forEachIndexed { i, a -> seen.drop(i + 1).forEach { b -> assertFalse(overlap(a, b), "nodes at ${a.position} and ${b.position} overlap") } }
         assertEquals(Vector2(0, 0), root.position)
-        assertEquals(before.getValue(kids[1]), kids[1].position)
-        assertTrue(grandkids.all { (it.position - kids[1].position).length() < 1000 }, "the grandkids are next to their parent")
-        assertTrue(kids[3].position != before.getValue(kids[3]), "the faint node gave way")
-        assertTrue(grandkids.any { abs(it.position.y - kids[1].position.y) < 10 }, "a grandkid is level with its parent")
-        // where nodes are in explore mode is not the document's: nothing to undo
-        assertFalse(g.history.canUndo)
+        assertEquals(kidWas, kid.position)
+        assertTrue(grandkid.position.x > kid.position.x && (grandkid.position - kid.position).length() < 600, "the grandkid is right of its parent: ${grandkid.position}")
+        assertTrue(other.position != otherWas, "the faint node gave way")
     }
 
     @Test
-    fun `explore mode - many children are stacked no higher than a column is, in columns side by side`() {
+    fun `explore mode - the many children of a hub gather around it without overlapping`() {
         val g = Graph()
         val hub = Node("hub", Vector2(0, 0))
-        val kids = (0 until 120).map { Node("kid $it", Vector2(9000, 100 * it)) }
+        val kids = (0 until 60).map { Node("kid $it", Vector2(5000 * kotlin.math.cos(it * 0.1047), 5000 * kotlin.math.sin(it * 0.1047))) }
         (kids + hub).forEach { g.add(it) }
         kids.forEach { g.add(Edge(hub, it)) }
         g.ensureCachesFresh(force = true)
 
-        g.pinned = setOf(hub)
-        g.dynamicBaseline = setOf(hub)
-        DynamicPlacement.place(g)
+        explore(g, setOf(hub))
 
-        val high = kids.maxOf { it.position.y } - kids.minOf { it.position.y }
-        assertTrue(high <= DynamicPlacement.EXPLORE_HEIGHT, "the stack is $high high")
-        assertTrue(kids.map { it.position.x }.distinct().size > 1, "several columns")
-        assertTrue(kids.all { it.position.x > hub.position.x }, "all right of their parent")
-        kids.forEachIndexed { i, a -> kids.drop(i + 1).forEach { b -> assertFalse(overlap(a, b), "nodes at ${a.position} and ${b.position} overlap") } }
+        assertTrue(kids.all { it.position.length() < 1500 }, "all near the hub; the furthest is ${kids.maxOf { it.position.length() }} away")
+        val overlapping = kids.indices.sumOf { i -> kids.drop(i + 1).count { overlap(kids[i], it) } }
+        assertEquals(0, overlapping, "pairs of children that overlap")
     }
+
 
     @Test
     fun `no placement while there is something to redo`() {
