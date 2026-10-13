@@ -34,7 +34,7 @@ class OnWalls(private val strip: WallStrip, private val middle: Vector2, val sca
         const val BAND = 1.6
 
         /** How far from the wall the graph's plane is. */
-        const val OFF_WALL = 0.02
+        const val OFF_WALL = 0.1
 
         /**
          * The graph whose nodes are within [from] and [to] on [strip]:
