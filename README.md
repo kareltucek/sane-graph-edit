@@ -249,8 +249,9 @@ that the node is a terminal. What the terminal shows is drawn in the
 node, in the node's colours, wherever nodes are drawn: in 3D mode and
 in a headset too, where the trigger on the node enters it (the keys
 are still the window's: the keyboard of the computer the editor runs
-on). A headset is told of what changed a few times a second. The
-node's text shows while there is no shell.
+on). A headset is told what a terminal shows as it changes, as text
+(up to some 60 times a second), and draws it over the node in its
+own monospaced font. The node's text shows while there is no shell.
 
 `:content-type code-scala` (or `markdown`, `plain`, `terminal`, …) sets it for
 the selected nodes; `:content-type` alone tells it. The picker

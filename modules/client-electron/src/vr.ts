@@ -3,7 +3,7 @@
 
 import * as THREE from "three";
 import { GRAPH_AT, METRES_PER_UNIT, ROOM_COLOUR } from "./room";
-import type { VrNode, VrScene } from "./vrServer";
+import type { VrLive, VrNode, VrScene } from "./vrServer";
 
 /** Where the middle of the graph is put when it arrives. */
 const START = new THREE.Vector3(...GRAPH_AT);
@@ -113,6 +113,9 @@ function show(got: VrScene) {
     const before = new Set(shown?.nodes.map((n) => n.id));
     if (shown !== null && sent.nodes.length > 0 && !sent.nodes.some((n) => before.has(n.id))) centred = false;
     shown = sent;
+    // what was drawn over a node that is there no more
+    const there = new Set(sent.nodes.map((n) => n.id));
+    [...lives.keys()].filter((id) => !there.has(id)).forEach(forgetLive);
     const byPage = new Map<number, VrNode[]>();
     sent.nodes.filter((n) => n.page !== undefined).forEach((n) => byPage.set(n.page!, [...(byPage.get(n.page!) ?? []), n]));
     // where the corners are is said anew at every frame ([face]): a node faces whoever looks
@@ -334,6 +337,27 @@ function face() {
                 -n.middleX! / n.pixelsPerUnit!, -n.middleY! / n.pixelsPerUnit!, n.pw! / n.pixelsPerUnit!, n.ph! / n.pixelsPerUnit!));
             positions.needsUpdate = true;
         });
+        // what is drawn over a node ([showLive]): turned as the node is, a little before it
+        lives.forEach((live) => {
+            const n = sent.nodes.find((it) => it.id === live.sent.id);
+            const i = n === undefined ? undefined : now.index.get(n);
+            live.mesh.visible = n !== undefined && i !== undefined;
+            if (n !== undefined && i !== undefined) {
+                const corners = live.mesh.geometry.getAttribute("position") as THREE.BufferAttribute;
+                const to = corners.array as Float32Array;
+                const { left, top, cellWidth, cellHeight, columns } = live.sent;
+                const wide = columns * cellWidth;
+                const high = (live.sent.rows?.length ?? 0) * cellHeight;
+                [[left, top], [left + wide, top], [left, top + high], [left + wide, top + high]].forEach(([a, c], k) => {
+                    corner(to, k * 3, n, i, a, c);
+                    to[k * 3] += axes[i * 9 + 6] * LIVE_BEFORE;
+                    to[k * 3 + 1] += axes[i * 9 + 7] * LIVE_BEFORE;
+                    to[k * 3 + 2] += axes[i * 9 + 8] * LIVE_BEFORE;
+                });
+                corners.needsUpdate = true;
+                live.mesh.position.copy(offset);
+            }
+        });
         const plains = plain.geometry.getAttribute("position") as THREE.BufferAttribute;
         now.plain.forEach((n, k) => rectangle(plains.array as Float32Array, k, n, -n.width / 2, -n.height / 2, n.width, n.height));
         plains.needsUpdate = true;
@@ -380,6 +404,86 @@ function face() {
     }
 }
 
+// --- nodes that change fast (terminals): what they show comes as text, as it changes, and is drawn here over the node ---
+
+/** A cell of such a node in its picture, pixels: sharp enough from near. */
+const LIVE_CELL = [14, 28];
+const LIVE_FONT_PX = 22;
+/** How far before its node what is drawn over it is, in the graph's units: so that it is the one seen. */
+const LIVE_BEFORE = 1;
+
+const lives = new Map<string, { sent: VrLive; picture: HTMLCanvasElement; texture: THREE.CanvasTexture; mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> }>();
+
+function forgetLive(id: string) {
+    const was = lives.get(id);
+    if (was !== undefined) {
+        graph.remove(was.mesh);
+        was.mesh.geometry.dispose();
+        was.mesh.material.dispose();
+        was.texture.dispose();
+        lives.delete(id);
+    }
+}
+
+/** Draw what the node [VrLive.id] shows now. The text is drawn as text: never as markup. */
+function showLive(sent: VrLive) {
+    const rows = sent.rows;
+    if (rows === null || sent.columns <= 0 || rows.length === 0) forgetLive(sent.id);
+    else {
+        if (!lives.has(sent.id)) {
+            const picture = document.createElement("canvas");
+            const texture = new THREE.CanvasTexture(picture);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+            const shape = new THREE.BufferGeometry();
+            shape.setAttribute("position", new THREE.BufferAttribute(new Float32Array(12), 3));
+            // the corners as [face] puts them: top left, top right, bottom left, bottom right
+            shape.setAttribute("uv", new THREE.Float32BufferAttribute([0, 1, 1, 1, 0, 0, 1, 0], 2));
+            shape.setIndex([0, 1, 2, 1, 3, 2]);
+            const mesh = new THREE.Mesh(shape, new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }));
+            mesh.frustumCulled = false;
+            mesh.visible = false;
+            graph.add(mesh);
+            lives.set(sent.id, { sent, picture, texture, mesh });
+        }
+        const live = lives.get(sent.id)!;
+        live.sent = sent;
+        const [wide, high] = LIVE_CELL;
+        const picture = live.picture;
+        if (picture.width !== sent.columns * wide || picture.height !== rows.length * high) {
+            picture.width = sent.columns * wide;
+            picture.height = rows.length * high;
+            // another size: another texture on the card
+            live.texture.dispose();
+        }
+        const to = picture.getContext("2d")!;
+        to.fillStyle = sent.background;
+        to.fillRect(0, 0, picture.width, picture.height);
+        to.textBaseline = "middle";
+        rows.forEach((runs, row) => {
+            let column = 0;
+            runs.forEach(([text, ink, behind, bold]) => {
+                const length = [...text].length;
+                if (behind !== sent.background) {
+                    to.fillStyle = behind;
+                    to.fillRect(column * wide, row * high, length * wide, high);
+                }
+                to.font = `${bold ? "bold " : ""}${LIVE_FONT_PX}px monospace`;
+                to.fillStyle = ink;
+                // the font's letters as wide as the cells are, whatever font this browser has
+                const advance = to.measureText("M").width;
+                to.save();
+                to.translate(column * wide, row * high + high / 2);
+                to.scale(advance > 0 ? wide / advance : 1, 1);
+                if (text.trim() !== "") to.fillText(text, 0, 0);
+                to.restore();
+                column += length;
+            });
+        });
+        live.texture.needsUpdate = true;
+    }
+}
+
 // --- what the server sends: the scene as text, a page as its number and then its picture ---
 
 /** Says something to the window; null while not connected. And the room as it was last told of. */
@@ -403,6 +507,7 @@ function connect() {
         if (typeof message.data === "string") {
             const sent = JSON.parse(message.data);
             if (sent.type === "scene") show(sent as VrScene);
+            else if (sent.type === "live") showLive(sent as VrLive);
         } else {
             const data = message.data as ArrayBuffer;
             const page = new DataView(data).getUint32(0);

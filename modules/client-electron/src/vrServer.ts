@@ -57,6 +57,24 @@ export interface VrScene {
 }
 
 /**
+ * What a node that changes fast (a terminal) shows now, told apart from the scene and its pictures, which are too slow for
+ * it: cells of text in rows, which the headset draws over the node. Where the cells are is from the node's middle, in the
+ * graph's units (y down): the corner of the first one and the size of one. Each row is runs of cells that look alike: the
+ * text (a character a cell), its colour and the colour behind it, and whether it is bold. No [rows]: the node shows this no
+ * longer.
+ */
+export interface VrLive {
+    id: string;
+    left: number;
+    top: number;
+    cellWidth: number;
+    cellHeight: number;
+    columns: number;
+    background: string;
+    rows: [string, string, string, boolean][][] | null;
+}
+
+/**
  * A flat surface of the room the headset is in, as the headset reports it: what it is called (`wall`, `floor`, `desk`…; its
  * orientation where the headset gives no name), where it is in the room (a 4×4 matrix by columns, metres, y up, the floor at 0:
  * the surface lies in its x/z plane, y is its normal) and its outline there as pairs of x and z.
@@ -149,6 +167,9 @@ export interface VrSource {
     pages: () => { image: OffscreenCanvas; version: number }[];
 }
 
+/** A headset that has this much still to take is not told of a node that changes fast until it has caught up. */
+const LIVE_BEHIND_BYTES = 64 * 1024;
+
 /** How often what the headsets show is compared with what there is. */
 const TICK_MS = 250;
 
@@ -213,7 +234,8 @@ const PIN_TRIES = 5;
  * [token], which one that is given the [pin] is told: on this machine
  * only, or with [lan] on the local network, over TLS. [told] gets the
  * address to open in the headset once the server listens, or what
- * went wrong.
+ * went wrong. What is given back tells the headsets at once what a
+ * node that changes fast shows ([VrLive]).
  */
 export function startVr(port: number, token: string, pin: string, lan: boolean, source: VrSource, told: (address: string | null, error: string | null) => void) {
     // loaded here, not bundled: Node's own, and a module of Node's kind
@@ -252,17 +274,19 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
                 `<button style="font: inherit">Open</button></form>` + (wrong ? `<p>Wrong PIN; ${triesLeft} more tries.</p>` : "")
             : `<p>Too many wrong PINs. Start the application again.</p>`);
 
+    // what is given back when no headset is served after all: tells nobody
+    const unserved = (_: VrLive) => {};
     const host = lan ? lanAddress() : "127.0.0.1";
     if (host === null) {
         told(null, "this machine has no address on a local network");
-        return;
+        return unserved;
     }
     let secured: { key: Buffer; cert: Buffer } | null = null;
     try {
         secured = lan ? certificate() : null;
     } catch (error) {
         told(null, `could not make a certificate (is openssl there?): ${error}`);
-        return;
+        return unserved;
     }
 
     const answer = (request: IncomingMessage, response: ServerResponse) => {
@@ -283,10 +307,13 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
 
     /** Each headset, with what it was last sent: the scene as text, and the version of each page. */
     const headsets = new Map<WebSocket, { scene: string; pages: number[]; sending: boolean }>();
+    /** What the nodes that change fast show now ([VrLive]), as it was last sent, by node. */
+    const lives = new Map<string, string>();
     const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
     server.on("upgrade", (request, socket, head) => {
         if (knows(request)) sockets.handleUpgrade(request, socket, head, (ws) => {
             headsets.set(ws, { scene: "", pages: [], sending: false });
+            lives.forEach((text) => ws.send(text));
             ws.on("close", () => headsets.delete(ws));
             ws.on("error", () => headsets.delete(ws));
             ws.on("message", (data, binary) => {
@@ -337,10 +364,22 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
     }, TICK_MS);
 
     server.on("error", (error: Error) => told(null, error.message));
+    // what a node that changes fast shows now ([VrLive]): at once, not at the next tick, and not to a headset that still has something to take
+    const live = (now: VrLive) => {
+        const text = JSON.stringify({ type: "live", ...now });
+        // kept for a headset that comes later; of a node that shows it no longer, nothing is
+        if (now.rows === null) lives.delete(now.id);
+        else lives.set(now.id, text);
+        // a headset that is behind is not told: it is told of the next change, which has all of this one
+        headsets.forEach((_, ws) => {
+            if (ws.readyState === ws.OPEN && ws.bufferedAmount <= LIVE_BEHIND_BYTES) ws.send(text);
+        });
+    };
     // this machine only, or the one address of it on the local network: never all of its interfaces
     server.listen(port, host, () => {
         const at = server.address();
         const where = lan ? `https://${host}` : "http://localhost";
         told(typeof at === "object" && at !== null ? `${where}:${at.port}` : null, null);
     });
+    return live;
 }

@@ -1,12 +1,12 @@
 import { client, host } from "sane-graph-edit-editor-host";
 import { Bitmaps, Recent } from "./bitmaps";
-import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor";
+import { Canvas2D, Cells, GridEditor, PaintedCell, Painting, StatusPiece } from "./gridEditor";
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 import { TerminalNode } from "./terminalNode";
 import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
 import { mockRoom, outlines, wallsOf } from "./room";
-import { startVr, VrScene, VrSurface } from "./vrServer";
+import { startVr, VrLive, VrScene, VrSurface } from "./vrServer";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -577,8 +577,19 @@ function pictureOfNode(n: SpaceSceneNode, grid: client.GridMetrics, pixelsPerUni
 
 /** What the picture of [n] depends on: when this changes, it is made anew. */
 function pictureKey(n: SpaceSceneNode): string {
+    return pictureKeyWith(n, paintingOf(n));
+}
+
+/**
+ * The same for headsets: of a terminal that runs, not what it shows. That is told as it changes and drawn over the node
+ * ([tellOfTerminal]); the node's picture, which is slow to send, is not made anew for it.
+ */
+function vrPictureKey(n: SpaceSceneNode): string {
+    return n.type === "terminal" && shownTerminals?.has(n.id) ? pictureKeyWith(n, null) : pictureKey(n);
+}
+
+function pictureKeyWith(n: SpaceSceneNode, painting: Painting | null): string {
     const picture = pictureOf(n);
-    const painting = paintingOf(n);
     return JSON.stringify([
         n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.selected, n.faint, n.manual, n.type, n.language, colours().background, colours().foreground,
         picture === null ? 0 : nameOf(picture), painting === null ? 0 : nameOf(painting), n.id === editing?.id && editing.editor.shown,
@@ -688,8 +699,12 @@ function enterTerminal(view: client.JsView, id: string) {
         ofView.set(id, new TerminalNode(document.body, () => {
             ofView.delete(id);
             if (inTerminal?.view === view && inTerminal.id === id) inTerminal = null;
+            tellLive?.({ id, left: 0, top: 0, cellWidth: 0, cellHeight: 0, columns: 0, background: "#000000", rows: null });
             page.repaint();
-        }, () => page.repaint()));
+        }, () => {
+            page.repaint();
+            tellOfTerminal(view, id);
+        }));
     }
     inTerminal = { view, id };
     ofView.get(id)?.focus(true);
@@ -706,12 +721,58 @@ function leaveTerminal() {
 let shownTerminals: Map<string, TerminalNode> | undefined;
 
 /**
+ * Headsets are told what a terminal shows as it changes, and not with the pictures of the nodes, which come a few times a
+ * second: [tellLive] sends it (null while nothing serves headsets), each terminal's at most every [LIVE_MS]; [liveWaiting]
+ * are those that are about to be told of. The cells are as big as the window draws them ([liveGrid]), times what nodes are
+ * shown at in headsets ([vrNodeScale]).
+ */
+let tellLive: ((live: VrLive) => void) | null = null;
+const LIVE_MS = 16;
+const liveWaiting = new Set<string>();
+let liveGrid: client.GridMetrics | null = null;
+let vrNodeScale = 1;
+
+function tellOfTerminal(view: client.JsView, id: string) {
+    if (tellLive !== null && !liveWaiting.has(id)) {
+        liveWaiting.add(id);
+        setTimeout(() => {
+            liveWaiting.delete(id);
+            const terminal = terminals.get(view)?.get(id);
+            const n = terminals.get(view) === shownTerminals ? lastScene?.nodes.find((it) => it.id === id && it.type === "terminal") : undefined;
+            const grid = liveGrid;
+            if (terminal !== undefined && n !== undefined && grid !== null) {
+                const painting = terminal.painting(inkOf(n), n.bg ?? colours().background);
+                // cells that look alike, after each other, as one
+                const runs = (cells: PaintedCell[]) => cells.reduce<[string, string, string, boolean][]>((done, cell) => {
+                    const last = done[done.length - 1];
+                    const bold = cell.bold === true;
+                    if (last !== undefined && last[1] === cell.foreground && last[2] === cell.background && last[3] === bold) last[0] += cell.text;
+                    else done.push([cell.text, cell.foreground, cell.background, bold]);
+                    return done;
+                }, []);
+                tellLive?.({
+                    id,
+                    left: (-n.width / 2 + n.fontSize * 0.5) * vrNodeScale,
+                    top: (-n.height / 2 + n.fontSize * 0.5) * vrNodeScale,
+                    cellWidth: grid.advance * n.fontSize * vrNodeScale,
+                    cellHeight: grid.lineHeight * n.fontSize * vrNodeScale,
+                    columns: painting.rows[0]?.length ?? 0,
+                    background: painting.background,
+                    rows: painting.rows.map(runs),
+                });
+            }
+        }, LIVE_MS);
+    }
+}
+
+/**
  * Give the terminals of [view] as many rows and columns as their nodes have room for now ([scene]); one whose node is no more
  * is closed. Those of other views run on as they are.
  */
 function sizeTerminals(view: client.JsView, scene: Scene, grid: client.GridMetrics) {
     if (inTerminal !== null && inTerminal.view !== view) leaveTerminal();
     shownTerminals = terminals.get(view);
+    liveGrid = grid;
     [...(shownTerminals ?? [])].forEach(([id, terminal]) => {
         const n = scene.nodes.find((it) => it.id === id && it.type === "terminal");
         if (view.nodeText(id) == null) terminal.close();
@@ -835,10 +896,11 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
     const onWalls = view ? view.worldOnWalls(Float64Array.from(wallsOf(roomSurfaces ?? [])), Float64Array.from(standing)) as OnWallsScene | null : null;
     const world = onWalls ?? (view ? view.world() as SpaceScene<SpaceSceneNode> : null);
     const size = onWalls?.nodeScale ?? 1;
+    vrNodeScale = size;
     if (world !== null) {
         // pictures of its own, finer than the window's: a headset shows a node from near
         vrAtlas ??= new SpaceRenderer(document.createElement("canvas"), () => {});
-        vrAtlas.prepare(world.nodes, VR_PIXELS_PER_UNIT, pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit), true);
+        vrAtlas.prepare(world.nodes, VR_PIXELS_PER_UNIT, vrPictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit), true);
     }
     const atlas = vrAtlas;
     const links: { [id: string]: string[] } = view ? view.links() : {};
@@ -1245,7 +1307,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         };
         // what is typed in the headset: four digits, good for a few tries only
         const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");
-        startVr(Number(vr) || 0, token, pin, lan, source, (address, error) => {
+        tellLive = startVr(Number(vr) || 0, token, pin, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
