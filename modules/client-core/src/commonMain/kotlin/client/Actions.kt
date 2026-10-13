@@ -96,7 +96,15 @@ object Actions {
         if (targets.isEmpty()) {
             graphView.shell.message("content-type: no node is selected")
         } else {
-            g.commit(SetNodeTypeCommand(g, targets.associateWith { it.attributes.other[NodeType.ATTRIBUTE] }, type, keepSource))
+            val typed = SetNodeTypeCommand(g, targets.associateWith { it.attributes.other[NodeType.ATTRIBUTE] }, type, keepSource)
+            // a terminal is as big as it is given to be: one that has no size yet gets the usual one
+            val unsized = if (type.kind == NodeType.Kind.Terminal) targets.filter { graph_tools.ManualSize.of(it) == null } else emptyList()
+            val sized = graph_tools.SetManualSizeCommand(
+                g,
+                unsized.associateWith { null to it.position },
+                unsized.associateWith { graph_tools.ManualSize.write(terminalSize(it)) to it.position },
+            )
+            g.commit(if (unsized.isEmpty()) typed else CompositeCommand(listOf(typed, sized)))
             graphView.repaint()
         }
     }
@@ -121,6 +129,10 @@ object Actions {
     /** Whether the selected nodes have a size of their own, when they all do or all do not; else null. */
     fun sizeModeOfSelection(graphView: EditorView): Boolean? =
         graphView.g.selectedNodes.map { graph_tools.ManualSize.of(it) != null }.distinct().singleOrNull()
+
+    /** The size of a terminal of 80 columns and 24 rows in [n]'s font, about: a character is taken to be 0.6 of the font's size wide and a line 1.25 of it high. */
+    private fun terminalSize(n: Node): utils.Vector2 =
+        graph_tools.NodeText.fontSize(n).let { font -> utils.Vector2(82 * 0.6 * font, 25 * 1.25 * font) }
 
     private fun typeTargets(graphView: EditorView): List<Node> =
         graphView.g.let { g -> g.selectedNodes.toList().ifEmpty { listOfNotNull(g.lastActiveNode?.takeIf { it in g.nodes }) } }

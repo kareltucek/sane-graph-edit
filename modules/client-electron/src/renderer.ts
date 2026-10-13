@@ -3,6 +3,7 @@ import { Bitmaps, Recent } from "./bitmaps";
 import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor";
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
+import { TerminalNode } from "./terminalNode";
 import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
 import { mockRoom, outlines, wallsOf } from "./room";
 import { startVr, VrScene, VrSurface } from "./vrServer";
@@ -25,7 +26,7 @@ interface SceneNode {
     /** The colours are from the picker's palette. */
     palette: boolean;
     /** What the text is, and for code that names one, its language. */
-    type: "plain" | "code" | "markdown";
+    type: "plain" | "code" | "markdown" | "terminal";
     language: string | null;
     fontSize: number;
     /** How many times its sizes the node is drawn, around x, y: other than 1 for a node nearer or further than the plane the view is of. */
@@ -658,7 +659,63 @@ function textPlace(n: SceneNode, whole: Scene, grid: client.GridMetrics): Place 
 function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
     // the click that asks for this also closed the editor that was open; that one tells its text first
     endEdit(view);
-    (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click));
+    // a terminal node has no text to edit: entering it is going to its shell
+    if (lastScene?.nodes.find((it) => it.id === id)?.type === "terminal") enterTerminal(view, id);
+    else (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click));
+}
+
+// --- terminal nodes: a shell in a terminal over the node, started when the node is first entered, running on afterwards ---
+
+/** The terminals of the nodes that were entered, by the view they are in and the node; and the one the keys go to, if any. */
+const terminals = new Map<client.JsView, Map<string, TerminalNode>>();
+let inTerminal: { view: client.JsView; id: string } | null = null;
+
+/** The keys go to the shell of the node [id] from now on (Shift+Escape, or a click on the graph, gives them back); it is started if it is not running. */
+function enterTerminal(view: client.JsView, id: string) {
+    const ofView = terminals.get(view) ?? new Map<string, TerminalNode>();
+    terminals.set(view, ofView);
+    leaveTerminal();
+    if (!ofView.has(id)) {
+        ofView.set(id, new TerminalNode(document.body, FONT, () => {
+            ofView.delete(id);
+            if (inTerminal?.view === view && inTerminal.id === id) inTerminal = null;
+            page.repaint();
+        }, () => page.repaint()));
+    }
+    inTerminal = { view, id };
+    ofView.get(id)?.focus(true);
+    page.repaint();
+}
+
+function leaveTerminal() {
+    const was = inTerminal;
+    inTerminal = null;
+    if (was !== null) terminals.get(was.view)?.get(was.id)?.focus(false);
+}
+
+/**
+ * Put the terminals over their nodes as [view] shows them now ([scene]); those of other views, of nodes not seen, and all of
+ * them while the graph is drawn with depth ([threeD]) are not shown, and run on. One whose node is no more is closed.
+ */
+function placeTerminals(view: client.JsView, scene: Scene, threeD: boolean) {
+    if (inTerminal !== null && inTerminal.view !== view) leaveTerminal();
+    const bounds = canvas.getBoundingClientRect();
+    [...terminals].forEach(([owner, ofView]) => [...ofView].forEach(([id, terminal]) => {
+        const n = owner === view && !threeD ? scene.nodes.find((it) => it.id === id && it.type === "terminal") : undefined;
+        if (owner === view && view.nodeText(id) == null) terminal.close();
+        else if (n === undefined) terminal.place(null);
+        else {
+            const seen = viewOf(n, scene);
+            const inset = n.fontSize * 0.25;
+            terminal.place({
+                left: bounds.left + (n.x - n.width / 2 + inset) * seen.scale + seen.offsetX,
+                top: bounds.top + (n.y - n.height / 2 + inset) * seen.scale + seen.offsetY,
+                width: (n.width - 2 * inset) * seen.scale,
+                height: (n.height - 2 * inset) * seen.scale,
+                fontPx: n.fontSize * seen.scale,
+            });
+        }
+    }));
 }
 
 function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
@@ -930,6 +987,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     // In 3D mode the graph is drawn with depth on the canvas below, and this one, clear, has only what is laid over the graph:
     // the node being edited with its editor, and the selection box.
     const threeD = view.threeD;
+    placeTerminals(view, scene, threeD);
     spaceCanvas.style.display = threeD ? "block" : "none";
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = canvasColour(colours().background);
@@ -1063,7 +1121,16 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     window.addEventListener("beforeunload", () => {
         GridEditor.endAll();
         NodeEditor.discardSpare();
+        [...terminals.values()].forEach((ofView) => [...ofView.values()].forEach((it) => it.close()));
     });
+    // before the terminal has the key: Shift+Escape gives the keys back to the graph, and is not the shell's
+    window.addEventListener("keydown", (e) => {
+        if (inTerminal !== null && e.key === "Escape" && e.shiftKey) {
+            e.stopPropagation();
+            e.preventDefault();
+            leaveTerminal();
+        }
+    }, true);
     (useGridEditor ? GridEditor.colours() : NodeEditor.colours()).then((theirs) => {
         if (theirs !== null) {
             nvimColours = theirs;
@@ -1092,6 +1159,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     canvas.addEventListener("pointerdown", (e) => {
         // a drag goes on when the pointer leaves the window; an event made by a test has no pointer to capture
         if (e.isTrusted) canvas.setPointerCapture(e.pointerId);
+        leaveTerminal();
         inEditor = e.button === 0 && editorCellAt(x(e), y(e), grid) !== null;
         if (inEditor) toEditor("press", e);
         else current((view) => view.pointerDown(x(e), y(e), e.button, e.ctrlKey, e.shiftKey));
@@ -1111,6 +1179,9 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         if (dismissed) hideMessage();
         const editor = editing?.editor;
         if (dismissed && editing === null && DISMISSING_KEYS.includes(e.key)) e.preventDefault();
+        else if (inTerminal !== null) {
+            // in a terminal node the keys are its shell's: the terminal has them already
+        }
         else if (pickerOpen() && e.key === "Escape") view.pickerDismissed();
         // while a node is edited the keys are neovim's: the terminal takes them itself, the drawn editor is handed them
         else if (editor instanceof GridEditor) {

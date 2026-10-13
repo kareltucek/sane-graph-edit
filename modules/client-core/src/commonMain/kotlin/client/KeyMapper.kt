@@ -873,7 +873,7 @@ class KeyMapper(
                             .joinToString(", ") { it.attribute ?: graph_tools.NodeType.Kind.Plain.id }
                             .ifEmpty { "content-type: no node is selected" },
                     )
-                    type == null -> gv.shell.message("content-type: `${args.trim()}` is not one (plain, markdown, code, code-<language>; each may be followed by :<file>)")
+                    type == null -> gv.shell.message("content-type: `${args.trim()}` is not one (plain, markdown, code, code-<language>, each may be followed by :<file>; terminal)")
                     else -> {
                         FileContent.forget(gv, gv.g.selectedNodes.toList().ifEmpty { listOfNotNull(gv.g.lastActiveNode) })
                         Actions.typeSelection(gv, type)

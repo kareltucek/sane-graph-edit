@@ -236,7 +236,20 @@ otherwise:
 | `code`         | code in no named language | as it is                                         |
 | `markdown`     | markdown               | formatted; ` ```mermaid ` and ` ```dot ` blocks are drawn as diagrams |
 
-`:content-type code-scala` (or `markdown`, `plain`, …) sets it for
+A `terminal` node (Electron client) is not text but a terminal with
+your shell (`$SHELL`) in it, as big as the node; making a node one
+gives it a size of 80 columns and 24 rows, to be changed by its
+corners. The shell starts when the node is first entered (as a node
+is edited: `Space`, …) and then runs on and shows what it prints,
+whether the keys are its or the graph's. `Shift+Escape`, or a click
+on the graph, gives the keys back to the graph. It ends when the
+shell exits, the node is removed or the window closes. Nothing of it
+is saved, and opening a file starts nothing: the document only says
+that the node is a terminal. The terminal is laid over the graph, so
+it is not shown in 3D mode or a headset, and is over nodes that
+overlap it; the node's text shows while there is no shell.
+
+`:content-type code-scala` (or `markdown`, `plain`, `terminal`, …) sets it for
 the selected nodes; `:content-type` alone tells it. The picker
 (right click) shows it too and sets it with a click; `code` takes
 the language typed beside it. The language is

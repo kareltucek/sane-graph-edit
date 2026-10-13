@@ -32,6 +32,15 @@ data class NodeType(
         Plain("plain"),
         Code("code"),
         Markdown("markdown"),
+
+        /**
+         * Not text at all: a terminal with the user's shell in it, in a
+         * client that can run one. The shell is started by who looks at
+         * the graph, when they enter the node, and is theirs: nothing
+         * of it is in the document, and nothing of the document is
+         * given to it. The node's text is what it shows meanwhile.
+         */
+        Terminal("terminal"),
     }
 
     /** As written in a file; null for a plain node that keeps its own text, which has no attribute. */
@@ -41,6 +50,7 @@ data class NodeType(
                 Kind.Plain -> Kind.Plain.id
                 Kind.Code -> language?.let { "${Kind.Code.id}-$it" } ?: Kind.Code.id
                 Kind.Markdown -> Kind.Markdown.id
+                Kind.Terminal -> Kind.Terminal.id
             }
             return if (source != null) "$type:$source" else type.takeIf { kind != Kind.Plain }
         }
@@ -61,6 +71,8 @@ data class NodeType(
             return when {
                 value == Kind.Plain.id -> NodeType(Kind.Plain, null, source)
                 value == Kind.Markdown.id -> NodeType(Kind.Markdown, null, source)
+                // a terminal has no text to keep anywhere
+                value == Kind.Terminal.id && source == null -> NodeType(Kind.Terminal)
                 value == Kind.Code.id -> NodeType(Kind.Code, null, source)
                 value.startsWith("${Kind.Code.id}-") && language.isNotEmpty() && language.all { it.isLetterOrDigit() || it in "_+#.-" } ->
                     NodeType(Kind.Code, language, source)
