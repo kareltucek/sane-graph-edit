@@ -980,6 +980,17 @@ function buttons() {
 
 // --- in an ordinary browser: the mouse turns the graph, the wheel brings it nearer ---
 
+// The keys pressed in this page are the window's: it is told of each, and does with it what it would with its own. It
+// takes them only from a page opened on its own machine. The browser's own keys (F5, Ctrl+R…) stay the browser's.
+window.addEventListener("keydown", (e) => {
+    const modifier = ["Shift", "Control", "Alt", "Meta", "AltGraph", "CapsLock"].includes(e.key);
+    const browsers = /^F\d+$/.test(e.key) || (e.ctrlKey && "rRlLtTwWnN".includes(e.key)) || e.altKey || e.metaKey;
+    if (!modifier && !browsers && tell !== null) {
+        e.preventDefault();
+        tell(JSON.stringify({ type: "key", key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey }));
+    }
+});
+
 /**
  * Out of a headset, with the graph on the walls: the walls as lines (in a headset the room itself is seen), and the eyes
  * go around the middle of the room with the mouse, at first looking down into it from behind where one would stand.

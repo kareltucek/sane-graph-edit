@@ -101,6 +101,11 @@ export class TerminalNode {
         return this.painted.painting;
     }
 
+    /** As if the user had typed [data]. */
+    type(data: string) {
+        if (!this.ended) this.process.write(data);
+    }
+
     /** The keys are the shell's from now on ([on]), or no longer. */
     focus(on: boolean) {
         this.focused = on;

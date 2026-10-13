@@ -116,7 +116,11 @@ const MAX_ID = 64;
 
 /** What a headset did with a controller: a button clicked on a node (0 the left one, 2 the right one), or explore mode asked into or out of. */
 type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "move"; id: string; x: number; y: number; z: number } |
-    { type: "follow"; id: string; letter: string } | { type: "jump"; back: boolean } | { type: "stand"; x: number; z: number; ax: number; az: number };
+    { type: "follow"; id: string; letter: string } | { type: "jump"; back: boolean } | { type: "stand"; x: number; z: number; ax: number; az: number } |
+    { type: "key"; key: string; ctrl: boolean; shift: boolean };
+
+/** A key's name is no longer than this (`ArrowRight`, `F12`…). */
+const MAX_KEY = 24;
 
 /** Nobody stands further from the room's origin than this, metres. */
 const MAX_STAND = 1000;
@@ -134,7 +138,10 @@ function doneOf(text: string): VrDone | null {
         const follow = sent?.type === "follow" && typeof sent.id === "string" && sent.id.length <= MAX_ID && typeof sent.letter === "string" && /^[A-Za-z]$/.test(sent.letter);
         const metres = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= MAX_STAND;
         const stand = sent?.type === "stand" && metres(sent.x) && metres(sent.z) && metres(sent.ax) && metres(sent.az);
-        return stand ? { type: "stand", x: sent.x, z: sent.z, ax: sent.ax, az: sent.az }
+        const key = sent?.type === "key" && typeof sent.key === "string" && sent.key.length >= 1 && sent.key.length <= MAX_KEY &&
+            typeof sent.ctrl === "boolean" && typeof sent.shift === "boolean";
+        return key ? { type: "key", key: sent.key, ctrl: sent.ctrl, shift: sent.shift }
+            : stand ? { type: "stand", x: sent.x, z: sent.z, ax: sent.ax, az: sent.az }
             : sent?.type === "jump" && typeof sent.back === "boolean" ? { type: "jump", back: sent.back }
             : follow ? { type: "follow", id: sent.id, letter: sent.letter }
             : click ? { type: "click", id: sent.id, button: sent.button }
@@ -159,6 +166,8 @@ export interface VrSource {
     explore: () => void;
     /** Where who wears a headset stands in the room and which way they look, seen from above (metres; x and z); the last to say so is believed. */
     stand: (x: number, z: number, ax: number, az: number) => void;
+    /** A key was pressed in the headset's page ([key] as a DOM event names it): it is the window's, as if pressed there. Only asked on this machine. */
+    key: (key: string, ctrl: boolean, shift: boolean) => void;
     /** A headset told of the room it is in: the last to do so is believed. */
     room: (surfaces: VrSurface[]) => void;
     /** What to show now; null when there is nothing. */
@@ -312,8 +321,13 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
     /** What the nodes that change fast show now ([VrLive]), as it was last sent, by node. */
     const lives = new Map<string, string>();
     const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
+    // a page of a browser says where it is from: only the page this serves is taken, not another site's that got hold of the token
+    const ownPage = (request: IncomingMessage) => {
+        const from = request.headers.origin;
+        return from === undefined || (URL.canParse(from) && new URL(from).host === request.headers.host);
+    };
     server.on("upgrade", (request, socket, head) => {
-        if (knows(request)) sockets.handleUpgrade(request, socket, head, (ws) => {
+        if (knows(request) && ownPage(request)) sockets.handleUpgrade(request, socket, head, (ws) => {
             headsets.set(ws, { scene: "", pages: [], sending: false });
             lives.forEach((text) => ws.send(text));
             ws.on("close", () => headsets.delete(ws));
@@ -329,6 +343,8 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
                 else if (done?.type === "jump") source.jump(done.back);
                 else if (done?.type === "explore") source.explore();
                 else if (done?.type === "stand") source.stand(done.x, done.z, done.ax, done.az);
+                // keys can do all the editor can: taken from this machine only, never from the local network
+                else if (done?.type === "key" && !lan) source.key(done.key, done.ctrl, done.shift);
             });
         });
         else socket.destroy();

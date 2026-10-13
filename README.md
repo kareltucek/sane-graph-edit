@@ -610,6 +610,13 @@ and nothing is opened to the network. The PIN is new each time the
 application starts, and after five wrong ones none is taken until
 it is started again.
 
+Keys pressed in the headset's page are the window's, as if pressed
+there (graph keys, the `:` line, a node's editor, a terminal node's
+shell), but only when the page is served on this machine alone: with
+`--vr-lan` no keys are taken, since they can do all the editor can.
+The browser keeps its own (F-keys, Ctrl+R/L/T/W/N, Alt). Only the
+page this serves is let in, not another site's.
+
 `--no-pin` (with `--vr`, on this machine only) asks for no PIN: for
 trying things, when typing it at every start is a nuisance. Whatever
 runs on this machine can then open the page; on the local network

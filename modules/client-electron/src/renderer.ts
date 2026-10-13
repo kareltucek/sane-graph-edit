@@ -721,6 +721,29 @@ function leaveTerminal() {
     if (was !== null) terminals.get(was.view)?.get(was.id)?.focus(false);
 }
 
+/** What a terminal is sent for a key that is not a character, by the key's name. */
+const TERMINAL_KEYS: { [key: string]: string } = {
+    Enter: "\r", Backspace: "\x7f", Tab: "\t", Escape: "\x1b", Delete: "\x1b[3~",
+    ArrowUp: "\x1b[A", ArrowDown: "\x1b[B", ArrowRight: "\x1b[C", ArrowLeft: "\x1b[D",
+    Home: "\x1b[H", End: "\x1b[F", PageUp: "\x1b[5~", PageDown: "\x1b[6~",
+};
+
+/**
+ * A key pressed in the headset's page (opened on this machine: the server takes none from the network), as if it were
+ * pressed in the window: in a terminal node it is the shell's, in the line the line's, otherwise whatever takes the keys now.
+ */
+function keyFromPage(key: string, ctrl: boolean, shift: boolean) {
+    const terminal = inTerminal === null ? undefined : terminals.get(inTerminal.view)?.get(inTerminal.id);
+    const character = [...key].length === 1;
+    if (terminal !== undefined && key === "Escape" && shift) leaveTerminal();
+    else if (terminal !== undefined && character) terminal.type(ctrl ? String.fromCharCode(key.toUpperCase().charCodeAt(0) & 31) : key);
+    else if (terminal !== undefined) terminal.type(TERMINAL_KEYS[key] ?? "");
+    else if (lineOpen() && character && !ctrl) {
+        lineInput.value += key;
+        lineInput.dispatchEvent(new Event("input"));
+    } else (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey: ctrl, shiftKey: shift, bubbles: true }));
+}
+
 /** The terminals of the view that is drawn: what their nodes show is asked of them ([paintingOf]). */
 let shownTerminals: Map<string, TerminalNode> | undefined;
 
@@ -1308,6 +1331,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             stand: (x: number, z: number, ax: number, az: number) => {
                 standing = [x, z, ax, az];
             },
+            key: keyFromPage,
         };
         // what is typed in the headset: four digits, good for a few tries only. `--no-pin`: none is asked for, but only on this
         // machine: on the local network anyone could come in
