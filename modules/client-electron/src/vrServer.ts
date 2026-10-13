@@ -52,6 +52,8 @@ export interface VrScene {
     status: string;
     /** The nodes are where they are in the room (the graph's units, y down from the floor): the graph is not put before the eyes. */
     inRoom: boolean;
+    /** With [inRoom]: the walls as seen from above, of each the two ends, x and z of each (metres). Drawn where no room is seen: out of a headset. */
+    walls?: number[];
 }
 
 /**
@@ -96,7 +98,10 @@ const MAX_ID = 64;
 
 /** What a headset did with a controller: a button clicked on a node (0 the left one, 2 the right one), or explore mode asked into or out of. */
 type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "move"; id: string; x: number; y: number; z: number } |
-    { type: "follow"; id: string; letter: string } | { type: "jump"; back: boolean };
+    { type: "follow"; id: string; letter: string } | { type: "jump"; back: boolean } | { type: "stand"; x: number; z: number; ax: number; az: number };
+
+/** Nobody stands further from the room's origin than this, metres. */
+const MAX_STAND = 1000;
 
 /** A node is not put further from the graph's origin than this, in its units. */
 const MAX_PLACE = 1e7;
@@ -109,7 +114,10 @@ function doneOf(text: string): VrDone | null {
         const place = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= MAX_PLACE;
         const move = sent?.type === "move" && typeof sent.id === "string" && sent.id.length <= MAX_ID && place(sent.x) && place(sent.y) && place(sent.z);
         const follow = sent?.type === "follow" && typeof sent.id === "string" && sent.id.length <= MAX_ID && typeof sent.letter === "string" && /^[A-Za-z]$/.test(sent.letter);
-        return sent?.type === "jump" && typeof sent.back === "boolean" ? { type: "jump", back: sent.back }
+        const metres = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= MAX_STAND;
+        const stand = sent?.type === "stand" && metres(sent.x) && metres(sent.z) && metres(sent.ax) && metres(sent.az);
+        return stand ? { type: "stand", x: sent.x, z: sent.z, ax: sent.ax, az: sent.az }
+            : sent?.type === "jump" && typeof sent.back === "boolean" ? { type: "jump", back: sent.back }
             : follow ? { type: "follow", id: sent.id, letter: sent.letter }
             : click ? { type: "click", id: sent.id, button: sent.button }
             : move ? { type: "move", id: sent.id, x: sent.x, y: sent.y, z: sent.z }
@@ -131,6 +139,8 @@ export interface VrSource {
     jump: (back: boolean) => void;
     /** A headset asks into explore mode, or out of it. */
     explore: () => void;
+    /** Where who wears a headset stands in the room and which way they look, seen from above (metres; x and z); the last to say so is believed. */
+    stand: (x: number, z: number, ax: number, az: number) => void;
     /** A headset told of the room it is in: the last to do so is believed. */
     room: (surfaces: VrSurface[]) => void;
     /** What to show now; null when there is nothing. */
@@ -289,6 +299,7 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
                 else if (done?.type === "follow") source.follow(done.id, done.letter);
                 else if (done?.type === "jump") source.jump(done.back);
                 else if (done?.type === "explore") source.explore();
+                else if (done?.type === "stand") source.stand(done.x, done.z, done.ax, done.az);
             });
         });
         else socket.destroy();

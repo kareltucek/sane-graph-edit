@@ -265,16 +265,17 @@ class JsView internal constructor(
      * [world] with the graph on the walls of a room (`:set walls`, [OnWalls]); null when that is not asked for or there are no
      * [walls] (of each the two ends as seen from above, x and z of each, metres). The nodes are where they are in the room,
      * in the graph's units and directions (x right, y down from the floor, z away from where the room's -z is), each with what
-     * is towards the room from it (`tx`, `tz`); `nodeScale` is how many times its size a node is.
+     * is towards the room from it (`tx`, `tz`); `nodeScale` is how many times its size a node is. The middle of the graph is
+     * on the wall that who is at [standing] looks at (where they stand and which way they look, x and z of each).
      *
      * Where the graph is on the walls and how big is decided when it is first asked for, and again when explore mode is
      * entered or left: so what is unfolded, moved or added later does not shift all the rest along the wall.
      */
-    fun worldOnWalls(walls: DoubleArray): dynamic {
+    fun worldOnWalls(walls: DoubleArray, standing: DoubleArray): dynamic {
         val scene = view.spaceScene(measurer, asSeen = false)
         val made = walls.toList() to Explore.isOn(view)
         val strip = if (!graph_tools.ViewModes.walls || scene.nodes.isEmpty()) null else
-            WallStrip.of(walls.asList().chunked(4).map { (x1, z1, x2, z2) -> Wall(Vector2(x1, z1), Vector2(x2, z2)) }, Vector2(0.0, 0.0), Vector2(0.0, -1.0))
+            WallStrip.of(walls.asList().chunked(4).map { (x1, z1, x2, z2) -> Wall(Vector2(x1, z1), Vector2(x2, z2)) }, Vector2(standing[0], standing[1]), Vector2(standing[2], standing[3]))
         if (strip == null) onWalls = null
         else if (onWalls?.first != made) {
             val from = Vector2(scene.nodes.minOf { it.position.x - it.shapeBounds.x / 2 }, scene.nodes.minOf { it.position.y - it.shapeBounds.y / 2 })

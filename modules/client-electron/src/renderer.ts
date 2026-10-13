@@ -719,7 +719,7 @@ function endEdit(view: client.JsView) {
  */
 function vrScene(view: client.JsView | null | undefined, grid: client.GridMetrics): VrScene | null {
     // on the walls of the room, where that is asked for and there is one (`:set walls`): then the nodes are where they are in the room
-    const onWalls = view ? view.worldOnWalls(Float64Array.from(wallsOf(roomSurfaces ?? []))) as OnWallsScene | null : null;
+    const onWalls = view ? view.worldOnWalls(Float64Array.from(wallsOf(roomSurfaces ?? [])), Float64Array.from(standing)) as OnWallsScene | null : null;
     const world = onWalls ?? (view ? view.world() as SpaceScene<SpaceSceneNode> : null);
     const size = onWalls?.nodeScale ?? 1;
     if (world !== null) {
@@ -752,8 +752,15 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         exploring: view!.exploring,
         status: statusText.slice(0, MAX_VR_STATUS),
         inRoom: onWalls !== null,
+        ...(onWalls === null ? {} : { walls: wallsOf(roomSurfaces ?? []) }),
     };
 }
+
+/**
+ * Where who wears the headset stands in the room and which way they look, as the headset last said: x and z of each, seen
+ * from above. Until it says: at the room's origin, looking where the room's -z is.
+ */
+let standing: [number, number, number, number] = [0, 0, 0, -1];
 
 /** [SpaceScene] as `worldOnWalls` gives it: each node also has what is towards the room from it (`tx`, `tz`). */
 type OnWallsScene = SpaceScene<SpaceSceneNode> & { nodeScale: number };
@@ -1098,6 +1105,9 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             // as the keys of the window: Ctrl+O back, Ctrl+I forward
             jump: (back: boolean) => app.current()?.keyDown(back ? "o" : "i", true, false),
             explore: () => app.current()?.toggleExplore(),
+            stand: (x: number, z: number, ax: number, az: number) => {
+                standing = [x, z, ax, az];
+            },
         };
         // what is typed in the headset: four digits, good for a few tries only
         const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");

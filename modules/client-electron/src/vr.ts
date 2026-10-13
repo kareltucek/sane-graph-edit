@@ -164,7 +164,11 @@ function show(got: VrScene) {
         graph.quaternion.identity();
         graph.scale.set(METRES_PER_UNIT, -METRES_PER_UNIT, -METRES_PER_UNIT);
         centred = false;
+        // out of a headset the eyes are where they were at first again ([lookAround] moved them)
+        camera.position.set(0, 1.5, 0.6);
+        camera.lookAt(START);
     }
+    showWalls(sent.walls ?? []);
     if (inRoom) {
         offset.set(0, 0, 0);
         [plain, edges, heads].forEach((it) => it.position.set(0, 0, 0));
@@ -392,6 +396,7 @@ function connect() {
         state.textContent = "connected";
         // the window may be a new one: it is told of the room again
         toldOfRoom = "";
+        stood = null;
         tell = (text) => socket.send(text);
     };
     socket.onmessage = (message) => {
@@ -869,18 +874,80 @@ function buttons() {
 
 // --- in an ordinary browser: the mouse turns the graph, the wheel brings it nearer ---
 
+/**
+ * Out of a headset, with the graph on the walls: the walls as lines (in a headset the room itself is seen), and the eyes
+ * go around the middle of the room with the mouse, at first looking down into it from behind where one would stand.
+ */
+const WALL_HEIGHT = 2.5;
+const wallsShown = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: ROOM_COLOUR }));
+wallsShown.frustumCulled = false;
+wallsShown.visible = false;
+scene.add(wallsShown);
+const around = { turned: 0.35, raised: 0.5, away: 9, middle: new THREE.Vector3(0, 1.2, 0) };
+
+function showWalls(walls: number[]) {
+    const lines: number[] = [];
+    const xs: number[] = [];
+    const zs: number[] = [];
+    for (let i = 0; i + 3 < walls.length; i += 4) {
+        const [x1, z1, x2, z2] = walls.slice(i, i + 4);
+        lines.push(x1, 0, z1, x2, 0, z2, x2, 0, z2, x2, WALL_HEIGHT, z2, x2, WALL_HEIGHT, z2, x1, WALL_HEIGHT, z1, x1, WALL_HEIGHT, z1, x1, 0, z1);
+        xs.push(x1, x2);
+        zs.push(z1, z2);
+    }
+    wallsShown.geometry.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+    if (xs.length > 0) around.middle.set((Math.min(...xs) + Math.max(...xs)) / 2, 1.2, (Math.min(...zs) + Math.max(...zs)) / 2);
+}
+
+function lookAround() {
+    const level = Math.cos(around.raised) * around.away;
+    camera.position.set(around.middle.x + Math.sin(around.turned) * level, around.middle.y + Math.sin(around.raised) * around.away, around.middle.z + Math.cos(around.turned) * level);
+    camera.lookAt(around.middle);
+}
+
 canvas.addEventListener("pointermove", (e) => {
-    if (e.buttons !== 0 && !renderer.xr.isPresenting) {
+    if (e.buttons !== 0 && !renderer.xr.isPresenting && inRoom) {
+        around.turned -= e.movementX * 0.005;
+        around.raised = Math.min(1.5, Math.max(-0.2, around.raised + e.movementY * 0.005));
+    } else if (e.buttons !== 0 && !renderer.xr.isPresenting) {
         graph.rotation.y += e.movementX * 0.005;
         graph.rotation.x += e.movementY * 0.005;
     }
 });
 canvas.addEventListener("wheel", (e) => {
-    if (!renderer.xr.isPresenting) graph.scale.multiplyScalar(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    if (!renderer.xr.isPresenting && inRoom) around.away = Math.min(40, Math.max(0.5, around.away * (e.deltaY < 0 ? 1 / 1.1 : 1.1)));
+    else if (!renderer.xr.isPresenting) graph.scale.multiplyScalar(e.deltaY < 0 ? 1.1 : 1 / 1.1);
 });
+
+/** Where one stood and looked when the window was last told, and when that was: it is told again after a step or a turn, not more often than [REPORT_MS]. */
+let stood: { at: THREE.Vector2; looks: THREE.Vector2; when: number } | null = null;
+const STEPPED = 0.25;
+const TURNED = Math.cos(15 * Math.PI / 180);
+
+/** Tell the window where one stands in the room and which way one looks, seen from above: a graph is put on the wall one looks at. */
+function tellStanding() {
+    const eyes = renderer.xr.getCamera();
+    const at = new THREE.Vector3().setFromMatrixPosition(eyes.matrixWorld);
+    const ahead = new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld);
+    const looks = new THREE.Vector2(ahead.x, ahead.z);
+    const now = performance.now();
+    // looking straight up or down one looks at no wall
+    if (tell !== null && looks.length() > 0.2 && (stood === null || now - stood.when > REPORT_MS)) {
+        looks.normalize();
+        const here = new THREE.Vector2(at.x, at.z);
+        if (stood === null || stood.at.distanceTo(here) > STEPPED || stood.looks.dot(looks) < TURNED) {
+            const round = (n: number) => Math.round(n * 100) / 100;
+            tell(JSON.stringify({ type: "stand", x: round(here.x), z: round(here.y), ax: round(looks.x), az: round(looks.y) }));
+            stood = { at: here, looks, when: now };
+        }
+    }
+}
 
 renderer.setAnimationLoop((_time, frame) => {
     if (frame) showScanned(frame);
+    if (renderer.xr.isPresenting) tellStanding();
+    else if (inRoom) lookAround();
+    wallsShown.visible = inRoom && !renderer.xr.isPresenting;
     if (!renderer.xr.isPresenting) {
         const width = canvas.clientWidth;
         const height = canvas.clientHeight;
