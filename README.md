@@ -245,9 +245,12 @@ whether the keys are its or the graph's. `Shift+Escape`, or a click
 on the graph, gives the keys back to the graph. It ends when the
 shell exits, the node is removed or the window closes. Nothing of it
 is saved, and opening a file starts nothing: the document only says
-that the node is a terminal. The terminal is laid over the graph, so
-it is not shown in 3D mode or a headset, and is over nodes that
-overlap it; the node's text shows while there is no shell.
+that the node is a terminal. What the terminal shows is drawn in the
+node, in the node's colours, wherever nodes are drawn: in 3D mode and
+in a headset too, where the trigger on the node enters it (the keys
+are still the window's: the keyboard of the computer the editor runs
+on). A headset is told of what changed a few times a second. The
+node's text shows while there is no shell.
 
 `:content-type code-scala` (or `markdown`, `plain`, `terminal`, …) sets it for
 the selected nodes; `:content-type` alone tells it. The picker

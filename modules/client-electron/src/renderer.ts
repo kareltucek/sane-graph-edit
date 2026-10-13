@@ -319,6 +319,12 @@ const paintings = new Recent<Painting | null>(10000);
  * comes.
  */
 function paintingOf(n: SceneNode): Painting | null {
+    // a terminal node whose shell runs shows what its terminal does
+    const terminal = n.type === "terminal" ? shownTerminals?.get(n.id) : undefined;
+    return terminal !== undefined ? terminal.painting(inkOf(n), n.bg ?? colours().background) : highlightingOf(n);
+}
+
+function highlightingOf(n: SceneNode): Painting | null {
     const filetype = n.type === "code" && useGridEditor ? filetypeOf(n) : "";
     const text = n.lines.join("\n");
     const background = n.bg ?? colours().background;
@@ -397,7 +403,10 @@ function textCorner(n: SceneNode): { left: number; top: number } {
 function textContent(n: SceneNode, grid: client.GridMetrics, painting: Painting | null): Content {
     const room = n.fontSize * 0.25;
     const { left: textLeft, top: textTop } = textCorner(n);
-    const box = { left: textLeft - room, top: textTop - room, width: n.textWidth + 2 * room, height: n.textHeight + 2 * room };
+    // of a node with a size of its own, what is in the node: its text may be bigger or (a terminal's label) smaller than what it shows
+    const box = n.manual
+        ? { left: n.x - n.width / 2, top: n.y - n.height / 2, width: n.width, height: n.height }
+        : { left: textLeft - room, top: textTop - room, width: n.textWidth + 2 * room, height: n.textHeight + 2 * room };
     const cells: Cells = {
         left: textLeft,
         top: textTop,
@@ -676,7 +685,7 @@ function enterTerminal(view: client.JsView, id: string) {
     terminals.set(view, ofView);
     leaveTerminal();
     if (!ofView.has(id)) {
-        ofView.set(id, new TerminalNode(document.body, FONT, () => {
+        ofView.set(id, new TerminalNode(document.body, () => {
             ofView.delete(id);
             if (inTerminal?.view === view && inTerminal.id === id) inTerminal = null;
             page.repaint();
@@ -693,29 +702,25 @@ function leaveTerminal() {
     if (was !== null) terminals.get(was.view)?.get(was.id)?.focus(false);
 }
 
+/** The terminals of the view that is drawn: what their nodes show is asked of them ([paintingOf]). */
+let shownTerminals: Map<string, TerminalNode> | undefined;
+
 /**
- * Put the terminals over their nodes as [view] shows them now ([scene]); those of other views, of nodes not seen, and all of
- * them while the graph is drawn with depth ([threeD]) are not shown, and run on. One whose node is no more is closed.
+ * Give the terminals of [view] as many rows and columns as their nodes have room for now ([scene]); one whose node is no more
+ * is closed. Those of other views run on as they are.
  */
-function placeTerminals(view: client.JsView, scene: Scene, threeD: boolean) {
+function sizeTerminals(view: client.JsView, scene: Scene, grid: client.GridMetrics) {
     if (inTerminal !== null && inTerminal.view !== view) leaveTerminal();
-    const bounds = canvas.getBoundingClientRect();
-    [...terminals].forEach(([owner, ofView]) => [...ofView].forEach(([id, terminal]) => {
-        const n = owner === view && !threeD ? scene.nodes.find((it) => it.id === id && it.type === "terminal") : undefined;
-        if (owner === view && view.nodeText(id) == null) terminal.close();
-        else if (n === undefined) terminal.place(null);
-        else {
-            const seen = viewOf(n, scene);
-            const inset = n.fontSize * 0.25;
-            terminal.place({
-                left: bounds.left + (n.x - n.width / 2 + inset) * seen.scale + seen.offsetX,
-                top: bounds.top + (n.y - n.height / 2 + inset) * seen.scale + seen.offsetY,
-                width: (n.width - 2 * inset) * seen.scale,
-                height: (n.height - 2 * inset) * seen.scale,
-                fontPx: n.fontSize * seen.scale,
-            });
+    shownTerminals = terminals.get(view);
+    [...(shownTerminals ?? [])].forEach(([id, terminal]) => {
+        const n = scene.nodes.find((it) => it.id === id && it.type === "terminal");
+        if (view.nodeText(id) == null) terminal.close();
+        else if (n !== undefined) {
+            // the room [textCorner] leaves on each side
+            const inner = (side: number) => side - n.fontSize;
+            terminal.size(inner(n.width) / (grid.advance * n.fontSize), inner(n.height) / (grid.lineHeight * n.fontSize));
         }
-    }));
+    });
 }
 
 function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
@@ -987,7 +992,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     // In 3D mode the graph is drawn with depth on the canvas below, and this one, clear, has only what is laid over the graph:
     // the node being edited with its editor, and the selection box.
     const threeD = view.threeD;
-    placeTerminals(view, scene, threeD);
+    sizeTerminals(view, scene, grid);
     spaceCanvas.style.display = threeD ? "block" : "none";
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = canvasColour(colours().background);
@@ -1222,7 +1227,13 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             pages: () => vrAtlas?.atlas ?? [],
             room: setRoom,
             // what a headset says is only that: a node that is not there is not clicked
-            click: (id: string, button: 0 | 2) => app.current()?.clickNode(id, button),
+            click: (id: string, button: 0 | 2) => {
+                const view = app.current();
+                view?.clickNode(id, button);
+                // the trigger on a terminal node goes into it, as a click on the graph elsewhere leaves it: the keys are the window's
+                leaveTerminal();
+                if (view && button === 0 && lastScene?.nodes.find((it) => it.id === id)?.type === "terminal") enterTerminal(view, id);
+            },
             move: (id: string, x: number, y: number, z: number) => app.current()?.dragNode(id, x, y, z),
             follow: (id: string, letter: string) => app.current()?.followLink(id, letter),
             // as the keys of the window: Ctrl+O back, Ctrl+I forward
