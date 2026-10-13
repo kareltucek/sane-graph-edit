@@ -1089,10 +1089,11 @@ function nodeAt(x: number, y: number): { node: VrNode; along: number } | null {
  * Out of a headset the mouse is the controller, and what moves the eyes. A click on a node (the button pressed and let go
  * of in one place) is told to the window as the right controller's trigger (the left button) or grip (the right one) on it
  * is, and the eyes go around that node from then on. The left button held on a node and moved takes the node along, as the
- * trigger does (on the walls it ends up on the wall nearest to where it was let go of); held elsewhere, or the right one, it turns the eyes around what
- * they go around. The wheel brings them nearer to that, or further from it.
+ * trigger does (on the walls it ends up on the wall nearest to where it was let go of); held on nothing it takes the view
+ * along, as in the window. The middle button or the right one, or the left one with Shift, turns the eyes around what they
+ * go around. The wheel brings them nearer to that, or further from it.
  */
-let mouse: { x: number; y: number; button: number; moved: boolean; on: { node: VrNode; along: number; grip: THREE.Vector3 } | null } | null = null;
+let mouse: { x: number; y: number; lastX: number; lastY: number; button: number; moved: boolean; on: { node: VrNode; along: number; grip: THREE.Vector3 } | null } | null = null;
 const CLICK_WITHIN_PX = 4;
 resetEyes();
 
@@ -1102,7 +1103,7 @@ canvas.addEventListener("pointerdown", (e) => {
         const { from, towards } = lookThrough(e.clientX, e.clientY);
         // where on the node it was taken: it does not jump to have its middle under the pointer
         const grip = hit === null ? null : from.addScaledVector(towards, hit.along).sub(new THREE.Vector3(hit.node.x, hit.node.y, hit.node.z));
-        mouse = { x: e.clientX, y: e.clientY, button: e.button, moved: false, on: hit === null || grip === null ? null : { ...hit, grip } };
+        mouse = { x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, button: e.button, moved: false, on: hit === null || grip === null ? null : { ...hit, grip } };
         if (e.isTrusted) canvas.setPointerCapture(e.pointerId);
     }
 });
@@ -1116,10 +1117,19 @@ canvas.addEventListener("pointermove", (e) => {
             const middle = from.addScaledVector(towards, taken.along).sub(taken.grip);
             placed.set(taken.node.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
             show(received);
+        } else if (held.moved && held.button === 0 && !e.shiftKey) {
+            // as in the window: the left button on nothing takes the view along. What the eyes go around goes with them
+            const perPixel = 2 * around.away * Math.tan(camera.fov * Math.PI / 360) / canvas.clientHeight;
+            camera.updateMatrixWorld();
+            const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+            const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+            around.middle.addScaledVector(right, -(e.clientX - held.lastX) * perPixel).addScaledVector(up, (e.clientY - held.lastY) * perPixel);
         } else if (held.moved) {
-            around.turned -= e.movementX * 0.005;
-            around.raised = Math.min(1.5, Math.max(-1.5, around.raised + e.movementY * 0.005));
+            around.turned -= (e.clientX - held.lastX) * 0.005;
+            around.raised = Math.min(1.5, Math.max(-1.5, around.raised + (e.clientY - held.lastY) * 0.005));
         }
+        held.lastX = e.clientX;
+        held.lastY = e.clientY;
     }
 });
 canvas.addEventListener("pointerup", (e) => {
@@ -1136,8 +1146,11 @@ canvas.addEventListener("pointerup", (e) => {
         if (held.button === 0) goAround(placeOf(on.node));
     }
 });
-// the right button is a button here, not the browser's menu
+// the right button is a button here, not the browser's menu; nor does the middle one start the browser's scrolling
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+canvas.addEventListener("mousedown", (e) => {
+    if (e.button === 1) e.preventDefault();
+});
 canvas.addEventListener("wheel", (e) => {
     if (!renderer.xr.isPresenting) around.away = Math.min(FURTHEST, Math.max(NEAREST, around.away * (e.deltaY < 0 ? 1 / 1.1 : 1.1)));
 });
