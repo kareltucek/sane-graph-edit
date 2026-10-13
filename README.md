@@ -363,7 +363,9 @@ while on:
   faint node does nothing. The pinned nodes are the mark `!`: `m!`
   pins the selection and nothing else, `m+!` / `m-!` add to it and
   take from it, `'!` selects them. Nodes that come to be seen are
-  moved next to their neighbours, as with `dynamic` below. Apart
+  moved next to their neighbours, as with `dynamic` below, the faint
+  ones on entering the mode too; a faint node that is in the way of
+  a new one is pushed aside, the pinned ones stay. Apart
   from those moves nothing is changed, saved or undone: leaving the
   mode shows what was shown before.
 - `dynamic` — a node that becomes visible (by any of the above, or

@@ -19,7 +19,9 @@ import graph_tools.Node
  * The mode is the view's own: the hide levels are not touched, so
  * leaving it brings back what was seen before. What does reach the
  * document is where nodes are: those that come to be seen are placed
- * next to their neighbours ([graph_tools.DynamicPlacement]).
+ * next to their neighbours ([graph_tools.DynamicPlacement]), on
+ * entering the mode too: the pinned nodes stay where they are and
+ * the faint ones are put next to them.
  */
 object Explore {
     fun isOn(view: EditorView): Boolean = view.g.pinned != null
@@ -121,7 +123,11 @@ object Explore {
         when {
             on == isOn(view) -> Unit
             on && kept.isEmpty() -> view.shell.message("explore: the graph has no nodes")
-            on -> g.pinned = kept
+            on -> {
+                g.pinned = kept
+                // all but the pinned nodes count as newly shown: the faint ones are put next to them ([graph_tools.DynamicPlacement])
+                g.dynamicBaseline = kept
+            }
             else -> {
                 g.pinned = null
                 // or all that comes back would count as newly shown, and be moved ([graph_tools.DynamicPlacement])

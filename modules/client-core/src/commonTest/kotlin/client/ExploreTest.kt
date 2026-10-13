@@ -58,6 +58,19 @@ class ExploreTest {
     }
 
     @Test
+    fun `entering the mode puts the faint nodes next to the pinned ones, which stay`() {
+        select(a)
+        Explore.set(view, true)
+        graph_tools.DynamicPlacement.place(g)
+        assertEquals(Vector2(300, 100), a.position)
+        assertTrue(up.position.x < a.position.x && b.position.x > a.position.x && side.position.x > a.position.x)
+        assertTrue(listOf(up, b, side).all { kotlin.math.abs(it.position.y - a.position.y) < 100 }, "level with a, about")
+        assertEquals(Vector2(700, 100), c.position)
+        g.history.undo()
+        assertEquals(Vector2(500, 300), side.position)
+    }
+
+    @Test
     fun `with nothing selected the mode starts from the nodes that fewest edges come into, of each part of the graph`() {
         // a cycle of its own, beside the chain
         val round = listOf(Node("r1", Vector2(100, 700)), Node("r2", Vector2(300, 700)), Node("r3", Vector2(200, 900)))
