@@ -373,6 +373,16 @@ while on:
   child in a column right of its parents, a parent left of its
   children, stacked vertically without overlapping anything visible.
   A real move: one undo step per batch, saved with the file.
+- `walls` — in a headset (`--vr`) the graph is on the walls of the
+  room instead of before the eyes: flat as it is, bent around the
+  room along the walls, its middle on the wall straight ahead at the
+  height of the eyes; past the last wall it goes on over the first.
+  It is made smaller to fit once around the room, but in explore
+  mode, where it is as big as it is. Where it is on the walls is
+  decided when it is first shown so, and when explore mode is entered
+  or left. Doors and windows are not known of. Nothing in the graph
+  is moved; on the walls nodes can be clicked, not dragged. Needs
+  walls: the headset's room must be set up (or `:room-mock`).
 - `discard` — never ask about unsaved changes: opening, following
   links, reloading, jumping, closing tabs and quitting discard them.
 

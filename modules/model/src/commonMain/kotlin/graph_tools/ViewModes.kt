@@ -27,6 +27,9 @@ object ViewModes {
     /** `:set dynamic` — nodes that become visible are moved next to the visible ones ([DynamicPlacement]). */
     var dynamic: Boolean = false
 
+    /** `:set walls` — where there is a room (a headset), the graph is shown on its walls. */
+    var walls: Boolean = false
+
     /**
      * `:set discard` — never ask about unsaved changes: opening,
      * following links, reloading, jumping, closing tabs and quitting

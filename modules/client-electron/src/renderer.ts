@@ -4,7 +4,7 @@ import { Canvas2D, Cells, GridEditor, Painting, StatusPiece } from "./gridEditor
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
-import { mockRoom, outlines } from "./room";
+import { mockRoom, outlines, wallsOf } from "./room";
 import { startVr, VrScene, VrSurface } from "./vrServer";
 
 // The page: draws what the client core says the view shows and
@@ -718,7 +718,10 @@ function endEdit(view: client.JsView) {
  * when this window draws the graph flat.
  */
 function vrScene(view: client.JsView | null | undefined, grid: client.GridMetrics): VrScene | null {
-    const world = view ? view.world() as SpaceScene<SpaceSceneNode> : null;
+    // on the walls of the room, where that is asked for and there is one (`:set walls`): then the nodes are where they are in the room
+    const onWalls = view ? view.worldOnWalls(Float64Array.from(wallsOf(roomSurfaces ?? []))) as OnWallsScene | null : null;
+    const world = onWalls ?? (view ? view.world() as SpaceScene<SpaceSceneNode> : null);
+    const size = onWalls?.nodeScale ?? 1;
     if (world !== null) {
         // pictures of its own, finer than the window's: a headset shows a node from near
         vrAtlas ??= new SpaceRenderer(document.createElement("canvas"), () => {});
@@ -730,13 +733,16 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         nodes: world.nodes.map((n) => {
             const place = atlas.placeOf(n.id);
             const leads: string[] | undefined = links[n.id];
+            const towards = n as { tx?: number; tz?: number };
             const node = {
-                id: n.id, x: n.x, y: n.y, z: n.z, width: n.width, height: n.height, fill: n.bg ?? colours().background, ink: inkOf(n),
+                id: n.id, x: n.x, y: n.y, z: n.z, width: n.width * size, height: n.height * size, fill: n.bg ?? colours().background, ink: inkOf(n),
                 ...(leads === undefined ? {} : { links: leads.slice(0, MAX_VR_LINKS).map((it) => it.slice(0, MAX_VR_LINK)) }),
+                ...(towards.tx === undefined || towards.tz === undefined ? {} : { tx: towards.tx, tz: towards.tz }),
             };
+            // a node shown smaller: its picture has more pixels to a unit
             return place === null ? node : {
                 ...node, page: place.page, px: place.x, py: place.y, pw: place.width, ph: place.height,
-                pixelsPerUnit: place.pixelsPerUnit, middleX: place.middleX, middleY: place.middleY,
+                pixelsPerUnit: place.pixelsPerUnit / size, middleX: place.middleX, middleY: place.middleY,
             };
         }),
         edges: world.edges.map((e) => [e.from, e.to]),
@@ -745,8 +751,12 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         ink: colours().foreground,
         exploring: view!.exploring,
         status: statusText.slice(0, MAX_VR_STATUS),
+        inRoom: onWalls !== null,
     };
 }
+
+/** [SpaceScene] as `worldOnWalls` gives it: each node also has what is towards the room from it (`tx`, `tz`). */
+type OnWallsScene = SpaceScene<SpaceSceneNode> & { nodeScale: number };
 
 /** The status line as it was last shown, for a headset to show too; no more of it than this. */
 let statusText = "";

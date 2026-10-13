@@ -961,6 +961,7 @@ class KeyMapper(
             "show-parents" -> graph_tools.ViewModes.showParents = change(graph_tools.ViewModes.showParents)
             "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
+            "walls" -> graph_tools.ViewModes.walls = change(graph_tools.ViewModes.walls)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
             // of the graph shown, not of all of them
             "explore" -> activeView?.let { Explore.set(it, change(Explore.isOn(it))) }
@@ -1162,6 +1163,12 @@ class KeyMapper(
         sb.appendLine("                    of their children, stacked without overlap.")
         sb.appendLine("                    A real move: one undo step, saved with the file.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.dynamic) "on" else "off"}.")
+        sb.appendLine()
+        sb.appendLine("  walls             In a headset the graph is on the walls of the")
+        sb.appendLine("                    room, bent around it, its middle straight ahead;")
+        sb.appendLine("                    made smaller to fit, but in explore mode, where")
+        sb.appendLine("                    it is as big as it is. Nothing is moved.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.walls) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("  discard           Never ask about unsaved changes: opening,")
         sb.appendLine("                    following links, reloading, jumping, closing")
@@ -1388,7 +1395,7 @@ class KeyMapper(
         val APPLICATION_FLAGS = mutableSetOf<String>()
 
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
-        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "discard", "3d", "explore")
+        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "walls", "discard", "3d", "explore")
 
         /** A button of the mouse on a node, as a key that can be mapped (`:map <RightMouse> zO`): the left one clicked, the right one pressed. */
         const val LEFT_MOUSE = "<LeftMouse>"

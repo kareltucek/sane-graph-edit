@@ -57,3 +57,18 @@ export function outlines(surfaces: VrSurface[], middle: [number, number, number]
     };
     return Float64Array.from(surfaces.flatMap((s) => s.polygon.flatMap((corner, i) => [...inGraph(s, corner), ...inGraph(s, s.polygon[(i + 1) % s.polygon.length])])));
 }
+
+/**
+ * The walls among [surfaces] as seen from above: of each the two ends, x and z of each after each other (metres). A wall is a
+ * surface that stands and is called one; doors and windows, which lie in walls, are not.
+ */
+export function wallsOf(surfaces: VrSurface[]): number[] {
+    return surfaces.filter((s) => s.orientation === "vertical" && s.label === "wall" && s.polygon.length > 0).flatMap((s) => {
+        // along the one of the surface's own two directions that is level (the other goes up the wall)
+        const m = s.matrix;
+        const level = Math.abs(m[1]) <= Math.abs(m[9]) ? 0 : 1;
+        const along = s.polygon.map((p) => p[level]);
+        const end = (a: number) => [m[level * 8] * a + m[12], m[level * 8 + 2] * a + m[14]];
+        return [...end(Math.min(...along)), ...end(Math.max(...along))];
+    });
+}

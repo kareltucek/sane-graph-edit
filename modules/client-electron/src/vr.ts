@@ -44,6 +44,8 @@ let shown: VrScene | null = null;
 let received: VrScene | null = null;
 const placed = new Map<string, { at: { x: number; y: number; z: number }; until: number }>();
 let centred = false;
+/** The graph is on the walls of the room ([VrScene.inRoom]), not before the eyes. */
+let inRoom = false;
 
 function textureOf(page: number): THREE.Texture {
     while (textures.length <= page) {
@@ -114,7 +116,19 @@ function show(got: VrScene) {
     heads.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(sent.edges.length * 9), 3));
     heads.material.color.set(sent.ink);
 
-    if (!centred && sent.nodes.length > 0) {
+    if (sent.inRoom !== inRoom) {
+        // onto the walls: the graph's units are the room's then, from the room's own origin; off them: before the eyes again
+        inRoom = sent.inRoom;
+        scene.attach(graph);
+        graph.position.copy(inRoom ? new THREE.Vector3() : START);
+        graph.quaternion.identity();
+        graph.scale.set(METRES_PER_UNIT, -METRES_PER_UNIT, -METRES_PER_UNIT);
+        centred = false;
+    }
+    if (inRoom) {
+        offset.set(0, 0, 0);
+        [plain, edges, heads].forEach((it) => it.position.set(0, 0, 0));
+    } else if (!centred && sent.nodes.length > 0) {
         // the middle of the graph where the group is: in front of the eyes
         const box = new THREE.Box3().setFromArray(sent.nodes.flatMap((n) => [n.x, n.y, n.z]));
         const middle = box.getCenter(new THREE.Vector3());
@@ -247,7 +261,9 @@ function face() {
         const up = new THREE.Vector3();
         const axes = now.axes;
         sent.nodes.forEach((n, i) => {
-            towards.set(head.x - n.x, head.y - n.y, head.z - n.z).normalize();
+            // a node on a wall lies on it, its face to the room
+            if (n.tx !== undefined && n.tz !== undefined) towards.set(n.tx, 0, n.tz).normalize();
+            else towards.set(head.x - n.x, head.y - n.y, head.z - n.z).normalize();
             right.crossVectors(upright, towards);
             // seen from right above or below: any way is upright
             if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
@@ -721,7 +737,8 @@ function pointWith(right: typeof hands[number]) {
         if (holding !== null) {
             // the node held stays as far along the ray as it was taken, and goes where the ray goes
             const middle = from.clone().addScaledVector(towards, holding.along).sub(holding.grip);
-            holding.moved = holding.moved || middle.distanceTo(holding.from) > MOVED_FROM;
+            // on the walls a node is not moved: where it is there is not where it is in the graph
+            holding.moved = !inRoom && (holding.moved || middle.distanceTo(holding.from) > MOVED_FROM);
             if (holding.moved && received !== null) {
                 placed.set(holding.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
                 show(received);

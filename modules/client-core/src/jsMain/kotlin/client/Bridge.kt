@@ -258,6 +258,45 @@ class JsView internal constructor(
      */
     fun world(): dynamic = spaceOf(view.spaceScene(measurer, asSeen = false))
 
+    /** How the graph is on the walls now, and of what that was made: the walls, and whether the view was in explore mode. */
+    private var onWalls: Pair<Any, OnWalls>? = null
+
+    /**
+     * [world] with the graph on the walls of a room (`:set walls`, [OnWalls]); null when that is not asked for or there are no
+     * [walls] (of each the two ends as seen from above, x and z of each, metres). The nodes are where they are in the room,
+     * in the graph's units and directions (x right, y down from the floor, z away from where the room's -z is), each with what
+     * is towards the room from it (`tx`, `tz`); `nodeScale` is how many times its size a node is.
+     *
+     * Where the graph is on the walls and how big is decided when it is first asked for, and again when explore mode is
+     * entered or left: so what is unfolded, moved or added later does not shift all the rest along the wall.
+     */
+    fun worldOnWalls(walls: DoubleArray): dynamic {
+        val scene = view.spaceScene(measurer, asSeen = false)
+        val made = walls.toList() to Explore.isOn(view)
+        val strip = if (!graph_tools.ViewModes.walls || scene.nodes.isEmpty()) null else
+            WallStrip.of(walls.asList().chunked(4).map { (x1, z1, x2, z2) -> Wall(Vector2(x1, z1), Vector2(x2, z2)) }, Vector2(0.0, 0.0), Vector2(0.0, -1.0))
+        if (strip == null) onWalls = null
+        else if (onWalls?.first != made) {
+            val from = Vector2(scene.nodes.minOf { it.position.x - it.shapeBounds.x / 2 }, scene.nodes.minOf { it.position.y - it.shapeBounds.y / 2 })
+            val to = Vector2(scene.nodes.maxOf { it.position.x + it.shapeBounds.x / 2 }, scene.nodes.maxOf { it.position.y + it.shapeBounds.y / 2 })
+            onWalls = made to OnWalls.of(strip, from, to, fitted = !Explore.isOn(view))
+        }
+        return onWalls?.second?.let { on ->
+            val o = spaceOf(scene)
+            scene.nodes.forEachIndexed { i, n ->
+                val place = on.place(Point3(n.position, scene.depths[i]))
+                val j = o.nodes[i]
+                j.x = place.x / OnWalls.METRES_PER_UNIT
+                j.y = -place.y / OnWalls.METRES_PER_UNIT
+                j.z = -place.z / OnWalls.METRES_PER_UNIT
+                j.tx = place.out.x
+                j.tz = -place.out.y
+            }
+            o.nodeScale = on.scale
+            o
+        }
+    }
+
     /** Points of the graph (x, y and z of each after each other) as this view sees them: where [space] would have nodes that are there. */
     fun seen(points: DoubleArray): DoubleArray =
         points.asList().chunked(3).flatMap { (x, y, z) -> view.viewTransform.toView(Point3(x, y, z)).let { listOf(it.x, it.y, it.z) } }.toDoubleArray()
