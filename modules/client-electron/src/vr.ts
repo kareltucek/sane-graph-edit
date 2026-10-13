@@ -34,6 +34,44 @@ const plain = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMate
 const edges = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
 const heads = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }));
 graph.add(plain, edges, heads);
+
+/**
+ * What of the graph is behind something of the room, as the eyes see it, is still shown, this faint: the graph is where one
+ * put it, whatever stands there. The room's shapes are drawn first, unseen, only as how far away they are ([hides]); then each
+ * mesh of the graph once more ([behind]), faint, and only where it is further than that; then the graph as ever, which
+ * what is nearer hides. So an edge that goes into a table turns faint just where it enters it.
+ */
+const BEHIND_OPACITY = 0.1;
+const ORDER_ROOM = -10;
+const ORDER_BEHIND = -5;
+const twins: { of: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; twin: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> }[] = [];
+
+function behind(of: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>) {
+    const material = of.material.clone();
+    // blended, yet drawn among what is not see-through: before the graph itself, or one node would show faint through another
+    material.blending = THREE.CustomBlending;
+    material.blendSrc = THREE.SrcAlphaFactor;
+    material.blendDst = THREE.OneMinusSrcAlphaFactor;
+    material.opacity = BEHIND_OPACITY;
+    material.alphaTest = of.material.alphaTest * BEHIND_OPACITY;
+    material.depthFunc = THREE.GreaterDepth;
+    material.depthWrite = false;
+    const twin = new THREE.Mesh(of.geometry, material);
+    twin.frustumCulled = false;
+    twin.renderOrder = ORDER_BEHIND;
+    of.add(twin);
+    twins.push({ of, twin });
+}
+
+/** [shape] of the room as something that hides: nothing of it is seen, what is behind it is not drawn. */
+function hides(shape: THREE.BufferGeometry): THREE.Mesh {
+    const hiding = new THREE.Mesh(shape, new THREE.MeshBasicMaterial({ colorWrite: false, side: THREE.DoubleSide }));
+    hiding.renderOrder = ORDER_ROOM;
+    hiding.frustumCulled = false;
+    return hiding;
+}
+
+[plain, edges, heads].forEach(behind);
 // what they are made of changes: where they were when first drawn says nothing of whether they are in view
 [plain, edges, heads].forEach((it) => {
     it.frustumCulled = false;
@@ -59,6 +97,7 @@ function textureOf(page: number): THREE.Texture {
         mesh.frustumCulled = false;
         pictured.push(mesh);
         graph.add(mesh);
+        behind(mesh);
     }
     return textures[page];
 }
@@ -115,6 +154,7 @@ function show(got: VrScene) {
     edges.material.color.set(sent.ink);
     heads.geometry.setAttribute("position", new THREE.BufferAttribute(new Float32Array(sent.edges.length * 9), 3));
     heads.material.color.set(sent.ink);
+    twins.forEach(({ of, twin }) => twin.material.color.copy(of.material.color));
 
     if (sent.inRoom !== inRoom) {
         // onto the walls: the graph's units are the room's then, from the room's own origin; off them: before the eyes again
@@ -533,7 +573,7 @@ function showScanned(frame: XRFrame) {
             shape.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
             shape.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
             const shown = new THREE.LineSegments(new THREE.WireframeGeometry(shape), new THREE.LineBasicMaterial({ color: ROOM_COLOUR, transparent: true, opacity: 0.25 }));
-            shape.dispose();
+            shown.add(hides(shape));
             shown.matrixAutoUpdate = false;
             room.add(shown);
             scanned.set(mesh, { shown, changed: mesh.lastChangedTime });
@@ -543,6 +583,16 @@ function showScanned(frame: XRFrame) {
         shown.visible = pose !== undefined && pose !== null;
         if (pose) shown.matrix.fromArray(pose.transform.matrix);
     });
+}
+
+// A made-up thing in the room, for trying how it hides where there is no headset: a box in front of the right of the graph,
+// asked for with `mock` in the page's address.
+if (new URL(window.location.href).searchParams.has("mock")) {
+    const box = new THREE.BoxGeometry(0.12, 0.3, 0.12);
+    const shown = new THREE.LineSegments(new THREE.WireframeGeometry(box), new THREE.LineBasicMaterial({ color: ROOM_COLOUR, transparent: true, opacity: 0.25 }));
+    shown.add(hides(box));
+    shown.position.set(GRAPH_AT[0] + 0.1, GRAPH_AT[1], GRAPH_AT[2] + 0.2);
+    room.add(shown);
 }
 
 // --- the controllers ---
