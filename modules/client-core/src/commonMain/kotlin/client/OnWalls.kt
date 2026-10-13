@@ -25,6 +25,15 @@ class OnWalls(private val strip: WallStrip, private val middle: Vector2, val sca
         return Place(stands.x, EYES - (at.y - middle.y) * scale * METRES_PER_UNIT, stands.y, on.out)
     }
 
+    /**
+     * The other way around: where in the graph a node is that was at [was] there and is put at [x], [y], [z] of the
+     * room: on the wall nearest to that, as high as it was put. How far it stands out of the wall stays as it was.
+     */
+    fun unplace(x: Double, y: Double, z: Double, was: Point3): Point3 {
+        val along = strip.along(Vector2(x, z), near = (was.x - middle.x) * scale * METRES_PER_UNIT)
+        return Point3(middle.x + along / (scale * METRES_PER_UNIT), middle.y + (EYES - y) / (scale * METRES_PER_UNIT), was.z)
+    }
+
     companion object {
         /** A unit of the graph in a room, as the pages have it (`room.ts`). */
         const val METRES_PER_UNIT = 0.001

@@ -37,6 +37,20 @@ class WallStrip private constructor(private val walls: List<Wall>, private val i
         return OnWall(at, into(direction, at, inside))
     }
 
+    /**
+     * How far along the strip the place on the walls nearest to [p] is: the other way around from [at]. The strip goes
+     * around and around, so there are many such distances, once around apart: the one nearest to [near] is given.
+     */
+    fun along(p: Vector2, near: Double): Double {
+        val ends = walls.runningFold(0.0) { sum, w -> sum + w.length }
+        val nearest = walls.indices.minBy { i ->
+            val w = walls[i]
+            (w.from + (w.to - w.from).toUnit() * nearestAlong(w, p) - p).length()
+        }
+        val once = ((ends[nearest] + nearestAlong(walls[nearest], p) - start) % length + length) % length
+        return once + kotlin.math.round((near - once) / length) * length
+    }
+
     companion object {
         /** The direction to the right of who looks along [d], seen from above (x right, z towards the viewer of the plan). */
         private fun rightOf(d: Vector2) = Vector2(-d.y, d.x)

@@ -417,7 +417,9 @@ while on:
   mode, where it is as big as it is. Where it is on the walls is
   decided when it is first shown so, and when explore mode is entered
   or left. Doors and windows are not known of. Nothing in the graph
-  is moved; on the walls nodes can be clicked, not dragged. Needs
+  is moved by this; a node taken and let go of somewhere in the room
+  is put on the wall nearest to that place, as high as it was let go
+  of. Needs
   walls: the headset's room must be set up (or `:room-mock`). The
   headset's page opened in a browser on the desktop shows the same
   with the walls as lines; the mouse goes around the room. What of
@@ -616,7 +618,7 @@ it is started again.
 In the page opened in a browser on the desktop the mouse is the
 controller: a click on a node is the trigger on it, a right click
 the grip; the left button held on a node and moved takes the node
-along (not on the walls). Held elsewhere, or the right button, it
+along. Held elsewhere, or the right button, it
 turns the eyes around the node last clicked (at first: the middle of
 the graph, or of the room); the wheel brings them nearer to it or
 further away. Nodes face whoever looks, on the walls too.

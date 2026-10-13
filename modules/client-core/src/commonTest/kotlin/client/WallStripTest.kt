@@ -58,6 +58,21 @@ class WallStripTest {
     }
 
     @Test
+    fun `a place in the room is a place of the graph again - on the nearest wall, on the lap of the strip the node was on`() {
+        val on = OnWalls.of(strip, Vector2(-1000, -500), Vector2(1000, 500), fitted = true)
+        listOf(Point3(0.0, 0.0, 0.0), Point3(1000.0, 200.0, 0.0), Point3(2500.0, -300.0, 0.0), Point3(-4000.0, 100.0, 0.0), Point3(20500.0, 0.0, 0.0)).forEach { at ->
+            val place = on.place(at)
+            val back = on.unplace(place.x, place.y, place.z, at)
+            assertTrue(kotlin.math.abs(back.x - at.x) < 1e-6 && kotlin.math.abs(back.y - at.y) < 1e-6, "$at came back as $back")
+        }
+        // let go of in the middle of the room, nearer to the wall on the right (x = 2) than to the one ahead: it is put on that one
+        val moved = on.unplace(1.5, 1.0, 0.0, Point3(0.0, 0.0, 0.0))
+        val there = on.place(moved)
+        near(Vector2(2 - OnWalls.OFF_WALL, 0.0), Vector2(there.x, there.z))
+        assertTrue(kotlin.math.abs(there.y - 1.0) < 1e-9)
+    }
+
+    @Test
     fun `a graph too big for the walls is made smaller to fit, but not when asked as it is`() {
         val wide = OnWalls.of(strip, Vector2(0, 0), Vector2(36000, 100), fitted = true)
         assertEquals(0.5, wide.scale)

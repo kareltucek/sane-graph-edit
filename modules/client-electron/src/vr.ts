@@ -896,8 +896,7 @@ function pointWith(right: typeof hands[number]) {
         if (holding !== null) {
             // the node held stays as far along the ray as it was taken, and goes where the ray goes
             const middle = from.clone().addScaledVector(towards, holding.along).sub(holding.grip);
-            // on the walls a node is not moved: where it is there is not where it is in the graph
-            holding.moved = !inRoom && (holding.moved || middle.distanceTo(holding.from) > MOVED_FROM);
+            holding.moved = holding.moved || middle.distanceTo(holding.from) > MOVED_FROM;
             if (holding.moved && received !== null) {
                 placed.set(holding.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
                 show(received);
@@ -1090,7 +1089,7 @@ function nodeAt(x: number, y: number): { node: VrNode; along: number } | null {
  * Out of a headset the mouse is the controller, and what moves the eyes. A click on a node (the button pressed and let go
  * of in one place) is told to the window as the right controller's trigger (the left button) or grip (the right one) on it
  * is, and the eyes go around that node from then on. The left button held on a node and moved takes the node along, as the
- * trigger does (not on the walls, where no node is moved); held elsewhere, or the right one, it turns the eyes around what
+ * trigger does (on the walls it ends up on the wall nearest to where it was let go of); held elsewhere, or the right one, it turns the eyes around what
  * they go around. The wheel brings them nearer to that, or further from it.
  */
 let mouse: { x: number; y: number; button: number; moved: boolean; on: { node: VrNode; along: number; grip: THREE.Vector3 } | null } | null = null;
@@ -1111,7 +1110,7 @@ canvas.addEventListener("pointermove", (e) => {
     const held = mouse;
     if (held !== null && e.buttons !== 0 && !renderer.xr.isPresenting) {
         held.moved = held.moved || Math.hypot(e.clientX - held.x, e.clientY - held.y) > CLICK_WITHIN_PX;
-        const taken = held.button === 0 && !inRoom ? held.on : null;
+        const taken = held.button === 0 ? held.on : null;
         if (held.moved && taken !== null && received !== null) {
             const { from, towards } = lookThrough(e.clientX, e.clientY);
             const middle = from.addScaledVector(towards, taken.along).sub(taken.grip);

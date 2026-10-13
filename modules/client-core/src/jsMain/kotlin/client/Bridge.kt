@@ -427,9 +427,19 @@ class JsView internal constructor(
         button(domButton)?.let { view.pointer.clicked(id, it) }
     }
 
-    /** The node [id] taken and put at x, y, z of the graph, by what holds nodes in space (a headset's controller). */
+    /**
+     * The node [id] taken and put at x, y, z of the graph, by what holds nodes in space (a headset's controller). With the
+     * graph on the walls ([worldOnWalls]) that is a place in the room, as the nodes were given: the node is then put on the
+     * wall nearest to it.
+     */
     fun dragNode(id: String, x: Double, y: Double, z: Double) {
-        view.pointer.dragged(id, Point3(x, y, z))
+        val on = onWalls?.second
+        val node = view.g.node(id)
+        val to = if (on == null || node == null) Point3(x, y, z) else {
+            val m = OnWalls.METRES_PER_UNIT
+            on.unplace(x * m, -y * m, -z * m, Point3(node.position, graph_tools.Depth.of(node)))
+        }
+        view.pointer.dragged(id, to)
     }
 
     /** The links of the nodes shown that have any: by the node's id, each link as its letter and, after a space, where it leads. */
