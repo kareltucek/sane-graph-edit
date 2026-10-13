@@ -108,7 +108,7 @@ class DynamicPlacementTest {
     }
 
     @Test
-    fun `explore mode - what is unfolded pushes the faint nodes in its way off, the pinned ones stay, all in one undo step`() {
+    fun `explore mode - what is unfolded pushes the faint nodes in its way off, the pinned ones stay, with nothing to undo`() {
         val g = Graph()
         val root = Node("root", Vector2(0, 0))
         // the last kid is where the grandkids are going to be put
@@ -133,8 +133,8 @@ class DynamicPlacementTest {
         assertTrue(grandkids.all { (it.position - kids[1].position).length() < 1000 }, "the grandkids are next to their parent")
         assertTrue(kids[3].position != before.getValue(kids[3]), "the faint node gave way")
         assertTrue(grandkids.any { abs(it.position.y - kids[1].position.y) < 10 }, "a grandkid is level with its parent")
-        g.history.undo()
-        assertEquals(before, g.nodes.associateWith { it.position })
+        // where nodes are in explore mode is not the document's: nothing to undo
+        assertFalse(g.history.canUndo)
     }
 
     @Test

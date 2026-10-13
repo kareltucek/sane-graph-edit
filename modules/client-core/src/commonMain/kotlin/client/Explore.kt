@@ -18,11 +18,13 @@ import utils.Vector2
  * the right one folds ([hide]).
  *
  * The mode is the view's own: the hide levels are not touched, so
- * leaving it brings back what was seen before. What does reach the
- * document is where nodes are: those that come to be seen are placed
- * next to their neighbours ([graph_tools.DynamicPlacement]), on
- * entering the mode too: the pinned nodes stay where they are and
- * the faint ones are put next to them.
+ * leaving it brings back what was seen before. Nor does where nodes
+ * are reach the document: in the mode the nodes it starts from are
+ * put together ([arrangement]) and those that come to be seen next
+ * to their neighbours ([graph_tools.DynamicPlacement]), but only for
+ * as long as it is on. That is not undone and makes no document
+ * modified, and leaving the mode puts every node back where it was
+ * ([Graph.beforeExplore]); also one the user moved meanwhile.
  */
 object Explore {
     fun isOn(view: EditorView): Boolean = view.g.pinned != null
@@ -172,9 +174,22 @@ object Explore {
     private fun arrange(view: EditorView, pins: Set<Node>) {
         val g = view.g
         val to = arrangement(g, pins, view.viewTransform.toWorkspace(view.size / 2))
-        if (to.isNotEmpty()) {
-            g.commit(graph_tools.MoveNodesCommand(g, to.keys.associateWith { it.position }, to.toMutableMap(), coalesceWindowMs = -1))
+        // for as long as the mode is on only: no command, nothing to undo ([leave] puts the nodes back)
+        to.forEach { (n, p) ->
+            n.position = p
+            g.needsRecomputing(n)
         }
+    }
+
+    /** Put every node back where it was when the mode was entered: where nodes were in the mode is not the document's. */
+    private fun putBack(g: Graph) {
+        g.beforeExplore?.forEach { (n, p) ->
+            if (n in g.nodes && n.position != p) {
+                n.position = p
+                g.needsRecomputing(n)
+            }
+        }
+        g.beforeExplore = null
     }
 
     fun set(view: EditorView, on: Boolean) {
@@ -184,6 +199,7 @@ object Explore {
             on == isOn(view) -> Unit
             on && kept.isEmpty() -> view.shell.message("explore: the graph has no nodes")
             on -> {
+                g.beforeExplore = g.nodes.associateWith { it.position }
                 arrange(view, kept)
                 g.pinned = kept
                 // all but the pinned nodes count as newly shown: the faint ones are put next to them ([graph_tools.DynamicPlacement])
@@ -191,6 +207,7 @@ object Explore {
             }
             else -> {
                 g.pinned = null
+                putBack(g)
                 // or all that comes back would count as newly shown, and be moved ([graph_tools.DynamicPlacement])
                 g.dynamicBaseline = null
             }

@@ -66,8 +66,12 @@ class ExploreTest {
         assertTrue(up.position.x < a.position.x && b.position.x > a.position.x && side.position.x > a.position.x)
         assertTrue(listOf(up, b, side).all { kotlin.math.abs(it.position.y - a.position.y) < 100 }, "level with a, about")
         assertEquals(Vector2(700, 100), c.position)
-        g.history.undo()
+        // not the document's: nothing to undo, and leaving the mode puts the nodes back
+        assertFalse(g.history.canUndo)
+        Explore.set(view, false)
         assertEquals(Vector2(500, 300), side.position)
+        assertEquals(Vector2(100, 100), up.position)
+        assertFalse(g.history.canUndo)
     }
 
     @Test
@@ -84,8 +88,12 @@ class ExploreTest {
         assertEquals(c.position.x, other.position.x)
         assertTrue(up.position.y < c.position.y && c.position.y < other.position.y)
         assertTrue(listOf(up, c, other).all { (it.position - middle).length() < 500 }, "near the middle")
-        g.history.undo()
+        assertFalse(g.history.canUndo)
+        // saved in the mode, the file has the nodes where the document does
+        assertTrue("pos=\"-9000,50!\"" in parser_dot.Serializer(g).serialize().replace(".0", ""), parser_dot.Serializer(g).serialize())
+        Explore.set(view, false)
         assertEquals(Vector2(-9000, 50), up.position)
+        assertEquals(Vector2(7000, 4000), other.position)
     }
 
     @Test

@@ -251,7 +251,8 @@ class Node(
         }
     }
 
-    fun retrieveAttributes(): Map<String, String> {
+    /** The node as a file has it; [at] is where it is written to be, when that is not where it is now. */
+    fun retrieveAttributes(at: Vector2 = position): Map<String, String> {
         // the content type of this level is written where it always was, among the other attributes
         val here = (detail().attributes() - NodeType.ATTRIBUTE).mapKeys { Detail.written(it.key, level) }
         val other = attributes.other.filterNotNull().filterKeys { it != Depth.ATTRIBUTE }
@@ -260,7 +261,7 @@ class Node(
         return here + mapOf(
             "marks" to attributes.marks.takeIf { it.isNotEmpty() },
             // the depth is the third number, for a node that has one
-            "pos" to (listOf(position.x, position.y) + listOfNotNull(Depth.of(this).takeIf { it != 0.0 })).joinToString(",") { it.toNiceString() } + "!",
+            "pos" to (listOf(at.x, at.y) + listOfNotNull(Depth.of(this).takeIf { it != 0.0 })).joinToString(",") { it.toNiceString() } + "!",
         ).filterNotNull() + other + elsewhere
     }
 

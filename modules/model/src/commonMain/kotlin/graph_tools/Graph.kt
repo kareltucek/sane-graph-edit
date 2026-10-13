@@ -60,6 +60,15 @@ class Graph(
     /** Visible set at the last [DynamicPlacement.place]; null while `:set dynamic` is off. */
     var dynamicBaseline: Set<Node>? = null
 
+    /**
+     * Where the nodes were when explore mode ([pinned]) was entered;
+     * null out of it. In the mode nodes are put where it suits the
+     * walk, which is no change of the document: nothing of it is
+     * undone or makes the document modified, and leaving the mode puts
+     * every node back here.
+     */
+    var beforeExplore: Map<Node, Vector2>? = null
+
     private var attachmentOwnersCache: Map<Node, Node>? = null
 
     /** Attached node → its owner ([Attachments]); recomputed after nodes are added or removed. */

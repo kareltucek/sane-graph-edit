@@ -42,8 +42,10 @@ object DynamicPlacement {
         val visible = if (ViewModes.dynamic || g.pinned != null) g.visibleNodes() else null
         val before = g.dynamicBaseline
         g.dynamicBaseline = visible
+        // explore mode moves nodes for as long as it is on only ([Graph.beforeExplore]): no command, nothing to undo
+        val exploring = g.pinned != null
         // While undoing / redoing (redo stack non-empty), a new command would wipe the redo history.
-        val appeared = if (visible != null && before != null && !g.history.canRedo) visible - before else emptySet()
+        val appeared = if (visible != null && before != null && (exploring || !g.history.canRedo)) visible - before else emptySet()
         // attached nodes follow their owner (Attachments.reglue), they aren't placed themselves
         val fresh = appeared.filter { it !in g.attachmentOwners }.toSet()
         if (fresh.isNotEmpty()) {
@@ -52,7 +54,12 @@ object DynamicPlacement {
             val yielding = if (g.pinned != null) fixed.filter { g.isFaint(it) }.toSet() else emptySet()
             val placed = positionsFor(g, fresh, fixed, yielding)
             val targets = if (g.pinned != null) settled(g, placed, visible) else placed
-            if (targets.isNotEmpty()) {
+            if (exploring) {
+                targets.forEach { (n, p) ->
+                    n.position = p
+                    g.needsRecomputing(n)
+                }
+            } else if (targets.isNotEmpty()) {
                 g.commit(
                     MoveNodesCommand(
                         g,

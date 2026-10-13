@@ -1022,6 +1022,55 @@ function lookAround() {
     camera.lookAt(around.middle);
 }
 
+/**
+ * Out of a headset the mouse is the controller: a click on a node (the button pressed and let go of in one place) is told
+ * to the window as the right controller's trigger (the left button) or grip (the right one) on it is.
+ */
+let pressedAt: { x: number; y: number } | null = null;
+const CLICK_WITHIN_PX = 4;
+
+/** The node under the place [x], [y] of the page: of those the look from there goes through, the nearest. */
+function nodeAt(x: number, y: number): VrNode | null {
+    const bounds = canvas.getBoundingClientRect();
+    const sent = shown;
+    const axes = laid?.axes;
+    let nearest: { node: VrNode; along: number } | null = null;
+    if (sent !== null && axes !== undefined) {
+        camera.updateMatrixWorld();
+        graph.updateMatrixWorld();
+        const into = graph.matrixWorld.clone().invert();
+        // the look through that place, in the graph's own space, as the nodes are
+        const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+        const through = new THREE.Vector3((x - bounds.left) / bounds.width * 2 - 1, 1 - (y - bounds.top) / bounds.height * 2, 0.5).unproject(camera);
+        const from = eye.clone().applyMatrix4(into).sub(offset);
+        const towards = through.applyMatrix4(into).sub(offset).sub(from);
+        sent.nodes.forEach((n, i) => {
+            // where the look meets the plane the node is turned into ([face]), and whether that is on the node
+            const [rx, ry, rz, ux, uy, uz, fx, fy, fz] = axes.subarray(i * 9, i * 9 + 9);
+            const closing = towards.x * fx + towards.y * fy + towards.z * fz;
+            const along = closing === 0 ? -1 : ((n.x - from.x) * fx + (n.y - from.y) * fy + (n.z - from.z) * fz) / closing;
+            const [dx, dy, dz] = [from.x + towards.x * along - n.x, from.y + towards.y * along - n.y, from.z + towards.z * along - n.z];
+            const hit = along > 0 && (nearest === null || along < nearest.along) &&
+                Math.abs(dx * rx + dy * ry + dz * rz) <= n.width / 2 && Math.abs(dx * ux + dy * uy + dz * uz) <= n.height / 2;
+            if (hit) nearest = { node: n, along };
+        });
+    }
+    return (nearest as { node: VrNode; along: number } | null)?.node ?? null;
+}
+
+canvas.addEventListener("pointerdown", (e) => {
+    pressedAt = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener("pointerup", (e) => {
+    const was = pressedAt;
+    pressedAt = null;
+    const still = was !== null && Math.hypot(e.clientX - was.x, e.clientY - was.y) <= CLICK_WITHIN_PX;
+    const on = still && !renderer.xr.isPresenting && (e.button === 0 || e.button === 2) ? nodeAt(e.clientX, e.clientY) : null;
+    if (on !== null) tell?.(JSON.stringify({ type: "click", id: on.id, button: e.button }));
+});
+// the right button is a button here, not the browser's menu
+canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
 canvas.addEventListener("pointermove", (e) => {
     if (e.buttons !== 0 && !renderer.xr.isPresenting && inRoom) {
         around.turned -= e.movementX * 0.005;

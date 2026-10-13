@@ -397,10 +397,13 @@ while on:
   themselves put together then, around the middle of the view: in
   columns side by side, each some 1500 units high, in the order they
   were in from top to bottom, with room to unfold between the
-  columns (one undo step of its own); a faint node that is in the way of
-  a new one is pushed aside, the pinned ones stay. Apart
-  from those moves nothing is changed, saved or undone: leaving the
-  mode shows what was shown before.
+  columns; a faint node that is in the way of
+  a new one is pushed aside, the pinned ones stay. All of that is
+  only for as long as the mode is on: nothing is changed, saved or
+  undone, the document is not modified by it, and leaving the mode
+  shows what was shown before, every node where it was (also one
+  that was moved by hand in the mode). A file saved in the mode has
+  the nodes where the document does.
 - `dynamic` — a node that becomes visible (by any of the above, or
   `H`) is moved next to its visible neighbours, left to right: a
   child in a column right of its parents, a parent left of its
@@ -609,6 +612,10 @@ a long token in it); the cable is what lets the headset reach it,
 and nothing is opened to the network. The PIN is new each time the
 application starts, and after five wrong ones none is taken until
 it is started again.
+
+In the page opened in a browser on the desktop the mouse is the
+controller: a click on a node is the trigger on it, a right click
+the grip.
 
 Keys pressed in the headset's page are the window's, as if pressed
 there (graph keys, the `:` line, a node's editor, a terminal node's
