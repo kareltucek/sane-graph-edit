@@ -75,13 +75,18 @@ data class NodeType(
 /**
  * Give the nodes of [before] the type [type]; [before] is what their
  * `content-type` attribute held, for undo. The text is not touched.
+ * With [keepSource] a node whose text is kept in a file stays so:
+ * only what the text is changes.
  */
 class SetNodeTypeCommand(
     private val graph: Graph,
     private val before: Map<Node, String?>,
     private val type: NodeType,
+    private val keepSource: Boolean = false,
 ) : Command {
-    override fun redo() = before.keys.forEach { set(it, type.attribute) }
+    override fun redo() = before.forEach { (node, was) ->
+        set(node, (if (keepSource) type.copy(source = NodeType.parse(was)?.source) else type).attribute)
+    }
 
     override fun undo() = before.forEach { (node, value) -> set(node, value) }
 

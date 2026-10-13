@@ -170,6 +170,7 @@ let leaving = false;
 // The style picker: colours, size and shape for the selected nodes. Which styles there are and what picking does is the client core's business.
 const picker = document.getElementById("picker") as HTMLDivElement;
 const pickerColours = document.getElementById("picker-colours") as HTMLDivElement;
+const pickerLanguage = document.getElementById("picker-language") as HTMLInputElement;
 
 const pickerOpen = () => picker.style.display === "flex";
 
@@ -205,6 +206,27 @@ function fillPicker(view: client.JsView) {
 function wirePicker(current: (action: (view: client.JsView) => void) => void) {
     picker.querySelectorAll<HTMLButtonElement>("button[data-size]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickSize(Number(b.dataset.size)))));
     picker.querySelectorAll<HTMLButtonElement>("button[data-shape]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickShape(b.dataset.shape!))));
+    // code is code in the language named beside it, when one is
+    const typed = (type: string) => type === "code" && pickerLanguage.value.trim() !== "" ? `code-${pickerLanguage.value.trim()}` : type;
+    picker.querySelectorAll<HTMLButtonElement>("button[data-type]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickType(typed(b.dataset.type!)))));
+    pickerLanguage.addEventListener("keydown", (e) => {
+        // what is typed here is the language's name, not keys of the graph
+        e.stopPropagation();
+        if (e.key === "Enter") {
+            current((view) => view.pickType(typed("code")));
+            pickerLanguage.blur();
+        } else if (e.key === "Escape") {
+            pickerLanguage.blur();
+            current((view) => view.pickerDismissed());
+        }
+    });
+}
+
+/** Show in the picker what the selected nodes are: which content, and of code the language. */
+function markPickedType(view: client.JsView) {
+    const type = view.pickedType;
+    picker.querySelectorAll<HTMLButtonElement>("button[data-type]").forEach((b) => b.classList.toggle("picked", b.dataset.type === type.split("-")[0]));
+    if (document.activeElement !== pickerLanguage) pickerLanguage.value = type.startsWith("code-") ? type.slice("code-".length) : "";
 }
 
 /** Keys that put a message away and do nothing else; any other key puts it away and means what it always does. */
@@ -874,6 +896,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         view.dark = dark;
         fillPicker(view);
     }
+    if (pickerOpen()) markPickedType(view);
     const scene = view.scene() as Scene;
     // In 3D mode the graph is drawn with depth on the canvas below, and this one, clear, has only what is laid over the graph:
     // the node being edited with its editor, and the selection box.

@@ -90,16 +90,23 @@ object Actions {
      * active one) nodes of [type]: plain text, code in a language,
      * or markdown. One undo step; a message if there is no node.
      */
-    fun typeSelection(graphView: EditorView, type: NodeType) {
+    fun typeSelection(graphView: EditorView, type: NodeType, keepSource: Boolean = false) {
         val g = graphView.g
-        val targets = g.selectedNodes.toList().ifEmpty { listOfNotNull(g.lastActiveNode?.takeIf { it in g.nodes }) }
+        val targets = typeTargets(graphView)
         if (targets.isEmpty()) {
             graphView.shell.message("content-type: no node is selected")
         } else {
-            g.commit(SetNodeTypeCommand(g, targets.associateWith { it.attributes.other[NodeType.ATTRIBUTE] }, type))
+            g.commit(SetNodeTypeCommand(g, targets.associateWith { it.attributes.other[NodeType.ATTRIBUTE] }, type, keepSource))
             graphView.repaint()
         }
     }
+
+    private fun typeTargets(graphView: EditorView): List<Node> =
+        graphView.g.let { g -> g.selectedNodes.toList().ifEmpty { listOfNotNull(g.lastActiveNode?.takeIf { it in g.nodes }) } }
+
+    /** What the nodes that [typeSelection] would change are, when they all are the same: as the attribute has it, without where the text is kept; else null. */
+    fun typeOfSelection(graphView: EditorView): String? =
+        typeTargets(graphView).map { NodeType.of(it).copy(source = null).let { type -> type.attribute ?: NodeType.Kind.Plain.id } }.distinct().singleOrNull()
 
     /**
      * Move the selected nodes (or, with none selected, the last

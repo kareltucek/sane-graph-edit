@@ -140,6 +140,17 @@ class JsView internal constructor(
         view.repaint()
     }
 
+    /**
+     * Make the selected nodes what [type] names (`plain`, `markdown`, `code`, `code-kotlin`…): what their text is, not where
+     * it is kept. A name that names nothing changes nothing.
+     */
+    fun pickType(type: String) {
+        graph_tools.NodeType.parse(type)?.takeIf { it.source == null }?.let { Actions.typeSelection(view, it, keepSource = true) }
+    }
+
+    /** What the selected nodes are, as [pickType] takes it; empty when they are not all the same or there are none. */
+    val pickedType: String get() = Actions.typeOfSelection(view).orEmpty()
+
     /** Make the selected nodes [steps] size steps bigger (smaller when negative). */
     fun pickSize(steps: Double) = Actions.resizeSelection(view, steps)
 

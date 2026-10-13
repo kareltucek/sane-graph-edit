@@ -181,7 +181,7 @@ Flags:
 | Drag on empty space          | Pan the view                                       |
 | Double-click empty           | Create a new node                                  |
 | Double-click a node          | Edit its text in place                             |
-| Right-click                  | Open the colour / shape / size picker on hover node |
+| Right-click                  | Open the colour / shape / size / content picker on hover node |
 | Mouse wheel                  | Zoom in / out, centred on the cursor               |
 
 ### Keyboard — structural edits
@@ -227,7 +227,9 @@ otherwise:
 | `markdown`     | markdown               | formatted; ` ```mermaid ` and ` ```dot ` blocks are drawn as diagrams |
 
 `:content-type code-scala` (or `markdown`, `plain`, …) sets it for
-the selected nodes; `:content-type` alone tells it. The language is
+the selected nodes; `:content-type` alone tells it. The picker
+(right click) shows it too and sets it with a click; `code` takes
+the language typed beside it. The language is
 a neovim file type, and the node is edited as one. A node keeps the
 size of its source text whatever is shown in it; a picture that
 does not fit is scaled down. The Swing client keeps the attribute

@@ -43,8 +43,10 @@
     }
     #picker button { font: inherit; border: 1px solid var(--canvas, #ccc); margin: 0; padding: 0; cursor: pointer; }
     #picker-colours { flex: 1; display: grid; }
-    #picker-rest { display: flex; align-items: center; gap: 6px; padding: 4px 6px; }
-    #picker-rest button { min-width: 3em; height: 2em; color: var(--fg, #000); background: var(--canvas, #ddd); }
+    #picker-rest, #picker-type { display: flex; align-items: center; gap: 6px; padding: 4px 6px; }
+    #picker-rest button, #picker-type button { min-width: 3em; height: 2em; padding: 0 6px; color: var(--fg, #000); background: var(--canvas, #ddd); }
+    #picker-type button.picked { border-color: var(--fg, #000); font-weight: bold; }
+    #picker-language { font: inherit; width: 8em; height: 2em; box-sizing: border-box; color: var(--fg, #000); background: var(--bg, #fff); border: 1px solid var(--canvas, #ccc); }
     #message { position: fixed; left: 0; right: 0; bottom: 0; padding: 4px 8px; background: #eee; color: #000; display: none; }
   </style>
 </head>
@@ -69,6 +71,10 @@
     <div id="picker-rest">
       <span>Size:</span><button data-size="-1">-</button><button data-size="1">+</button>
       <span>Shape:</span><button data-shape="box">⬜</button><button data-shape="oval">⚪</button>
+    </div>
+    <div id="picker-type">
+      <span>Content:</span><button data-type="plain">plain</button><button data-type="markdown">markdown</button><button data-type="code">code</button>
+      <input id="picker-language" spellcheck="false" autocomplete="off" placeholder="language">
     </div>
   </div>
   <div id="message"></div>
