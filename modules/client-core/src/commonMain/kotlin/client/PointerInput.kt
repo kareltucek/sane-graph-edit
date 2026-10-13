@@ -1,8 +1,14 @@
 package client
 
+import graph_tools.ManualSize
+import graph_tools.Node
+import graph_tools.SetManualSizeCommand
 import utils.Constants
 import utils.Vector2
 import kotlin.math.pow
+
+/** How near a corner of a node the pointer takes it, in pixels of the view. */
+private const val GRIP_PIXELS = 8.0
 
 /**
  * What the buttons and the wheel of a pointing device do in a
@@ -95,9 +101,52 @@ class PointerInput(private val view: EditorView) {
         }
     }
 
+    /**
+     * A node that has a size of its own ([ManualSize]) being resized
+     * by a corner: the corner opposite to the one taken is [fixed],
+     * the one taken is from it towards [towards] (1 or -1 each way).
+     * [before] is what the node's size and place were, for undo.
+     */
+    private class Resizing(val node: Node, val fixed: Vector2, val towards: Vector2, val before: Pair<String?, Vector2>)
+
+    private var resizing: Resizing? = null
+
+    /** The corner at [pos], of a node that is resized by its corners; not in 3D mode, where a place of the screen is not one of the graph. */
+    private fun cornerAt(pos: Vector2): Resizing? {
+        val reach = GRIP_PIXELS / view.viewTransform.scale
+        val corners = listOf(Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1))
+        val sized = if (view.viewTransform.threeD) emptyList() else view.g.visibleNodes().filter { ManualSize.of(it) != null }
+        return sized.firstNotNullOfOrNull { n ->
+            val half = n.cache.shapeBounds / 2
+            corners.firstOrNull { (n.position + half * it - pos).length() <= reach }
+                ?.let { Resizing(n, n.position - half * it, it, n.attributes.other[ManualSize.ATTRIBUTE] to n.position) }
+        }
+    }
+
+    private fun resize(by: Resizing, pos: Vector2) {
+        val asked = (pos - by.fixed) * by.towards
+        val size = Vector2(asked.x.coerceAtLeast(ManualSize.SMALLEST), asked.y.coerceAtLeast(ManualSize.SMALLEST))
+        by.node.attributes.other[ManualSize.ATTRIBUTE] = ManualSize.write(size)
+        by.node.position = by.fixed + by.towards * size / 2
+        view.g.needsRecomputing(by.node)
+        view.repaint()
+    }
+
+    private fun endResize(by: Resizing) {
+        val after = by.node.attributes.other[ManualSize.ATTRIBUTE] to by.node.position
+        if (after != by.before) view.g.commitApplied(SetManualSizeCommand(view.g, mapOf(by.node to by.before), mapOf(by.node to after)))
+        resizing = null
+    }
+
     private fun press(screen: Vector2, button: Button, control: Boolean, shift: Boolean) {
         val asKey = button == Button.Right && !control && gestures.state == null
-        if (asKey && mapped(workspace(screen), KeyMapper.RIGHT_MOUSE)) view.repaint()
+        val corner = if (button == Button.Left && !control && gestures.state == null) cornerAt(workspace(screen)) else null
+        if (corner != null) {
+            view.endNodeEdit()
+            view.endStylePicker()
+            resizing = corner
+            view.repaint()
+        } else if (asKey && mapped(workspace(screen), KeyMapper.RIGHT_MOUSE)) view.repaint()
         else pressUnmapped(screen, button, control, shift)
     }
 
@@ -143,7 +192,9 @@ class PointerInput(private val view: EditorView) {
     /** The pointer moved, with a button held ([dragging]) or without. */
     fun moved(screen: Vector2, dragging: Boolean, shift: Boolean) {
         val pos = workspace(screen)
-        when (gestures.state) {
+        val by = resizing
+        if (by != null) resize(by, pos)
+        else when (gestures.state) {
             GestureController.States.MovingNodes -> gestures.dragMoveNode(pos, shift)
             GestureController.States.Rotating -> gestures.dragRotate(pos)
             GestureController.States.Scaling -> gestures.dragScale(screen)
@@ -162,7 +213,9 @@ class PointerInput(private val view: EditorView) {
     /** [screen] unwrapped, so that a drag that wrapped around is not taken for a click; [actual] is where the pointer really is. */
     fun released(screen: Vector2, actual: Vector2, button: Button, control: Boolean) {
         val middleGesture = gestures.state == GestureController.States.PanningWorkspace || gestures.state == GestureController.States.Orbiting
-        if (button == Button.Left || (button == Button.Middle && middleGesture)) {
+        val by = resizing
+        if (by != null) endResize(by)
+        else if (button == Button.Left || (button == Button.Middle && middleGesture)) {
             if (gestures.state == GestureController.States.SelectionBox) gestures.dragOrEndSelectionBox(true)
             val pos = workspace(screen)
             val clicked = button == Button.Left && !control && (gestures.pressedAt - pos).lengthSquared() < Constants.cursorDeadZone * Constants.cursorDeadZone

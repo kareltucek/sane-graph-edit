@@ -35,6 +35,8 @@ data class SceneNode(
     val type: NodeType = NodeType.Plain,
     /** Hidden, and seen only as a parent or a child of a shown node ([graph_tools.Graph.isFaint]): drawn half as strong. */
     val faint: Boolean = false,
+    /** The node has a size of its own ([graph_tools.ManualSize]): what of its content does not fit is not shown, and it is resized by its corners. */
+    val manual: Boolean = false,
 )
 
 /**
@@ -185,4 +187,5 @@ private fun sceneNode(n: Node, selected: Boolean, faint: Boolean, how: Apparent)
         selected = selected,
         type = NodeType.of(n),
         faint = faint,
+        manual = graph_tools.ManualSize.of(n) != null,
     )

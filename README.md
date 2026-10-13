@@ -214,6 +214,16 @@ Flags:
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |
 
+### How big a node is: `node-size`
+
+A node is as big as its text ("auto") unless it was given a size of
+its own ("manual", in the picker): then it keeps that size whatever
+is in it, and what does not fit is cut off. A selected manual node
+shows its corners; dragging one resizes the node, the opposite corner
+staying where it is (not in 3D mode). Back to "auto" in the picker.
+In the file it is the attribute `node-size="320x200"`, width and
+height in the graph's units.
+
 ### What a node's text is: `content-type`
 
 A node's text is plain unless its `content-type` attribute says

@@ -101,6 +101,27 @@ object Actions {
         }
     }
 
+    /**
+     * Give the selected nodes a size of their own, the one they have
+     * now ([manual]: they are then resized by their corners and what
+     * does not fit in them is not shown), or let their text decide
+     * how big they are again. One undo step.
+     */
+    fun sizeModeSelection(graphView: EditorView, manual: Boolean) {
+        val g = graphView.g
+        val targets = g.selectedNodes.toList().filter { (graph_tools.ManualSize.of(it) != null) != manual }
+        if (targets.isNotEmpty()) {
+            val before = targets.associateWith { it.attributes.other[graph_tools.ManualSize.ATTRIBUTE] to it.position }
+            val after = targets.associateWith { (if (manual) graph_tools.ManualSize.write(it.cache.shapeBounds) else null) to it.position }
+            g.commit(graph_tools.SetManualSizeCommand(g, before, after))
+            graphView.repaint()
+        }
+    }
+
+    /** Whether the selected nodes have a size of their own, when they all do or all do not; else null. */
+    fun sizeModeOfSelection(graphView: EditorView): Boolean? =
+        graphView.g.selectedNodes.map { graph_tools.ManualSize.of(it) != null }.distinct().singleOrNull()
+
     private fun typeTargets(graphView: EditorView): List<Node> =
         graphView.g.let { g -> g.selectedNodes.toList().ifEmpty { listOfNotNull(g.lastActiveNode?.takeIf { it in g.nodes }) } }
 

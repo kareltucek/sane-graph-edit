@@ -151,6 +151,12 @@ class JsView internal constructor(
     /** What the selected nodes are, as [pickType] takes it; empty when they are not all the same or there are none. */
     val pickedType: String get() = Actions.typeOfSelection(view).orEmpty()
 
+    /** Give the selected nodes a size of their own, the one they have now ([manual]), or let their text decide again. */
+    fun pickSizeMode(manual: Boolean) = Actions.sizeModeSelection(view, manual)
+
+    /** `manual` or `auto`: which of them the selected nodes are; empty when not all the same or there are none. */
+    val pickedSizeMode: String get() = Actions.sizeModeOfSelection(view)?.let { if (it) "manual" else "auto" }.orEmpty()
+
     /** Make the selected nodes [steps] size steps bigger (smaller when negative). */
     fun pickSize(steps: Double) = Actions.resizeSelection(view, steps)
 
@@ -249,6 +255,7 @@ class JsView internal constructor(
         j.depthScale = n.scale
         j.selected = n.selected
         j.faint = n.faint
+        j.manual = n.manual
         return j
     }
 

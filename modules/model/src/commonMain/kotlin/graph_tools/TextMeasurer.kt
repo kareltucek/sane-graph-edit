@@ -68,7 +68,8 @@ object NodeText {
 
     fun apply(n: Node, lines: List<String>, metrics: TextMetrics) {
         n.cache.textBounds = metrics.bounds
-        n.cache.shapeBounds = n.cache.shape.computeShapeBounds(metrics.bounds, metrics.margin)
+        // a node that was given a size is that big, whatever its text is
+        n.cache.shapeBounds = ManualSize.of(n) ?: n.cache.shape.computeShapeBounds(metrics.bounds, metrics.margin)
         n.cache.lines = lines
         n.cache.ascent = metrics.ascent
         n.cache.lineHeight = metrics.lineHeight

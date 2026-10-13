@@ -33,6 +33,8 @@ interface SceneNode {
     selected: boolean;
     /** Hidden, and seen only as a parent or a child of a shown node: drawn half as strong. */
     faint: boolean;
+    /** The node has a size of its own: what does not fit in it is not shown, and it is resized by its corners. */
+    manual: boolean;
 }
 
 interface SceneEdge {
@@ -206,6 +208,7 @@ function fillPicker(view: client.JsView) {
 function wirePicker(current: (action: (view: client.JsView) => void) => void) {
     picker.querySelectorAll<HTMLButtonElement>("button[data-size]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickSize(Number(b.dataset.size)))));
     picker.querySelectorAll<HTMLButtonElement>("button[data-shape]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickShape(b.dataset.shape!))));
+    picker.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickSizeMode(b.dataset.mode === "manual"))));
     // code is code in the language named beside it, when one is
     const typed = (type: string) => type === "code" && pickerLanguage.value.trim() !== "" ? `code-${pickerLanguage.value.trim()}` : type;
     picker.querySelectorAll<HTMLButtonElement>("button[data-type]").forEach((b) => b.addEventListener("click", () => current((view) => view.pickType(typed(b.dataset.type!)))));
@@ -226,6 +229,8 @@ function wirePicker(current: (action: (view: client.JsView) => void) => void) {
 function markPickedType(view: client.JsView) {
     const type = view.pickedType;
     picker.querySelectorAll<HTMLButtonElement>("button[data-type]").forEach((b) => b.classList.toggle("picked", b.dataset.type === type.split("-")[0]));
+    const mode = view.pickedSizeMode;
+    picker.querySelectorAll<HTMLButtonElement>("button[data-mode]").forEach((b) => b.classList.toggle("picked", b.dataset.mode === mode));
     if (document.activeElement !== pickerLanguage) pickerLanguage.value = type.startsWith("code-") ? type.slice("code-".length) : "";
 }
 
@@ -378,11 +383,19 @@ function pictureContent(n: SceneNode, picture: Picture): Content {
     return { key: `picture ${nameOf(picture)}`, left, top, width, height, draw: (to) => to.drawImage(picture.image, left, top, width, height) };
 }
 
+/**
+ * Where the text of [n] begins: in the middle of the node, which is as big as it needs; in a node that has a size of its own
+ * ([SceneNode.manual]) at its top left, so that what does not fit is cut off at the end and not all around.
+ */
+function textCorner(n: SceneNode): { left: number; top: number } {
+    const inset = n.fontSize * 0.5;
+    return n.manual ? { left: n.x - n.width / 2 + inset, top: n.y - n.height / 2 + inset } : { left: n.x - n.textWidth / 2, top: n.y - n.textHeight / 2 };
+}
+
 /** The text of [n] in its cells: as neovim painted it if [painting] is given, plain otherwise. A little room around it for what reaches out of a cell. */
 function textContent(n: SceneNode, grid: client.GridMetrics, painting: Painting | null): Content {
     const room = n.fontSize * 0.25;
-    const textLeft = n.x - n.textWidth / 2;
-    const textTop = n.y - n.textHeight / 2;
+    const { left: textLeft, top: textTop } = textCorner(n);
     const box = { left: textLeft - room, top: textTop - room, width: n.textWidth + 2 * room, height: n.textHeight + 2 * room };
     const cells: Cells = {
         left: textLeft,
@@ -478,6 +491,8 @@ function viewOf(n: SceneNode, scene: View): View {
 /** Draw [n]. Text too small to read is left out, unless [smallText]: a picture that is kept is not made again for being small. */
 /** How strong a faint node is drawn. */
 const FAINT = 0.5;
+/** How big the corners of a selected node that is resized by them are drawn, in pixels. */
+const GRIP_PX = 7;
 
 function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number, smallText = false) {
     const view = viewOf(n, scene);
@@ -506,7 +521,21 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
     if (shown) {
         // a markdown node is its picture, once that is made; a code node what neovim painted, once that is
         const picture = pictureOf(n);
+        ctx.save();
+        if (n.manual) {
+            // a node with a size of its own shows what fits in it
+            ctx.beginPath();
+            ctx.rect(left, top, n.width, n.height);
+            ctx.clip();
+        }
         drawContent(picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n)), view, dpr);
+        ctx.restore();
+    }
+    if (n.manual && n.selected) {
+        // where it is taken to be resized
+        const grip = GRIP_PX / scale;
+        ctx.fillStyle = ink;
+        [[left, top], [left + n.width, top], [left, top + n.height], [left + n.width, top + n.height]].forEach(([x, y]) => ctx.fillRect(x - grip / 2, y - grip / 2, grip, grip));
     }
     ctx.globalAlpha = 1;
 }
@@ -541,7 +570,7 @@ function pictureKey(n: SpaceSceneNode): string {
     const picture = pictureOf(n);
     const painting = paintingOf(n);
     return JSON.stringify([
-        n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.selected, n.faint, n.type, n.language, colours().background, colours().foreground,
+        n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.selected, n.faint, n.manual, n.type, n.language, colours().background, colours().foreground,
         picture === null ? 0 : nameOf(picture), painting === null ? 0 : nameOf(painting), n.id === editing?.id && editing.editor.shown,
     ]);
 }
@@ -618,8 +647,8 @@ function textPlace(n: SceneNode, whole: Scene, grid: client.GridMetrics): Place 
     const scene = viewOf(n, whole);
     const bounds = canvas.getBoundingClientRect();
     return {
-        left: bounds.left + (n.x - n.textWidth / 2) * scene.scale + scene.offsetX,
-        top: bounds.top + (n.y - n.textHeight / 2) * scene.scale + scene.offsetY,
+        left: bounds.left + textCorner(n).left * scene.scale + scene.offsetX,
+        top: bounds.top + textCorner(n).top * scene.scale + scene.offsetY,
         cellWidth: grid.advance * n.fontSize * scene.scale,
         cellHeight: grid.lineHeight * n.fontSize * scene.scale,
     };
