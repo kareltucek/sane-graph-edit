@@ -184,7 +184,8 @@ function show(got: VrScene) {
         centred = true;
     }
     pictured.forEach((mesh) => mesh.position.copy(offset));
-    state.textContent = `${sent.nodes.length} nodes`;
+    // out of a headset there is no strip in the room: the window's status line is beside the count, as text
+    state.textContent = `${sent.nodes.length} nodes${sent.status ? `   ${sent.status}` : ""}`;
     writeStatus(sent.status ?? "");
     face();
 }

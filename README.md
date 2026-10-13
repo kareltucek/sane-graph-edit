@@ -606,6 +606,11 @@ and nothing is opened to the network. The PIN is new each time the
 application starts, and after five wrong ones none is taken until
 it is started again.
 
+`--no-pin` (with `--vr`, on this machine only) asks for no PIN: for
+trying things, when typing it at every start is a nuisance. Whatever
+runs on this machine can then open the page; on the local network
+the PIN is asked for all the same.
+
 Without a cable: `--vr 8765 --vr-lan` answers on the local network
 instead, for a headset on the same Wi-Fi. This does open a port to
 that network: on the one address this machine has there, over TLS

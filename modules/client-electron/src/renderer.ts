@@ -1309,17 +1309,21 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
                 standing = [x, z, ax, az];
             },
         };
-        // what is typed in the headset: four digits, good for a few tries only
-        const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");
+        // what is typed in the headset: four digits, good for a few tries only. `--no-pin`: none is asked for, but only on this
+        // machine: on the local network anyone could come in
+        const asked = lan || query.get("vrNoPin") === null;
+        const pin = asked ? String(require("crypto").randomInt(10000)).padStart(4, "0") : null;
+        const give = pin === null ? "(no PIN is asked for)" : `and give the PIN ${pin}`;
+        const kept = lan && query.get("vrNoPin") !== null ? "\n--no-pin is not for the local network: the PIN is asked for." : "";
         tellLive = startVr(Number(vr) || 0, token, pin, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
                 : lan
                     ? `VR: answering on the local network. With the headset on the same Wi-Fi, open in its browser\n    ${address}\n` +
-                        `go on past its warning about the certificate (this machine made it for itself), and give the PIN ${pin}`
+                        `go on past its warning about the certificate (this machine made it for itself), ${give}${kept}`
                     : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\n` +
-                        `open in the headset's browser\n    ${address}\nand give the PIN ${pin}`;
+                        `open in the headset's browser\n    ${address}\n${give}`;
             // where the application was started from, and in the window
             process.stdout.write(`sane-graph-edit: ${text}\n`);
             showMessage(`${text}\n(Escape puts this away)`, false, true);

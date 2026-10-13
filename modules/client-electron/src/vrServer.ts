@@ -231,13 +231,14 @@ const PIN_TRIES = 5;
 
 /**
  * Start answering at [port] (0: any free one) for headsets that know
- * [token], which one that is given the [pin] is told: on this machine
+ * [token], which one that is given the [pin] is told (with no [pin],
+ * anyone who asks: for trying things on this machine): on this machine
  * only, or with [lan] on the local network, over TLS. [told] gets the
  * address to open in the headset once the server listens, or what
  * went wrong. What is given back tells the headsets at once what a
  * node that changes fast shows ([VrLive]).
  */
-export function startVr(port: number, token: string, pin: string, lan: boolean, source: VrSource, told: (address: string | null, error: string | null) => void) {
+export function startVr(port: number, token: string, pin: string | null, lan: boolean, source: VrSource, told: (address: string | null, error: string | null) => void) {
     // loaded here, not bundled: Node's own, and a module of Node's kind
     const http: typeof import("http") = require("http");
     const https: typeof import("https") = require("https");
@@ -261,7 +262,7 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
     const pinOf = (request: IncomingMessage) => new URL(request.url ?? "/", "http://localhost").searchParams.get("pin");
     const pinRight = (given: string) => {
         const a = Buffer.from(given);
-        const b = Buffer.from(pin);
+        const b = Buffer.from(pin ?? "");
         const right = triesLeft > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
         if (!right && triesLeft > 0) triesLeft -= 1;
         return right;
@@ -295,7 +296,8 @@ export function startVr(port: number, token: string, pin: string, lan: boolean, 
             response.writeHead(404).end();
         } else if (!asked.open && !knows(request)) {
             const given = pinOf(request);
-            if (given !== null && pinRight(given)) response.writeHead(302, { Location: `/?token=${token}`, "Cache-Control": "no-store" }).end();
+            // no PIN is asked for (`--no-pin`): whoever asks is told the token
+            if (pin === null || (given !== null && pinRight(given))) response.writeHead(302, { Location: `/?token=${token}`, "Cache-Control": "no-store" }).end();
             else response.writeHead(given === null ? 200 : 403, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(pinPage(given !== null));
         } else {
             // only these two files, by name: nothing of what is asked is made into a path

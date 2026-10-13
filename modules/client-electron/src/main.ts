@@ -40,6 +40,8 @@ interface Args {
     vr?: string;
     /** `--vr-lan`: with `--vr`, answer on the local network (over TLS) instead of on this machine only. */
     vrLan?: boolean;
+    /** `--no-pin`: with `--vr` on this machine only, no PIN is asked for. For trying things; on the local network it is still asked for. */
+    vrNoPin?: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -54,6 +56,7 @@ function parseArgs(argv: string[]): Args {
         else if (a === "--shots") args.shots = path.resolve(argv[++i]);
         else if (a === "--vr") args.vr = argv[++i];
         else if (a === "--vr-lan") args.vrLan = true;
+        else if (a === "--no-pin") args.vrNoPin = true;
         else if (a.startsWith("-")) continue; // Chromium's own switches
         else if (path.resolve(a) === app.getAppPath()) continue; // `electron <this application>`
         else if (args.file === undefined) args.file = path.resolve(a);
@@ -111,6 +114,7 @@ app.whenReady().then(() => {
     if (args.play !== undefined) query.play = args.play;
     if (args.vr !== undefined) query.vr = args.vr;
     if (args.vrLan) query.vrLan = "1";
+    if (args.vrNoPin) query.vrNoPin = "1";
     window.loadFile(path.join(__dirname, "index.html"), { query });
 });
 
