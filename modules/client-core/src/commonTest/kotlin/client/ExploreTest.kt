@@ -71,6 +71,38 @@ class ExploreTest {
     }
 
     @Test
+    fun `several nodes to start from are put together in columns, in the order they were in, around the middle of the view`() {
+        // far apart in the graph
+        up.position = Vector2(-9000, 50)
+        other.position = Vector2(7000, 4000)
+        select(up, other, c)
+        Explore.set(view, true)
+        val middle = view.viewTransform.toWorkspace(view.size / 2)
+        assertEquals(setOf(up, other, c), g.pinned)
+        // one column: the same x, top to bottom as they were (up, c, other), near the middle of the view
+        assertEquals(up.position.x, c.position.x)
+        assertEquals(c.position.x, other.position.x)
+        assertTrue(up.position.y < c.position.y && c.position.y < other.position.y)
+        assertTrue(listOf(up, c, other).all { (it.position - middle).length() < 500 }, "near the middle")
+        g.history.undo()
+        assertEquals(Vector2(-9000, 50), up.position)
+    }
+
+    @Test
+    fun `more nodes to start from than a column holds go on in the next one`() {
+        val many = (0 until 60).map { Node("n$it", Vector2(0, 100 * it)) }
+        many.forEach { g.add(it) }
+        g.ensureCachesFresh()
+        val to = Explore.arrangement(g, many.toSet(), Vector2(0, 0))
+        val columns = to.values.map { it.x }.distinct().sorted()
+        assertTrue(columns.size > 1, "several columns")
+        assertTrue(to.values.maxOf { it.y } - to.values.minOf { it.y } <= 1500.0)
+        // the first column has the first of them, the next the following ones
+        assertTrue(to.getValue(many.first()).x == columns.first() && to.getValue(many.last()).x == columns.last())
+        assertTrue(Explore.arrangement(g, setOf(many.first()), Vector2(0, 0)).isEmpty(), "one node alone stays")
+    }
+
+    @Test
     fun `with nothing selected the mode starts from the nodes that fewest edges come into, of each part of the graph`() {
         // a cycle of its own, beside the chain
         val round = listOf(Node("r1", Vector2(100, 700)), Node("r2", Vector2(300, 700)), Node("r3", Vector2(200, 900)))

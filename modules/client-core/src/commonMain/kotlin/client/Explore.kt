@@ -3,6 +3,7 @@ package client
 import Graph
 import graph_tools.GraphTools
 import graph_tools.Node
+import utils.Vector2
 
 /**
  * Explore mode (`x`, `:set explore`; `x` or Escape leaves it): walking through a graph from
@@ -117,6 +118,65 @@ object Explore {
         }.toSet()
     }
 
+    /** How high a column of nodes the mode starts from is at most: about what is seen at once, on a screen or on a wall. */
+    private const val COLUMN_HEIGHT = 1500.0
+
+    /** Room between two such nodes, beyond what their neighbours need; and between two columns, for what is unfolded from them. */
+    private const val BETWEEN = 40.0
+    private const val UNFOLD_ROOM = 600.0
+
+    /** What [graph_tools.DynamicPlacement] leaves between a node and the column of its neighbours, and between two of those. */
+    private const val NEIGHBOUR_AWAY = 60.0
+    private const val NEIGHBOUR_GAP = 12.0
+
+    /**
+     * Where the nodes the mode starts from go, when there are several:
+     * not where they are in the graph, which may be all over it, but
+     * together, in columns side by side, around the middle of what
+     * the view shows. In a column they are in the order they were in
+     * from top to bottom, each with the room its parents (left of it)
+     * and children (right of it) take; a column that is full is
+     * followed by the next, further right by what a few unfolded
+     * levels take. One node alone stays where it is.
+     */
+    fun arrangement(g: Graph, pins: Set<Node>, middle: Vector2): Map<Node, Vector2> {
+        // what is glued to a node goes with it
+        val nodes = pins.filter { it !in g.attachmentOwners }.sortedWith(compareBy({ it.position.y }, { it.position.x }))
+        return if (nodes.size < 2) emptyMap() else inColumns(g, pins, nodes, middle)
+    }
+
+    private fun inColumns(g: Graph, pins: Set<Node>, nodes: List<Node>, middle: Vector2): Map<Node, Vector2> {
+        val parents = { n: Node -> g.findInEdges(n).map { it.src }.filter { it !in pins && !it.detail().isBlank }.distinct() }
+        val children = { n: Node -> g.findOutEdges(n).map { it.dst }.filter { it !in pins && !it.detail().isBlank }.distinct() }
+        val stacked = { of: List<Node> -> of.sumOf { it.cache.shapeBounds.y + NEIGHBOUR_GAP } }
+        val widest = { of: List<Node> -> of.maxOfOrNull { it.cache.shapeBounds.x + NEIGHBOUR_AWAY } ?: 0.0 }
+        val height = { n: Node -> maxOf(n.cache.shapeBounds.y, stacked(parents(n)), stacked(children(n))) + BETWEEN }
+        // columns: each takes nodes until it is full
+        val columns = nodes.fold(listOf(emptyList<Node>())) { done, n ->
+            val last = done.last()
+            if (last.isNotEmpty() && last.sumOf(height) + height(n) > COLUMN_HEIGHT) done + listOf(listOf(n)) else done.dropLast(1) + listOf(last + n)
+        }
+        val widths = columns.map { column ->
+            column.maxOf { widest(parents(it)) } + column.maxOf { it.cache.shapeBounds.x } + column.maxOf { widest(children(it)) } + UNFOLD_ROOM
+        }
+        val lefts = widths.runningFold(0.0) { sum, w -> sum + w }
+        val placed = columns.flatMapIndexed { i, column ->
+            val x = lefts[i] + column.maxOf { widest(parents(it)) } + column.maxOf { it.cache.shapeBounds.x } / 2
+            val tops = column.runningFold(0.0) { sum, n -> sum + height(n) }
+            column.mapIndexed { k, n -> n to Vector2(x, tops[k] + height(n) / 2) }
+        }
+        val size = Vector2(lefts.last() - UNFOLD_ROOM, columns.maxOf { it.sumOf(height) })
+        return placed.associate { (n, at) -> n to at - size / 2 + middle }
+    }
+
+    private fun arrange(view: EditorView, pins: Set<Node>) {
+        val g = view.g
+        val to = arrangement(g, pins, view.viewTransform.toWorkspace(view.size / 2))
+        if (to.isNotEmpty()) {
+            g.commit(graph_tools.MoveNodesCommand(g, to.keys.associateWith { it.position }, to.toMutableMap(), coalesceWindowMs = -1))
+        }
+    }
+
     fun set(view: EditorView, on: Boolean) {
         val g = view.g
         val kept = g.selectedNodes.toSet().ifEmpty { if (on && !isOn(view)) roots(g) else emptySet() }
@@ -124,6 +184,7 @@ object Explore {
             on == isOn(view) -> Unit
             on && kept.isEmpty() -> view.shell.message("explore: the graph has no nodes")
             on -> {
+                arrange(view, kept)
                 g.pinned = kept
                 // all but the pinned nodes count as newly shown: the faint ones are put next to them ([graph_tools.DynamicPlacement])
                 g.dynamicBaseline = kept

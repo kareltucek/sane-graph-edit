@@ -393,7 +393,11 @@ while on:
   pins the selection and nothing else, `m+!` / `m-!` add to it and
   take from it, `'!` selects them. Nodes that come to be seen are
   moved next to their neighbours, as with `dynamic` below, the faint
-  ones on entering the mode too; a faint node that is in the way of
+  ones on entering the mode too. Several nodes to start from are
+  themselves put together then, around the middle of the view: in
+  columns side by side, each some 1500 units high, in the order they
+  were in from top to bottom, with room to unfold between the
+  columns (one undo step of its own); a faint node that is in the way of
   a new one is pushed aside, the pinned ones stay. Apart
   from those moves nothing is changed, saved or undone: leaving the
   mode shows what was shown before.
