@@ -34,9 +34,6 @@ export interface VrNode {
     pixelsPerUnit?: number;
     middleX?: number;
     middleY?: number;
-    /** A node on a wall ([VrScene.inRoom]): what is towards the room from it, in the graph's directions. Such a node faces that way, whoever looks. */
-    tx?: number;
-    tz?: number;
 }
 
 /** What the headset shows. Edges are pairs of indices into [nodes]. */

@@ -282,8 +282,8 @@ class JsView internal constructor(
     /**
      * [world] with the graph on the walls of a room (`:set walls`, [OnWalls]); null when that is not asked for or there are no
      * [walls] (of each the two ends as seen from above, x and z of each, metres). The nodes are where they are in the room,
-     * in the graph's units and directions (x right, y down from the floor, z away from where the room's -z is), each with what
-     * is towards the room from it (`tx`, `tz`); `nodeScale` is how many times its size a node is. The middle of the graph is
+     * in the graph's units and directions (x right, y down from the floor, z away from where the room's -z is), facing
+     * whoever looks as anywhere; `nodeScale` is how many times its size a node is. The middle of the graph is
      * on the wall that who is at [standing] looks at (where they stand and which way they look, x and z of each).
      *
      * Where the graph is on the walls and how big is decided when it is first asked for, and again when explore mode is
@@ -308,8 +308,6 @@ class JsView internal constructor(
                 j.x = place.x / OnWalls.METRES_PER_UNIT
                 j.y = -place.y / OnWalls.METRES_PER_UNIT
                 j.z = -place.z / OnWalls.METRES_PER_UNIT
-                j.tx = place.out.x
-                j.tz = -place.out.y
             }
             o.nodeScale = on.scale
             o

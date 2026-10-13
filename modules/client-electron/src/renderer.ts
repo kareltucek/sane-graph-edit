@@ -935,12 +935,9 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         nodes: world.nodes.map((n) => {
             const place = atlas.placeOf(n.id);
             const leads: string[] | undefined = links[n.id];
-            const towards = n as { tx?: number; tz?: number };
             const node = {
                 id: n.id, x: n.x, y: n.y, z: n.z, width: n.width * size, height: n.height * size, fill: n.bg ?? colours().background, ink: inkOf(n),
-                ...(leads === undefined ? {} : { links: leads.slice(0, MAX_VR_LINKS).map((it) => it.slice(0, MAX_VR_LINK)) }),
-                ...(towards.tx === undefined || towards.tz === undefined ? {} : { tx: towards.tx, tz: towards.tz }),
-            };
+                ...(leads === undefined ? {} : { links: leads.slice(0, MAX_VR_LINKS).map((it) => it.slice(0, MAX_VR_LINK)) }),            };
             // a node shown smaller: its picture has more pixels to a unit
             return place === null ? node : {
                 ...node, page: place.page, px: place.x, py: place.y, pw: place.width, ph: place.height,
@@ -964,7 +961,7 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
  */
 let standing: [number, number, number, number] = [0, 0, 0, -1];
 
-/** [SpaceScene] as `worldOnWalls` gives it: each node also has what is towards the room from it (`tx`, `tz`). */
+/** [SpaceScene] as `worldOnWalls` gives it: the nodes where they are in the room, and how many times their size. */
 type OnWallsScene = SpaceScene<SpaceSceneNode> & { nodeScale: number };
 
 /** The status line as it was last shown, for a headset to show too; no more of it than this. */

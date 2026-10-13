@@ -615,7 +615,11 @@ it is started again.
 
 In the page opened in a browser on the desktop the mouse is the
 controller: a click on a node is the trigger on it, a right click
-the grip.
+the grip; the left button held on a node and moved takes the node
+along (not on the walls). Held elsewhere, or the right button, it
+turns the eyes around the node last clicked (at first: the middle of
+the graph, or of the room); the wheel brings them nearer to it or
+further away. Nodes face whoever looks, on the walls too.
 
 Keys pressed in the headset's page are the window's, as if pressed
 there (graph keys, the `:` line, a node's editor, a terminal node's

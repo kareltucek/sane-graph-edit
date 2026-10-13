@@ -167,9 +167,9 @@ function show(got: VrScene) {
         graph.quaternion.identity();
         graph.scale.set(METRES_PER_UNIT, -METRES_PER_UNIT, -METRES_PER_UNIT);
         centred = false;
-        // out of a headset the eyes are where they were at first again ([lookAround] moved them)
-        camera.position.set(0, 1.5, 0.6);
-        camera.lookAt(START);
+        showWalls(sent.walls ?? []);
+        // out of a headset the eyes are where they are at first again, for where the graph is now
+        resetEyes();
     }
     showWalls(sent.walls ?? []);
     if (inRoom) {
@@ -309,9 +309,7 @@ function face() {
         const up = new THREE.Vector3();
         const axes = now.axes;
         sent.nodes.forEach((n, i) => {
-            // a node on a wall lies on it, its face to the room
-            if (n.tx !== undefined && n.tz !== undefined) towards.set(n.tx, 0, n.tz).normalize();
-            else towards.set(head.x - n.x, head.y - n.y, head.z - n.z).normalize();
+            towards.set(head.x - n.x, head.y - n.y, head.z - n.z).normalize();
             right.crossVectors(upright, towards);
             // seen from right above or below: any way is upright
             if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
@@ -1000,7 +998,7 @@ const wallsShown = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.
 wallsShown.frustumCulled = false;
 wallsShown.visible = false;
 scene.add(wallsShown);
-const around = { turned: 0.35, raised: 0.5, away: 9, middle: new THREE.Vector3(0, 1.2, 0) };
+const around = { turned: 0, raised: 0, away: 1, middle: new THREE.Vector3() };
 
 function showWalls(walls: number[]) {
     const lines: number[] = [];
@@ -1013,8 +1011,11 @@ function showWalls(walls: number[]) {
         zs.push(z1, z2);
     }
     wallsShown.geometry.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
-    if (xs.length > 0) around.middle.set((Math.min(...xs) + Math.max(...xs)) / 2, 1.2, (Math.min(...zs) + Math.max(...zs)) / 2);
+    if (xs.length > 0) roomMiddle.set((Math.min(...xs) + Math.max(...xs)) / 2, 1.2, (Math.min(...zs) + Math.max(...zs)) / 2);
 }
+
+/** The middle of the room whose walls are shown, at the height of the chest. */
+const roomMiddle = new THREE.Vector3(0, 1.2, 0);
 
 function lookAround() {
     const level = Math.cos(around.raised) * around.away;
@@ -1022,28 +1023,55 @@ function lookAround() {
     camera.lookAt(around.middle);
 }
 
-/**
- * Out of a headset the mouse is the controller: a click on a node (the button pressed and let go of in one place) is told
- * to the window as the right controller's trigger (the left button) or grip (the right one) on it is.
- */
-let pressedAt: { x: number; y: number } | null = null;
-const CLICK_WITHIN_PX = 4;
+/** What the eyes go around, and are moved to and from by the wheel, is [to] from now on; they stay where they are and turn to it. */
+function goAround(to: THREE.Vector3) {
+    const from = camera.position.clone().sub(to);
+    around.middle.copy(to);
+    around.away = Math.max(NEAREST, from.length());
+    around.raised = Math.asin(Math.max(-1, Math.min(1, from.y / around.away)));
+    around.turned = Math.atan2(from.x, from.z);
+}
 
-/** The node under the place [x], [y] of the page: of those the look from there goes through, the nearest. */
-function nodeAt(x: number, y: number): VrNode | null {
+/** The eyes where they are at first: before the graph, or, with the graph on the walls, above the room looking down into it. */
+function resetEyes() {
+    if (inRoom) Object.assign(around, { turned: 0.35, raised: 0.5, away: 9 });
+    else {
+        camera.position.set(0, 1.5, 0.6);
+        goAround(START);
+    }
+    if (inRoom) around.middle.copy(roomMiddle);
+}
+
+/** How near what they go around the eyes come, and how far from it they go, metres. */
+const NEAREST = 0.03;
+const FURTHEST = 60;
+
+/** Where the node [n] is in the room. */
+function placeOf(n: VrNode): THREE.Vector3 {
+    graph.updateMatrixWorld();
+    return new THREE.Vector3(n.x, n.y, n.z).add(offset).applyMatrix4(graph.matrixWorld);
+}
+
+/** The look from the eyes through the place [x], [y] of the page, in the graph's own space, as the nodes are: from where, and a metre of it. */
+function lookThrough(x: number, y: number): { from: THREE.Vector3; towards: THREE.Vector3 } {
     const bounds = canvas.getBoundingClientRect();
+    camera.updateMatrixWorld();
+    graph.updateMatrixWorld();
+    const into = graph.matrixWorld.clone().invert();
+    const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
+    const through = new THREE.Vector3((x - bounds.left) / bounds.width * 2 - 1, 1 - (y - bounds.top) / bounds.height * 2, 0.5).unproject(camera);
+    const ahead = through.sub(eye).normalize().add(eye);
+    const from = eye.applyMatrix4(into).sub(offset);
+    return { from, towards: ahead.applyMatrix4(into).sub(offset).sub(from) };
+}
+
+/** The node under the place [x], [y] of the page: of those the look from there goes through, the nearest, and how far along the look it is. */
+function nodeAt(x: number, y: number): { node: VrNode; along: number } | null {
     const sent = shown;
     const axes = laid?.axes;
     let nearest: { node: VrNode; along: number } | null = null;
     if (sent !== null && axes !== undefined) {
-        camera.updateMatrixWorld();
-        graph.updateMatrixWorld();
-        const into = graph.matrixWorld.clone().invert();
-        // the look through that place, in the graph's own space, as the nodes are
-        const eye = new THREE.Vector3().setFromMatrixPosition(camera.matrixWorld);
-        const through = new THREE.Vector3((x - bounds.left) / bounds.width * 2 - 1, 1 - (y - bounds.top) / bounds.height * 2, 0.5).unproject(camera);
-        const from = eye.clone().applyMatrix4(into).sub(offset);
-        const towards = through.applyMatrix4(into).sub(offset).sub(from);
+        const { from, towards } = lookThrough(x, y);
         sent.nodes.forEach((n, i) => {
             // where the look meets the plane the node is turned into ([face]), and whether that is on the node
             const [rx, ry, rz, ux, uy, uz, fx, fy, fz] = axes.subarray(i * 9, i * 9 + 9);
@@ -1055,35 +1083,66 @@ function nodeAt(x: number, y: number): VrNode | null {
             if (hit) nearest = { node: n, along };
         });
     }
-    return (nearest as { node: VrNode; along: number } | null)?.node ?? null;
+    return nearest;
 }
 
+/**
+ * Out of a headset the mouse is the controller, and what moves the eyes. A click on a node (the button pressed and let go
+ * of in one place) is told to the window as the right controller's trigger (the left button) or grip (the right one) on it
+ * is, and the eyes go around that node from then on. The left button held on a node and moved takes the node along, as the
+ * trigger does (not on the walls, where no node is moved); held elsewhere, or the right one, it turns the eyes around what
+ * they go around. The wheel brings them nearer to that, or further from it.
+ */
+let mouse: { x: number; y: number; button: number; moved: boolean; on: { node: VrNode; along: number; grip: THREE.Vector3 } | null } | null = null;
+const CLICK_WITHIN_PX = 4;
+resetEyes();
+
 canvas.addEventListener("pointerdown", (e) => {
-    pressedAt = { x: e.clientX, y: e.clientY };
+    if (!renderer.xr.isPresenting) {
+        const hit = nodeAt(e.clientX, e.clientY);
+        const { from, towards } = lookThrough(e.clientX, e.clientY);
+        // where on the node it was taken: it does not jump to have its middle under the pointer
+        const grip = hit === null ? null : from.addScaledVector(towards, hit.along).sub(new THREE.Vector3(hit.node.x, hit.node.y, hit.node.z));
+        mouse = { x: e.clientX, y: e.clientY, button: e.button, moved: false, on: hit === null || grip === null ? null : { ...hit, grip } };
+        if (e.isTrusted) canvas.setPointerCapture(e.pointerId);
+    }
+});
+canvas.addEventListener("pointermove", (e) => {
+    const held = mouse;
+    if (held !== null && e.buttons !== 0 && !renderer.xr.isPresenting) {
+        held.moved = held.moved || Math.hypot(e.clientX - held.x, e.clientY - held.y) > CLICK_WITHIN_PX;
+        const taken = held.button === 0 && !inRoom ? held.on : null;
+        if (held.moved && taken !== null && received !== null) {
+            const { from, towards } = lookThrough(e.clientX, e.clientY);
+            const middle = from.addScaledVector(towards, taken.along).sub(taken.grip);
+            placed.set(taken.node.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
+            show(received);
+        } else if (held.moved) {
+            around.turned -= e.movementX * 0.005;
+            around.raised = Math.min(1.5, Math.max(-1.5, around.raised + e.movementY * 0.005));
+        }
+    }
 });
 canvas.addEventListener("pointerup", (e) => {
-    const was = pressedAt;
-    pressedAt = null;
-    const still = was !== null && Math.hypot(e.clientX - was.x, e.clientY - was.y) <= CLICK_WITHIN_PX;
-    const on = still && !renderer.xr.isPresenting && (e.button === 0 || e.button === 2) ? nodeAt(e.clientX, e.clientY) : null;
-    if (on !== null) tell?.(JSON.stringify({ type: "click", id: on.id, button: e.button }));
+    const held = mouse;
+    mouse = null;
+    const on = held?.on ?? null;
+    const place = on === null ? undefined : placed.get(on.node.id);
+    if (held !== null && on !== null && held.moved && place !== undefined) {
+        // the window says where the node is only a little later: until then it is where it was put
+        place.until = performance.now() + KEPT_AFTER_MS;
+        tell?.(JSON.stringify({ type: "move", id: on.node.id, ...place.at }));
+    } else if (held !== null && on !== null && !held.moved && (held.button === 0 || held.button === 2)) {
+        tell?.(JSON.stringify({ type: "click", id: on.node.id, button: held.button }));
+        if (held.button === 0) goAround(placeOf(on.node));
+    }
 });
 // the right button is a button here, not the browser's menu
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-
-canvas.addEventListener("pointermove", (e) => {
-    if (e.buttons !== 0 && !renderer.xr.isPresenting && inRoom) {
-        around.turned -= e.movementX * 0.005;
-        around.raised = Math.min(1.5, Math.max(-0.2, around.raised + e.movementY * 0.005));
-    } else if (e.buttons !== 0 && !renderer.xr.isPresenting) {
-        graph.rotation.y += e.movementX * 0.005;
-        graph.rotation.x += e.movementY * 0.005;
-    }
-});
 canvas.addEventListener("wheel", (e) => {
-    if (!renderer.xr.isPresenting && inRoom) around.away = Math.min(40, Math.max(0.5, around.away * (e.deltaY < 0 ? 1 / 1.1 : 1.1)));
-    else if (!renderer.xr.isPresenting) graph.scale.multiplyScalar(e.deltaY < 0 ? 1.1 : 1 / 1.1);
+    if (!renderer.xr.isPresenting) around.away = Math.min(FURTHEST, Math.max(NEAREST, around.away * (e.deltaY < 0 ? 1 / 1.1 : 1.1)));
 });
+
 
 /** Where one stood and looked when the window was last told, and when that was: it is told again after a step or a turn, not more often than [REPORT_MS]. */
 let stood: { at: THREE.Vector2; looks: THREE.Vector2; when: number } | null = null;
@@ -1112,7 +1171,7 @@ function tellStanding() {
 renderer.setAnimationLoop((_time, frame) => {
     if (frame) showScanned(frame);
     if (renderer.xr.isPresenting) tellStanding();
-    else if (inRoom) lookAround();
+    else lookAround();
     wallsShown.visible = inRoom && !renderer.xr.isPresenting;
     if (!renderer.xr.isPresenting) {
         const width = canvas.clientWidth;
