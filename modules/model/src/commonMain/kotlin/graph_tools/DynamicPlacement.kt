@@ -47,7 +47,11 @@ object DynamicPlacement {
         // attached nodes follow their owner (Attachments.reglue), they aren't placed themselves
         val fresh = appeared.filter { it !in g.attachmentOwners }.toSet()
         if (fresh.isNotEmpty()) {
-            val targets = positionsFor(g, fresh, fixed = visible!! - appeared)
+            val fixed = visible!! - appeared
+            // explore mode: a faint node is not in the way of a new one, it gets out of it ([settled])
+            val yielding = if (g.pinned != null) fixed.filter { g.isFaint(it) }.toSet() else emptySet()
+            val placed = positionsFor(g, fresh, fixed, yielding)
+            val targets = if (g.pinned != null) settled(g, placed, visible) else placed
             if (targets.isNotEmpty()) {
                 g.commit(
                     MoveNodesCommand(
@@ -61,8 +65,25 @@ object DynamicPlacement {
         }
     }
 
-    /** New positions for [fresh] nodes, given the [fixed] visible ones. */
-    fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>): Map<Node, Vector2> {
+    /**
+     * Explore mode: where the nodes [placed] and the faint ones in
+     * their way come to rest ([Settling]), among the [visible] ones.
+     * The pinned nodes that were seen before stay. Nothing is moved
+     * here: the nodes are back where they were when this returns.
+     */
+    private fun settled(g: Graph, placed: Map<Node, Vector2>, visible: Set<Node>): Map<Node, Vector2> {
+        val among = visible.filter { it !in g.attachmentOwners }.toSet()
+        val before = among.associateWith { it.position }
+        placed.forEach { (n, p) -> n.position = p }
+        val moved = Settling.settle(g, placed.keys, among) { g.isFaint(it) }
+        val after = (placed.keys + moved).associateWith { it.position }
+        before.forEach { (n, p) -> n.position = p }
+        Attachments.reglue(g)
+        return after
+    }
+
+    /** New positions for [fresh] nodes, given the [fixed] visible ones; those of them that are [yielding] may be overlapped. */
+    fun positionsFor(g: Graph, fresh: Set<Node>, fixed: Set<Node>, yielding: Set<Node> = emptySet()): Map<Node, Vector2> {
         // attached nodes first: a node's box is its whole block (it + what's glued to it), measured
         // relative to it, so the fanning out below starts from the block's edges
         Attachments.reglue(g)
@@ -76,7 +97,7 @@ object DynamicPlacement {
         var layer = fresh.filter { n -> (parents(n) + children(n)).any { it in placed } }.sortedWith(topToBottom)
         while (layer.isNotEmpty()) {
             layer.forEach { n ->
-                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed, boxes)
+                val target = spotFor(n, parents(n).filter { it in placed }, children(n).filter { it in placed }, placed, boxes, yielding)
                 placed[n] = target
                 result[n] = target
             }
@@ -95,6 +116,7 @@ object DynamicPlacement {
         visibleChildren: List<Node>,
         placed: Map<Node, Vector2>,
         boxes: Map<Node, Attachments.Box>,
+        yielding: Set<Node>,
     ): Vector2 {
         val box = { m: Node -> boxes.getValue(m) }
         val pos = { m: Node -> placed.getValue(m) }
@@ -115,7 +137,7 @@ object DynamicPlacement {
         val rows = (0..MAX_ROWS).asSequence().flatMap { k -> if (k == 0) sequenceOf(0) else sequenceOf(k, -k) }
         return rows
             .map { k -> Vector2(x, y + k * step) }
-            .firstOrNull { spot -> placed.none { (m, p) -> overlaps(box(n), spot, box(m), p) } }
+            .firstOrNull { spot -> placed.none { (m, p) -> m !in yielding && overlaps(box(n), spot, box(m), p) } }
             ?: Vector2(x, y)
     }
 

@@ -108,6 +108,36 @@ class DynamicPlacementTest {
     }
 
     @Test
+    fun `explore mode - what is unfolded pushes the faint nodes in its way off, the pinned ones stay, all in one undo step`() {
+        val g = Graph()
+        val root = Node("root", Vector2(0, 0))
+        // the last kid is where the grandkids are going to be put
+        val kids = (0..2).map { Node("kid $it", Vector2(150, -60 + 40 * it)) } + Node("kid 3", Vector2(285, -20))
+        val grandkids = (0..2).map { Node("grandkid $it", Vector2(9000, 9000 + 100 * it)) }
+        (kids + grandkids + root).forEach { g.add(it) }
+        kids.forEach { g.add(Edge(root, it)) }
+        grandkids.forEach { g.add(Edge(kids[1], it)) }
+        g.ensureCachesFresh(force = true)
+        val before = g.nodes.associateWith { it.position }
+
+        g.pinned = setOf(root)
+        DynamicPlacement.place(g)
+        g.pinned = setOf(root, kids[1])
+        DynamicPlacement.place(g)
+
+        val seen = g.visibleNodes().toList()
+        assertEquals(g.nodes.toSet(), seen.toSet())
+        seen.forEachIndexed { i, a -> seen.drop(i + 1).forEach { b -> assertFalse(overlap(a, b), "nodes at ${a.position} and ${b.position} overlap") } }
+        assertEquals(Vector2(0, 0), root.position)
+        assertEquals(before.getValue(kids[1]), kids[1].position)
+        assertTrue(grandkids.all { (it.position - kids[1].position).length() < 1000 }, "the grandkids are next to their parent")
+        assertTrue(kids[3].position != before.getValue(kids[3]), "the faint node gave way")
+        assertTrue(grandkids.any { abs(it.position.y - kids[1].position.y) < 10 }, "a grandkid is level with its parent")
+        g.history.undo()
+        assertEquals(before, g.nodes.associateWith { it.position })
+    }
+
+    @Test
     fun `no placement while there is something to redo`() {
         val (g, ns, b) = graph()
         ViewModes.dynamic = true
