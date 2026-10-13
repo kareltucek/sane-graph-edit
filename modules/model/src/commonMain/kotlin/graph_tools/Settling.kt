@@ -2,7 +2,6 @@ package graph_tools
 
 import Graph
 import utils.Vector2
-import kotlin.math.floor
 
 /**
  * The springs of [LayoutOptimizer] on a few nodes only, until they
@@ -15,9 +14,9 @@ import kotlin.math.floor
  * act, of the optimizer's springs:
  *
  *  - the edge spring, to the nodes it has an edge with that are seen;
- *  - the collision spring, from the nodes near it. Which are near is
- *    looked up in a grid, so a step costs as much as there are nodes
- *    seen, not that squared;
+ *  - the collision spring, from the nodes near it
+ *    ([LayoutOptimizer.impl.Colliders]: a step costs about as much
+ *    as there are nodes seen, not that squared);
  *  - the one that makes the edges out of one node as long as each
  *    other, among its children that are seen;
  *
@@ -34,9 +33,6 @@ import kotlin.math.floor
  * for less while something pushes. Each step moves a node a part of that, a smaller part each time,
  * so that two nodes pushing each other do not swing. The origin
  * spring acts until the nodes rest, as all of this does.
- *
- * One very big node makes the cells of the grid as big, and the
- * looking up slow.
  */
 object Settling {
     private const val MAX_STEPS = 200
@@ -66,16 +62,14 @@ object Settling {
      * The nodes are moved in place; those that took part are returned.
      */
     fun settle(g: Graph, fresh: Set<Node>, among: Set<Node>, yields: (Node) -> Boolean, origin: (Node) -> Vector2? = { null }): Set<Node> {
-        val reach = (2.0 * LayoutOptimizer.springScale).coerceAtLeast(1.0)
-        val cell = (among.maxOfOrNull { it.cache.shapeBounds.length() } ?: 1.0).coerceAtLeast(1.0) * reach
         tailrec fun run(moving: Set<Node>, damping: Double, left: Int): Set<Node> {
-            val done = step(g, moving, among, yields, origin, cell, damping)
+            val done = step(g, moving, among, yields, origin, damping)
             val rests = done.furthest < SETTLED && done.moving.size == moving.size
             return if (rests || left <= 1) done.moving else run(done.moving, damping * COOLING, left - 1)
         }
         // and then, with nothing pulling any more, off each other those that are still on each other: many nodes pulled to one place
         tailrec fun apart(moving: Set<Node>, left: Int): Set<Node> {
-            val done = step(g, moving, among, yields, origin, cell, DAMPING, pulling = false)
+            val done = step(g, moving, among, yields, origin, DAMPING, pulling = false)
             return if (done.furthest < SETTLED || left <= 1) done.moving else apart(done.moving, left - 1)
         }
         return if (fresh.isEmpty()) fresh else apart(run(fresh, DAMPING, MAX_STEPS), MAX_STEPS)
@@ -90,20 +84,15 @@ object Settling {
         among: Set<Node>,
         yields: (Node) -> Boolean,
         origin: (Node) -> Vector2?,
-        cell: Double,
         damping: Double,
         pulling: Boolean = true,
     ): Step {
         EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet())
-        val cellOf = { p: Vector2 -> floor(p.x / cell).toInt() to floor(p.y / cell).toInt() }
-        val grid = among.groupBy { cellOf(it.position) }
-        val near = { n: Node ->
-            val (cx, cy) = cellOf(n.position)
-            (-1..1).flatMap { dx -> (-1..1).flatMap { dy -> grid[cx + dx to cy + dy].orEmpty() } }.filter { it != n }
-        }
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
-        val strength = if (pulling) 1.0 else APART / (2.0 * LayoutOptimizer.springScale).coerceAtLeast(1.0)
-        val pushes = moving.flatMap { n -> near(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it to o } } }
+        val strength = if (pulling) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
+        // the nodes are elsewhere at each step: which are near is found anew
+        val near = LayoutOptimizer.impl.Colliders(among, LayoutOptimizer.impl.collisionReach(strength))
+        val pushes = moving.flatMap { n -> near.of(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it to o } } }
         val pulls = if (!pulling) emptyList() else moving.flatMap { n ->
             g.edgeMap[n].orEmpty().mapNotNull { e ->
                 val other = if (e.src == n) e.dst else e.src

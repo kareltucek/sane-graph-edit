@@ -14,8 +14,7 @@ import utils.Vector2.Companion.Zero
 /**
  * Please note that this implementation is very naive.
  *
- * In order to work with large graphs collision strings desperately need spatial search instead of
- * "try all" approach.
+ * Which nodes are near enough to collide is looked up ([LayoutOptimizer.impl.Colliders]), not tried for all pairs.
  */
 
 /**
@@ -89,9 +88,10 @@ import utils.Vector2.Companion.Zero
  *
  * ## Known limitations
  *
- * - **O(n²) collision**: every step tests every node pair.
- *   Fine for a few hundred nodes, not for thousands. Spatial
- *   hashing is the obvious fix but not done yet.
+ * - **Collision in clumps**: the pairs that may collide are
+ *   found through a grid ([impl.Colliders], [SpatialIndex]), so a
+ *   spread-out graph costs about as much as it has nodes; nodes
+ *   all piled in one place are still all tried with each other.
  * - **No energy conservation**: forces are applied as-is, no
  *   damping or timestep control. Large scale changes can
  *   oscillate.
@@ -417,10 +417,46 @@ object LayoutOptimizer {
         }
 
 
+        /** How far apart, in times the distance at which they touch, two nodes may be and still push each other ([computeCollisionSpring]). */
+        fun collisionReach(strengthModulator: Double = 1.0): Double = (2.0 * springScale).coerceAtLeast(1.0) * strengthModulator
+
+        /**
+         * The nodes that may be near enough to a node to push it
+         * ([computeCollisionSpring]), found without looking at all of
+         * them ([SpatialIndex]): every node that does push is among
+         * them, in the order the nodes were given in; some that are a
+         * little too far may be too. For the places the nodes have
+         * when this is made.
+         *
+         * How near two nodes push each other depends on how big both
+         * are. Nodes of the usual sizes are looked up by a distance
+         * that covers the biggest of them; the few much bigger ones
+         * are in no index and are offered to every node, or one huge
+         * node would make every look as wide as itself.
+         */
+        class Colliders(nodes: Collection<Node>, private val reach: Double) {
+            private val half = { n: Node -> n.cache.shapeBounds.length() / 2 }
+            private val order = nodes.withIndex().associate { (i, n) -> n to i }
+            private val usual = nodes.map(half).sorted().let { if (it.isEmpty()) 1.0 else it[it.size / 2] }.coerceAtLeast(1.0) * BIG
+            private val big = nodes.filter { half(it) > usual }
+            private val index = SpatialIndex(nodes.filter { half(it) <= usual }, usual * reach) { it.position }
+
+            fun of(n: Node): List<Node> =
+                (index.within(n.position, (half(n) + usual) * reach * MARGIN) + big).filter { it != n }.sortedBy { order.getValue(it) }
+
+            private companion object {
+                /** A node this many times the usual size is a big one. */
+                const val BIG = 4.0
+
+                /** A little further than reckoned, against rounding. */
+                const val MARGIN = 1.001
+            }
+        }
+
         fun computeCollisionSprings(g: Graph, tgt: SpringTarget, moving: Boolean): List<Spring> {
             val strengthModulator = moving.fold(1.0, 1.3)
 
-            val nodes = computeCollisionEdgeSet(g, tgt)
+            val nodes = computeCollisionEdgeSet(g, tgt, collisionReach(strengthModulator))
 
             return nodes
                 .mapNotNull { computeCollisionSpring(g, it.first, it.second, strengthModulator) }
@@ -494,15 +530,11 @@ object LayoutOptimizer {
             return nodes
         }
 
-        fun computeCollisionEdgeSet(g: Graph, tgt: SpringTarget): List<Pair<Node, Node>> {
+        /** The pairs of nodes that may push each other, at [reach] times their touching distance: the first of each pair is one that moves. */
+        fun computeCollisionEdgeSet(g: Graph, tgt: SpringTarget, reach: Double): List<Pair<Node, Node>> {
             val nodes = computeNodeSet(g, tgt)
-
-            return nodes.flatMap { a ->
-                g.nodes.mapNotNull { b ->
-                    (a to b)
-                        .takeIf { a != b }
-                }
-            }
+            val near = Colliders(g.nodes, reach)
+            return nodes.flatMap { a -> near.of(a).map { b -> a to b } }
         }
     }
 
