@@ -135,12 +135,16 @@ function hideLine() {
 let paneIsList = false;
 
 /** Show [text] in the pane above the status line: a message, or ([list]) what the `:` line can be completed to. */
-function showMessage(text: string, list = false) {
+function showMessage(text: string, list = false, kept = false) {
     pane.textContent = text;
     pane.style.display = "block";
     pane.scrollTop = 0;
     paneIsList = list;
+    paneIsKept = kept;
 }
+
+/** What the pane shows is to be copied from at leisure (an address, a PIN): only Escape puts it away, other keys do what they always do. */
+let paneIsKept = false;
 
 /** Hide the pane; with [list], only if it still shows the list: what the command said in its place stays. */
 function hideMessage(list = false) {
@@ -1242,7 +1246,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("keydown", (e) => current((view) => {
-        const dismissed = paneOpen() && !lineOpen();
+        const dismissed = paneOpen() && !lineOpen() && (!paneIsKept || e.key === "Escape");
         if (dismissed) hideMessage();
         const editor = editing?.editor;
         if (dismissed && editing === null && DISMISSING_KEYS.includes(e.key)) e.preventDefault();
@@ -1318,7 +1322,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
                         `open in the headset's browser\n    ${address}\nand give the PIN ${pin}`;
             // where the application was started from, and in the window
             process.stdout.write(`sane-graph-edit: ${text}\n`);
-            showMessage(text);
+            showMessage(`${text}\n(Escape puts this away)`, false, true);
         });
     }
 
