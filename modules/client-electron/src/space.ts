@@ -311,6 +311,8 @@ export class SpaceRenderer<N extends SpaceNode> {
     private frame = 0;
     /** The room the graph is in, as lines; drawn like anything else in space, so that nodes in front of a line hide it. */
     private readonly walls = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: ROOM_COLOUR }));
+    /** Rings around the selected nodes, drawn after them: lines, at least a pixel wide whatever the distance. */
+    private readonly selection = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
     /** For tests: how many milliseconds the parts of the last drawing took, how many pictures it made and how many draw calls. */
     spent = { nodes: 0, edges: 0, render: 0, made: 0, calls: 0 };
     /** Where the view looked from when it was last drawn, and when that last changed. */
@@ -328,6 +330,9 @@ export class SpaceRenderer<N extends SpaceNode> {
         this.scene.add(this.small.mesh);
         this.walls.frustumCulled = false;
         this.scene.add(this.walls);
+        this.selection.frustumCulled = false;
+        this.selection.renderOrder = 1e9 + 1;
+        this.scene.add(this.selection);
     }
 
     /** The lines to show of the room at the next drawing, as the view sees them: the two ends of each, x, y and z after each other. Null: none. */
@@ -419,8 +424,10 @@ export class SpaceRenderer<N extends SpaceNode> {
         fade: number,
         keyOf: (n: N) => string,
         paint: (n: N, pixelsPerUnit: number) => NodePicture,
-        flatOf: (n: N, pixelsPerUnit: number) => { fill: string; ink: string; outline: number },
+        flatOf: (n: N, pixelsPerUnit: number) => { fill: string; ink: string; outline: number; ringed: boolean },
     ): boolean {
+        const rings: number[] = [];
+        const ringColours: number[] = [];
         this.frame++;
         // one pixel of the canvas for each of the screen's, as the flat canvas has it, or all of it is resampled
         this.renderer.setPixelRatio(1);
@@ -487,6 +494,20 @@ export class SpaceRenderer<N extends SpaceNode> {
                     kept.mesh.visible = false;
                 }
             } else {
+                const look = flatOf(n, seen);
+                if (look.ringed) {
+                    // a selected node is ringed with lines, which are a pixel wide however small it is seen: its outline in its
+                    // picture would be less; a little in front of the node, so that the picture does not cover it
+                    const hw = n.width / 2;
+                    const hh = n.height / 2;
+                    const z = -n.z + 0.5;
+                    const corners = [[n.x - hw, n.y - hh], [n.x + hw, n.y - hh], [n.x + hw, n.y + hh], [n.x - hw, n.y + hh]];
+                    corners.forEach(([x, y], i) => {
+                        const [x2, y2] = corners[(i + 1) % 4];
+                        rings.push(x, -y, z, x2, -y2, z);
+                        ringColours.push(...rgb(look.ink), ...rgb(look.ink));
+                    });
+                }
                 const key = keyOf(n);
                 const finest = MAX_PICTURE_SIDE / Math.max(n.width, n.height, 1);
                 const whole = Math.min(dpr, finest);
@@ -560,7 +581,7 @@ export class SpaceRenderer<N extends SpaceNode> {
                     slot.page.quad(slot, n.x + by.x, n.y + by.y, n.z);
                 } else {
                     // until its picture is made: an outline and a filling
-                    const flat = flatOf(n, seen);
+                    const flat = look;
                     const hw = n.width / 2;
                     const hh = n.height / 2;
                     const inset = Math.min(flat.outline, hw, hh);
@@ -570,6 +591,9 @@ export class SpaceRenderer<N extends SpaceNode> {
             }
         });
         this.small.end();
+        this.selection.geometry.setAttribute("position", new THREE.Float32BufferAttribute(rings, 3));
+        this.selection.geometry.setAttribute("color", new THREE.Float32BufferAttribute(ringColours, 3));
+        this.selection.visible = rings.length > 0;
         // e.g. after the colours changed: every picture is out of date at once
         if (behind && !this.filling) this.refill();
         this.pages.forEach((page) => {
