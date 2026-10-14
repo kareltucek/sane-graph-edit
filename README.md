@@ -178,7 +178,7 @@ Flags:
 | `Ctrl` + click node          | Toggle that node in/out of the multi-selection     |
 | `Ctrl` + click empty + drag  | Selection box — rubber-band adds to selection      |
 | Drag a selected node         | Move the selection                                 |
-| …with `Shift` held           | The selection moves exactly; nodes it lands on make way and the descendants that hang from it alone follow, by springs, a step for each picture (no longer than 50 ms; with many nodes they take turns), until they rest; one undo step |
+| …with `Shift` held           | The selection moves exactly; nodes it lands on make way and the descendants that hang from it alone follow, by springs, a step for each picture, at a speed that does not depend on how often pictures are drawn, until they rest; one undo step |
 | Drag on empty space          | Pan the view                                       |
 | Double-click empty           | Create a new node                                  |
 | Double-click a node          | Edit its text in place                             |

@@ -581,9 +581,6 @@ class GestureController(
         graphView.repaint()
     }
 
-    /** How long a step of the nodes on their way may take, in milliseconds: with many, they take turns ([Settling.Run]). */
-    private val STEP_BUDGET = 50L
-
     /** Where the nodes seen were when the move in progress started ([captureMoveStart]); null outside one. */
     private var settleStart: Map<Node, Vector2>? = null
 
@@ -624,7 +621,7 @@ class GestureController(
             // how far the dragged nodes are from where they were, as they are now
             val by = { dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero }
             // nodes only kept off each other: those the user put near each other stay near, and only those on others are pushed
-            Settling.Run(g, shown, weight, close = true, budget = STEP_BUDGET, clock = clock) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
+            Settling.Run(g, shown, weight, close = true, clock = clock) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
         }
         // on them: nearer than touching, not only within the collision spring's reach
         val touching = 1 / LayoutOptimizer.impl.collisionReach()
