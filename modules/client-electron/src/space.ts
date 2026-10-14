@@ -76,6 +76,9 @@ const PICTURES_PER_FRAME = 12;
  * Of two nodes at one depth the one drawn later is on top.
  */
 const PICTURE = { alphaTest: 0.5, alphaToCoverage: true } as const;
+
+/** How much brighter a selected node is drawn: its picture times this. */
+const LIT = 2.2;
 /**
  * Edges are drawn after the nodes, faint ones letting through what
  * is behind them. One is hidden by a node in front of it and also by
@@ -210,6 +213,8 @@ class Page {
     readonly mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>;
     private positions = new Float32Array(3 * 4 * 256);
     private places = new Float32Array(2 * 4 * 256);
+    /** How bright each corner is drawn: 1, or [LIT] for a selected node. */
+    private shades = new Float32Array(3 * 4 * 256);
     private indices = new Uint32Array(6 * 256);
     private quads = 0;
     private room = 0;
@@ -223,7 +228,7 @@ class Page {
     constructor(anisotropy: number) {
         this.texture.colorSpace = THREE.SRGBColorSpace;
         this.texture.anisotropy = anisotropy;
-        this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ map: this.texture, ...PICTURE }));
+        this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ map: this.texture, vertexColors: true, ...PICTURE }));
         this.mesh.renderOrder = -1;
         this.mesh.frustumCulled = false;
     }
@@ -247,13 +252,15 @@ class Page {
         this.quads = 0;
     }
 
-    /** The picture in [slot], shown with its middle [shiftX], [shiftY] from x, y (y down), z away. */
-    quad(slot: Slot, x: number, y: number, z: number) {
+    /** The picture in [slot], shown with its middle [shiftX], [shiftY] from x, y (y down), z away; [lit]: brighter, selected. */
+    quad(slot: Slot, x: number, y: number, z: number, lit: boolean) {
         if ((this.quads + 1) * 12 > this.positions.length) {
             this.positions = grown(this.positions);
             this.places = grown(this.places);
+            this.shades = grown(this.shades);
             this.indices = grown(this.indices);
         }
+        this.shades.fill(lit ? LIT : 1, this.quads * 12, this.quads * 12 + 12);
         const left = x - slot.middleX / slot.pixelsPerUnit;
         const top = y - slot.middleY / slot.pixelsPerUnit;
         const right = left + slot.width / slot.pixelsPerUnit;
@@ -275,11 +282,13 @@ class Page {
         if (this.room < this.indices.length) {
             geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
             geometry.setAttribute("uv", new THREE.BufferAttribute(this.places, 2).setUsage(THREE.DynamicDrawUsage));
+            geometry.setAttribute("color", new THREE.BufferAttribute(this.shades, 3).setUsage(THREE.DynamicDrawUsage));
             geometry.setIndex(new THREE.BufferAttribute(this.indices, 1).setUsage(THREE.DynamicDrawUsage));
             this.room = this.indices.length;
         } else {
             geometry.getAttribute("position").needsUpdate = true;
             geometry.getAttribute("uv").needsUpdate = true;
+            geometry.getAttribute("color").needsUpdate = true;
             geometry.getIndex()!.needsUpdate = true;
         }
         geometry.setDrawRange(0, this.quads * 6);
@@ -297,106 +306,6 @@ function rgb(colour: string): [number, number, number] {
     return [c.r, c.g, c.b];
 }
 
-/**
- * Rings around the selected nodes: lines, a pixel wide however far. One buffer for all, a slot of four segments for each
- * node that has a ring; each frame only a ring that changed (the node moved, was selected or no longer is) is written, and
- * only its slot is sent to the graphics card. A slot that is let go is drawn as nothing (all its ends at one point) and
- * given to the next node.
- */
-class Rings {
-    /** Points of a slot: four segments, two ends each. */
-    private static readonly POINTS = 8;
-    private capacity = 0;
-    private positions = new Float32Array(0);
-    private colours = new Float32Array(0);
-    /** Each ringed node's slot and what is written there, compared field by field: nothing is made each frame. */
-    private readonly slots = new Map<string, { slot: number; x: number; y: number; hw: number; hh: number; z: number; ink: string }>();
-    private readonly free: number[] = [];
-    private used = 0;
-    /** The nodes ringed this frame. */
-    private seen = new Set<string>();
-    readonly lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
-
-    begin() {
-        this.seen = new Set();
-    }
-
-    /** [id] is to be ringed this frame: a rectangle around the middle [x], [y], half [hw] wide and [hh] high, at depth [z], in [ink]. */
-    ring(id: string, x: number, y: number, hw: number, hh: number, z: number, ink: string) {
-        this.seen.add(id);
-        const had = this.slots.get(id);
-        const same = had !== undefined && had.x === x && had.y === y && had.hw === hw && had.hh === hh && had.z === z && had.ink === ink;
-        if (!same) {
-            const slot = had?.slot ?? this.take();
-            this.slots.set(id, { slot, x, y, hw, hh, z, ink });
-            const [r, g, b] = rgb(ink);
-            const corners = [[x - hw, y - hh], [x + hw, y - hh], [x + hw, y + hh], [x - hw, y + hh]];
-            // a little in front of the node, so that its picture does not cover the ring; here y is up and z towards the viewer
-            const front = -z + 0.5;
-            corners.forEach(([cx, cy], i) => {
-                const [nx, ny] = corners[(i + 1) % 4];
-                this.write(slot, i * 2, cx, -cy, front, r, g, b);
-                this.write(slot, i * 2 + 1, nx, -ny, front, r, g, b);
-            });
-            this.changed(slot);
-        }
-    }
-
-    /** The rings of nodes not ringed this frame are let go. */
-    end() {
-        this.slots.forEach(({ slot }, id) => {
-            if (!this.seen.has(id)) {
-                for (let i = 0; i < Rings.POINTS; i++) this.write(slot, i, 0, 0, 0, 0, 0, 0);
-                this.changed(slot);
-                this.slots.delete(id);
-                this.free.push(slot);
-            }
-        });
-        this.lines.geometry.setDrawRange(0, this.used * Rings.POINTS);
-        this.lines.visible = this.slots.size > 0;
-    }
-
-    private take(): number {
-        const reused = this.free.pop();
-        if (reused !== undefined) return reused;
-        if (this.used === this.capacity) this.grow();
-        return this.used++;
-    }
-
-    /** Twice as many slots: a new buffer, all of it sent once. */
-    private grow() {
-        this.capacity = Math.max(64, this.capacity * 2);
-        const positions = new Float32Array(this.capacity * Rings.POINTS * 3);
-        const colours = new Float32Array(this.capacity * Rings.POINTS * 3);
-        positions.set(this.positions);
-        colours.set(this.colours);
-        this.positions = positions;
-        this.colours = colours;
-        this.lines.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        this.lines.geometry.setAttribute("color", new THREE.BufferAttribute(colours, 3));
-    }
-
-    private write(slot: number, point: number, x: number, y: number, z: number, r: number, g: number, b: number) {
-        const at = (slot * Rings.POINTS + point) * 3;
-        this.positions[at] = x;
-        this.positions[at + 1] = y;
-        this.positions[at + 2] = z;
-        this.colours[at] = r;
-        this.colours[at + 1] = g;
-        this.colours[at + 2] = b;
-    }
-
-    /** Only [slot] is sent to the graphics card. */
-    private changed(slot: number) {
-        const start = slot * Rings.POINTS * 3;
-        ["position", "color"].forEach((name) => {
-            const attribute = this.lines.geometry.getAttribute(name) as THREE.BufferAttribute;
-            attribute.addUpdateRange(start, Rings.POINTS * 3);
-            attribute.needsUpdate = true;
-        });
-    }
-}
-
 export class SpaceRenderer<N extends SpaceNode> {
     private readonly renderer: THREE.WebGLRenderer;
     private readonly scene = new THREE.Scene();
@@ -411,8 +320,6 @@ export class SpaceRenderer<N extends SpaceNode> {
     private frame = 0;
     /** The room the graph is in, as lines; drawn like anything else in space, so that nodes in front of a line hide it. */
     private readonly walls = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: ROOM_COLOUR }));
-    /** Rings around the selected nodes, drawn after them ([Rings]). */
-    private readonly rings = new Rings();
     /** For tests: how many milliseconds the parts of the last drawing took, how many pictures it made and how many draw calls. */
     spent = { nodes: 0, edges: 0, render: 0, made: 0, calls: 0 };
     /** Where the view looked from when it was last drawn, and when that last changed. */
@@ -430,9 +337,6 @@ export class SpaceRenderer<N extends SpaceNode> {
         this.scene.add(this.small.mesh);
         this.walls.frustumCulled = false;
         this.scene.add(this.walls);
-        this.rings.lines.frustumCulled = false;
-        this.rings.lines.renderOrder = 1e9 + 1;
-        this.scene.add(this.rings.lines);
     }
 
     /** The lines to show of the room at the next drawing, as the view sees them: the two ends of each, x, y and z after each other. Null: none. */
@@ -525,11 +429,9 @@ export class SpaceRenderer<N extends SpaceNode> {
         keyOf: (n: N) => string,
         paint: (n: N, pixelsPerUnit: number) => NodePicture,
         flatOf: (n: N, pixelsPerUnit: number) => { fill: string; ink: string; outline: number },
-        /** Whether [n] is to be ringed (it is selected), and in what colour. */
-        ringed: (n: N) => boolean,
-        inkOf: (n: N) => string,
+        /** Whether [n] is selected: drawn brighter. */
+        selected: (n: N) => boolean,
     ): boolean {
-        this.rings.begin();
         this.frame++;
         // one pixel of the canvas for each of the screen's, as the flat canvas has it, or all of it is resampled
         this.renderer.setPixelRatio(1);
@@ -589,9 +491,8 @@ export class SpaceRenderer<N extends SpaceNode> {
             const y = (n.y - space.middleY) * seen;
             const inView = Math.abs(x) - n.width * seen / 2 < pixelWidth / 2 + seen * 4 && Math.abs(y) - n.height * seen / 2 < pixelHeight / 2 + seen * 4;
             let kept = this.kept.get(n.id);
-            // a selected node is ringed with lines, a pixel wide however small it is seen (its outline in its picture would be
-            // less); also when out of the view, so that its ring is not made again as the view moves
-            if (ringed(n)) this.rings.ring(n.id, n.x, n.y, n.width / 2, n.height / 2, n.z, inkOf(n));
+            // a selected node is drawn brighter ([LIT]): its outline in its picture is too thin to see when it is seen small
+            const lit = selected(n);
             if (!inView) {
                 // not seen: nothing is worked out for it, and the picture of its own that it has is kept for when it is seen again
                 if (kept !== undefined) {
@@ -661,6 +562,7 @@ export class SpaceRenderer<N extends SpaceNode> {
                 if (own !== undefined) {
                     own.frame = this.frame;
                     own.mesh.visible = true;
+                    own.mesh.material.color.setScalar(lit ? LIT : 1);
                     const by = snap(own.pixelsPerUnit, own.middleX, own.middleY);
                     // the middle of the picture, in units from the middle of the node: across and down
                     const shiftX = (own.pixelWidth / 2 - own.middleX) / own.pixelsPerUnit + by.x;
@@ -669,7 +571,7 @@ export class SpaceRenderer<N extends SpaceNode> {
                     own.mesh.renderOrder = rank;
                 } else if (slot !== undefined) {
                     const by = snap(slot.pixelsPerUnit, slot.middleX, slot.middleY);
-                    slot.page.quad(slot, n.x + by.x, n.y + by.y, n.z);
+                    slot.page.quad(slot, n.x + by.x, n.y + by.y, n.z, lit);
                 } else {
                     // until its picture is made: an outline and a filling
                     const flat = flatOf(n, seen);
@@ -682,7 +584,6 @@ export class SpaceRenderer<N extends SpaceNode> {
             }
         });
         this.small.end();
-        this.rings.end();
         // e.g. after the colours changed: every picture is out of date at once
         if (behind && !this.filling) this.refill();
         this.pages.forEach((page) => {
