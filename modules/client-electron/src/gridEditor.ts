@@ -198,7 +198,7 @@ export class GridEditor {
     }
 
     /**
-     * Neovim on [text] with the cursor at [row], [column] (from 0), plain text in [colours].
+     * Neovim on [text] with the cursor at [row], [column] (from 0), plain text in [colours], in insert mode.
      * [onText] is told the text whenever it changes; [onExit] when neovim ends by itself (`:q`);
      * [onShown] when the editor takes the text's place on the screen; [onDrawn] whenever what it shows changed;
      * [onLine] the one line to show below the graph while editing (the command line being typed, or the mode), or null for none;
@@ -413,7 +413,7 @@ export class GridEditor {
                     .then(() => nvim.command(
                         `let &undolevels = g:sge_undolevels | set nomodified | call setcursorcharpos(${row + 1}, ${column + 1})` +
                         ` | call winrestview({'topline': 1, 'leftcol': 0})${kind}` +
-                        ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background}`,
+                        ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background} | startinsert`,
                     )))
             .catch(() => {
                 // no neovim: the editor shows nothing, and closes with the text unchanged

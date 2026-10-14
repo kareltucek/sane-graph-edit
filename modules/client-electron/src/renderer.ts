@@ -644,8 +644,9 @@ function showEditorStatus(pieces: StatusPiece[] | null) {
     editorStatus.replaceChildren(...(pieces ?? []).map((piece) => {
         const span = document.createElement("span");
         span.textContent = piece.text;
-        if (piece.foreground !== undefined) span.style.color = piece.foreground;
-        if (piece.background !== undefined) span.style.background = piece.background;
+        // without neovim's colour scheme the page's colours, as the rest of the page has them
+        if (useNvimColours && piece.foreground !== undefined) span.style.color = piece.foreground;
+        if (useNvimColours && piece.background !== undefined) span.style.background = piece.background;
         return span;
     }));
     const shown = pieces !== null && pieces.length > 0;
@@ -813,7 +814,7 @@ function sizeTerminals(view: client.JsView, scene: Scene, grid: client.GridMetri
 
 function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
     const n = lastScene?.nodes.find((it) => it.id === id);
-    const text = view.nodeText(id);
+    const text = view.textToEdit(id);
     if (n === undefined || lastScene === null || text == null || editing !== null) return;
     const place = textPlace(n, lastScene, grid);
     const bounds = canvas.getBoundingClientRect();

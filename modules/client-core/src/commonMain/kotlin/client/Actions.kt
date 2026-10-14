@@ -29,6 +29,7 @@ import graph_tools.StyleSnapshot
 import graph_tools.UnhideCommand
 import graph_tools.ViewModes
 import kotlin.math.pow
+import utils.Constants
 import utils.Vector2
 import utils.Utils.orElse
 import utils.Utils.toUnit
@@ -730,7 +731,7 @@ object Actions {
 
         val at = graphView.viewTransform.toWorld(Point3(pos, graphView.viewTransform.depth))
         val newNode = Node(
-            label = "New node",
+            label = Constants.defaultNodeText,
             pos = at.xy,
             style = style,
         )
