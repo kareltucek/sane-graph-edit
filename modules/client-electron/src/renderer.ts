@@ -1215,6 +1215,10 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         NodeEditor.discardSpare();
         [...terminals.values()].forEach((ofView) => [...ofView.values()].forEach((it) => it.close()));
     });
+    // Super and what is pressed with it are the window manager's: nothing here takes them, not the graph, neovim, a shell or the line
+    window.addEventListener("keydown", (e) => {
+        if (e.metaKey || e.key === "Meta" || e.key === "OS") e.stopImmediatePropagation();
+    }, true);
     // before the terminal has the key: Shift+Escape gives the keys back to the graph, and is not the shell's
     window.addEventListener("keydown", (e) => {
         if (inTerminal !== null && e.key === "Escape" && e.shiftKey) {
@@ -1388,6 +1392,7 @@ interface Played {
     key?: string;
     ctrl?: boolean;
     shift?: boolean;
+    meta?: boolean;
 }
 
 /** Dispatches [events] as the DOM events a user would cause, so that the listeners above are what handles them. */
@@ -1413,7 +1418,7 @@ async function replay(events: Played[], grid: client.GridMetrics) {
             editing.editor.type([...(p.key ?? "")].map((c) => names[c] ?? c).join(""));
         } else if (p.type === "type") editing?.editor.type(p.key ?? "");
         else if (p.type === "keydown") {
-            (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift, bubbles: true }));
+            (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift, metaKey: p.meta, bubbles: true }));
         }
         else if (p.type === "wheel") canvas.dispatchEvent(new WheelEvent("wheel", { ...common, deltaY: p.deltaY, cancelable: true }));
         else canvas.dispatchEvent(new PointerEvent(p.type, common));
