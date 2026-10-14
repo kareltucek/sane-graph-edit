@@ -11,14 +11,15 @@ import utils.Vector2
  * left to right — the filesystem root on the left, the chain of
  * parents down to [build]'s directory, then its subtree fanning out
  * to the right. Every node carries a `link` ([FileLink]) to its
- * path, so `gf` opens a `.dot` file or browses a directory. A `help`
- * node above the browsed directory links to the built-in help graph.
+ * path, so `gf` opens a `.dot` or `.md` file or browses a directory.
+ * A `help` node above the browsed directory links to the built-in
+ * help graph.
  *
- * Only directories and `.dot` files are shown, hidden entries
+ * Only directories and [SHOWN] files are shown, hidden entries
  * (`.git`, …) are skipped. The scan is breadth-first and stops after
- * [MAX_ENTRIES] directories + `.dot` files, so browsing a huge
+ * [MAX_ENTRIES] directories + files, so browsing a huge
  * directory (`$HOME`) stays quick and shows its top levels.
- * Directories scanned completely without a `.dot` file below them
+ * Directories scanned completely without such a file below them
  * are left out; directories the scan didn't reach are shown as
  * `name/ …` (`gf` browses into them).
  *
@@ -30,6 +31,9 @@ import utils.Vector2
  */
 object FileTree {
     const val MAX_ENTRIES = 2000
+
+    /** The files shown, by their ending: graphs and markdown. */
+    private val SHOWN = listOf(".dot", ".md")
 
     /** The window's initial size, for when there is no view to measure yet. */
     val DEFAULT_SCREEN = Vector2(800.0, 600.0)
@@ -43,7 +47,7 @@ object FileTree {
     private const val COLUMN_GAP = 40.0
     private const val ROW_GAP = 8.0
 
-    /** A directory or `.dot` file below the browsed directory. */
+    /** A directory or [SHOWN] file below the browsed directory. */
     private class Entry(val path: Path, val isDir: Boolean) {
         val children: MutableList<Entry> = mutableListOf()
         var scanned: Boolean = false
@@ -112,7 +116,7 @@ object FileTree {
     }
 
     /**
-     * Breadth-first scan below [root]: directories and `.dot` files,
+     * Breadth-first scan below [root]: directories and [SHOWN] files,
      * sorted directories first. Directories still queued when
      * [MAX_ENTRIES] is reached stay unscanned.
      */
@@ -131,7 +135,7 @@ object FileTree {
                 .filter { !it.name.startsWith(".") }
                 // asked once per entry: an answer that changes while sorting breaks the sort
                 .map { Entry(it, isDir(it)) }
-                .filter { it.isDir || it.path.name.endsWith(".dot") }
+                .filter { e -> e.isDir || SHOWN.any { e.path.name.endsWith(it) } }
                 .sortedWith(compareBy({ !it.isDir }, { it.path.name.lowercase() }))
             dir.children.addAll(entries)
             dir.scanned = true
