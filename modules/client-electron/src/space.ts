@@ -320,6 +320,8 @@ export class SpaceRenderer<N extends SpaceNode> {
     private frame = 0;
     /** The room the graph is in, as lines; drawn like anything else in space, so that nodes in front of a line hide it. */
     private readonly walls = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: ROOM_COLOUR }));
+    /** For trying how fast it is without them (`SGE_NO_EDGES`): whether edges are drawn. */
+    edgesShown = true;
     /** For tests: how many milliseconds the parts of the last drawing took, how many pictures it made and how many draw calls. */
     spent = { nodes: 0, edges: 0, render: 0, made: 0, calls: 0 };
     /** Where the view looked from when it was last drawn, and when that last changed. */
@@ -607,7 +609,8 @@ export class SpaceRenderer<N extends SpaceNode> {
             }
         });
         const t1 = performance.now();
-        this.strips(space, width, height, ink, radius, fade);
+        this.edges.mesh.visible = this.edgesShown;
+        if (this.edgesShown) this.strips(space, width, height, ink, radius, fade);
         const t2 = performance.now();
         this.renderer.render(this.scene, this.camera);
         const t3 = performance.now();

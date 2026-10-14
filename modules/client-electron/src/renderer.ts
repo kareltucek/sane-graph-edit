@@ -572,7 +572,8 @@ function pictureOfNode(n: SpaceSceneNode, grid: client.GridMetrics, pixelsPerUni
         // the node alone, in the middle, as a view at that zoom would show it
         const offsetX = (n.width / 2 + PICTURE_MARGIN) * pixelsPerUnit;
         const offsetY = (n.height / 2 + PICTURE_MARGIN) * pixelsPerUnit;
-        drawNode({ ...n, x: 0, y: 0, depthScale: 1 }, grid, { scale: pixelsPerUnit, offsetX, offsetY, nodes: [], edges: [], selectionBox: null }, 1, true);
+        // as if not selected: a selected node is drawn brighter instead ([SpaceRenderer]), and selecting remakes no picture
+        drawNode({ ...n, x: 0, y: 0, depthScale: 1, selected: false }, grid, { scale: pixelsPerUnit, offsetX, offsetY, nodes: [], edges: [], selectionBox: null }, 1, true);
     } finally {
         ctx = was;
     }
@@ -595,7 +596,8 @@ function vrPictureKey(n: SpaceSceneNode): string {
 function pictureKeyWith(n: SpaceSceneNode, painting: Painting | null): string {
     const picture = pictureOf(n);
     return JSON.stringify([
-        n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.selected, n.faint, n.manual, n.type, n.language, colours().background, colours().foreground,
+        // not whether it is selected: its picture is the same ([pictureOfNode])
+        n.lines, n.width, n.height, n.shape, n.bg, n.fg, n.fontSize, n.faint, n.manual, n.type, n.language, colours().background, colours().foreground,
         picture === null ? 0 : nameOf(picture), painting === null ? 0 : nameOf(painting), n.id === editing?.id && editing.editor.shown,
     ]);
 }
@@ -1104,6 +1106,8 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     ctx.imageSmoothingQuality = "high";
     if (threeD) {
         spaceRenderer ??= new SpaceRenderer(spaceCanvas, () => page.repaint());
+        // for trying how fast it is without them
+        spaceRenderer.edgesShown = process.env.SGE_NO_EDGES === undefined;
         const t0 = performance.now();
         const spaceNow = view.space() as SpaceScene<SpaceSceneNode>;
         lastSpaceIds = spaceNow.nodes.map((n) => n.id);
