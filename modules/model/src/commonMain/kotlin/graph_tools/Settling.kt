@@ -80,7 +80,10 @@ object Settling {
      * apart as the collision spring keeps them: nodes the user put
      * near each other stay so, and only those that are on one that
      * moves are pushed, and join it. [origin] is where a node is
-     * pulled back to, asked at each step; null for none.
+     * pulled back to, asked at each step; null for none. Those of
+     * [firm] are pulled there whole, not as one of the springs on
+     * them and no harder than [ORIGIN_CAP]: they follow it closely,
+     * a generation as well as the next.
      *
      * With [budget] a step takes no longer than that many
      * milliseconds: the nodes it does not get to wait, and the next
@@ -97,6 +100,7 @@ object Settling {
         private val among: Set<Node>,
         private val weight: (Node) -> Double,
         private val close: Boolean = false,
+        private val firm: Set<Node> = emptySet(),
         private val budget: Long? = null,
         private val clock: (() -> Long)? = null,
         private val origin: (Node) -> Vector2? = { null },
@@ -154,7 +158,7 @@ object Settling {
                 val order = if (cut) waiting.filter { it in moving }.ifEmpty { moving.shuffled(chance) } else moving.toList()
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, damping, windows, pulling, close, deadline)
+                val done = step(g, moving, order, among, near, weight, origin, firm, damping, windows, pulling, close, deadline)
                 order.take(done.taken).forEach { turns[it] = now }
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
@@ -254,6 +258,7 @@ object Settling {
         near: Near,
         weight: (Node) -> Double,
         origin: (Node) -> Vector2?,
+        firm: Set<Node>,
         damping: Double,
         windows: (Node) -> Double,
         pulling: Boolean,
@@ -276,18 +281,21 @@ object Settling {
             taken += 1
             val pushes = nearOf(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it.v * share(n, o) to o } }
             woken += pushes.map { it.second }.filter { it !in moving && weight(it).isFinite() }
+            val home = if (pulling) origin(n)?.let { it - n.position } else null
             val pulls = if (!pulling) emptyList() else {
                 val edges = g.edgeMap[n].orEmpty().mapNotNull { e ->
                     val other = if (e.src == n) e.dst else e.src
                     if (other != n && other in among) LayoutOptimizer.impl.computeBBSpring(g, n, other, e).v else null
                 }
-                val home = origin(n)?.let { to -> (to - n.position).let { by -> if (by.length() > ORIGIN_CAP) by.toScale(ORIGIN_CAP) else by } }
-                edges + listOfNotNull(home) + alike(g, n, among)
+                val capped = home?.takeIf { n !in firm }?.let { by -> if (by.length() > ORIGIN_CAP) by.toScale(ORIGIN_CAP) else by }
+                edges + listOfNotNull(capped) + alike(g, n, among)
             }
             // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
             val off = mean(pushes.map { it.first })
             val to = mean(pulls)
-            val by = off?.let { it + (to ?: Vector2.Zero) * PULL_WHEN_PUSHED } ?: to
+            val loose = off?.let { it + (to ?: Vector2.Zero) * PULL_WHEN_PUSHED } ?: to
+            // a firm one is pulled to its origin whole, on top of the rest, however far and whatever pushes it
+            val by = home?.takeIf { n in firm }?.let { it + (loose ?: Vector2.Zero) } ?: loose
             if (by != null) moves[n] = by * damping
         }
         moves.forEach { (n, by) ->

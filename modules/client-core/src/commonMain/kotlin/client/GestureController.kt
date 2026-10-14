@@ -621,7 +621,8 @@ class GestureController(
             // how far the dragged nodes are from where they were, as they are now
             val by = { dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero }
             // nodes only kept off each other: those the user put near each other stay near, and only those on others are pushed
-            Settling.Run(g, shown, weight, close = true, clock = clock) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
+            // those that follow keep to where they were relative to the dragged nodes, however many generations down
+            Settling.Run(g, shown, weight, close = true, firm = following, clock = clock) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
         }
         // on them: nearer than touching, not only within the collision spring's reach
         val touching = 1 / LayoutOptimizer.impl.collisionReach()
