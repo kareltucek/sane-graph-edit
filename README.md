@@ -178,6 +178,7 @@ Flags:
 | `Ctrl` + click node          | Toggle that node in/out of the multi-selection     |
 | `Ctrl` + click empty + drag  | Selection box — rubber-band adds to selection      |
 | Drag a selected node         | Move the selection                                 |
+| …with `Shift` held           | The selection moves exactly; nodes it lands on make way and the descendants that hang from it alone (up to 50) follow, by springs, settling when it is let go; one undo step |
 | Drag on empty space          | Pan the view                                       |
 | Double-click empty           | Create a new node                                  |
 | Double-click a node          | Edit its text in place                             |

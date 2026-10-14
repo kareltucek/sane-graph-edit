@@ -75,7 +75,6 @@ class EditorView(
      */
     val autosaveId: String = List(32) { "0123456789abcdef".random() }.joinToString("")
 
-    var optimizeOnDrag: Boolean = false
     var defaultNodeStyle: NodeStyle = NodeStyle()
 
     val gestures: GestureController = GestureController(this)
@@ -184,7 +183,8 @@ class EditorView(
     /**
      * Nodes were moved by the user: from the positions [before] and
      * the depths [depthBefore] to where they are now. That becomes
-     * one undo step, if anything changed.
+     * one undo step, if anything changed; in explore mode none: the
+     * positions there are not the document's ([Graph.beforeExplore]).
      */
     fun commitMoved(before: Map<Node, Vector2>, depthBefore: Map<Node, Double>) {
         val after = before.keys.associateWith { it.position }.toMutableMap()
@@ -192,6 +192,7 @@ class EditorView(
         val moved = before.any { (n, p) -> after[n] != p }
         val sunk = depthBefore != depthAfter
         when {
+            g.beforeExplore != null -> Unit
             moved && sunk -> g.commitApplied(CompositeCommand(listOf(MoveNodesCommand(g, before, after), SetDepthCommand(g, depthBefore, depthAfter))))
             moved -> g.commitApplied(MoveNodesCommand(g, before, after))
             sunk -> g.commitApplied(SetDepthCommand(g, depthBefore, depthAfter))

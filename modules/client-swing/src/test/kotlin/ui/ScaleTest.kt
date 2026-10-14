@@ -310,7 +310,7 @@ class ScaleTest {
         c.lastPosition = Vector2(0.0, 0.0)
         c.startOrEndMove()
         c.lockY = true
-        c.dragMoveNode(Vector2(50.0, 50.0), restrictOperator = false)
+        c.dragMoveNode(Vector2(50.0, 50.0), settling = false)
 
         // Every selected node should have moved by (+50, 0).
         val byName = g.nodes.associateBy { it.attributes.text }
@@ -334,7 +334,7 @@ class ScaleTest {
         val c = v.mouseListener.controller
         c.lastPosition = Vector2(0.0, 0.0)
         c.startOrEndMove()
-        c.dragMoveNode(Vector2(40.0, 30.0), restrictOperator = false)
+        c.dragMoveNode(Vector2(40.0, 30.0), settling = false)
         // Verify the diagonal drag went through.
         val aAfterDrag = g.nodes.first { it.attributes.text == "A" }
         assertEquals(40.0, aAfterDrag.position.x, absoluteTolerance = 0.001)
@@ -343,7 +343,7 @@ class ScaleTest {
         // Lock Y and re-drag at the same cursor — Y should snap
         // back to origin.
         c.lockY = true
-        c.dragMoveNode(Vector2(40.0, 30.0), restrictOperator = false)
+        c.dragMoveNode(Vector2(40.0, 30.0), settling = false)
         assertEquals(40.0, aAfterDrag.position.x, absoluteTolerance = 0.001)
         assertEquals(0.0, aAfterDrag.position.y, absoluteTolerance = 0.001)
     }

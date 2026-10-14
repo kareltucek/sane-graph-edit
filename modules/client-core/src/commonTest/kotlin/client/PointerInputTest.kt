@@ -45,6 +45,46 @@ class PointerInputTest {
     }
 
     @Test
+    fun `with shift a dragged node takes along what hangs from it alone, pushes off what it lands on, and that is one undo step`() {
+        val g = Graph()
+        val parent = Node("parent", Vector2(100, 300))
+        val child = Node("child", Vector2(100, 360))
+        val other = Node("other", Vector2(400, 100))
+        val shared = Node("shared", Vector2(250, 160))
+        val inTheWay = Node("in the way", Vector2(600, 300))
+        listOf(parent, child, other, shared, inTheWay).forEach { g.add(it) }
+        g.add(graph_tools.Edge(parent, child))
+        g.add(graph_tools.Edge(parent, shared))
+        g.add(graph_tools.Edge(other, shared))
+        val v = EditorView(g, NoRenderer).also {
+            it.size = Vector2(800, 600)
+            it.g.ensureCachesFresh()
+        }
+        val before = g.nodes.associateWith { it.position }
+        v.pointer.pressed(parent.position, Button.Left, control = false, shift = false)
+        listOf(250, 400, 600).forEach { x -> v.pointer.moved(Vector2(x.toDouble(), 300.0), dragging = true, shift = true) }
+        v.pointer.released(Vector2(600, 300), Vector2(600, 300), Button.Left, false)
+
+        assertEquals(Vector2(600, 300), parent.position, "the dragged node is where the pointer is")
+        // by springs: as near as the collision spring lets it, not exactly where it was relative to the parent
+        assertTrue(child.position.x > 450 && (child.position - parent.position).length() < 150, "the child followed: ${child.position}")
+        assertEquals(before[other], other.position, "a node not near is left alone")
+        assertTrue((shared.position - before.getValue(shared)).length() < 1, "a child with another parent stays: ${shared.position}")
+        assertTrue(graph_tools.LayoutOptimizer.impl.computeCollisionSpring(g, inTheWay, parent) == null, "pushed off: ${inTheWay.position}")
+        g.undo()
+        assertEquals(before, g.nodes.associateWith { it.position }, "one undo step puts all back")
+    }
+
+    @Test
+    fun `in explore mode a drag is no undo step - the positions there are not the document's`() {
+        view.g.beforeExplore = view.g.nodes.associateWith { it.position }
+        drag(a.position, Vector2(160, 40))
+        assertEquals(Vector2(160, 40), a.position)
+        view.g.undo()
+        assertEquals(Vector2(160, 40), a.position)
+    }
+
+    @Test
     fun `dragging empty space pans, and so does the middle button with shift`() {
         drag(Vector2(500, 400), Vector2(530, 380))
         assertEquals(Vector2(30, -20), view.viewTransform.offset)

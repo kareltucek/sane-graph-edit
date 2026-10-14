@@ -564,7 +564,7 @@ object Actions {
             // cursor reverts any drift on the newly-frozen
             // axis instead of leaving it stranded.
             GestureController.States.MovingNodes ->
-                c.dragMoveNode(graphView.lastCursorPosition, restrictOperator = false)
+                c.dragMoveNode(graphView.lastCursorPosition, settling = false)
             else -> Unit  // rotate: axis lock is a 2D no-op.
         }
     }

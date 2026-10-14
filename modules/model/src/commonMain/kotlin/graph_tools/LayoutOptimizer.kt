@@ -67,8 +67,8 @@ import utils.Vector2.Companion.Zero
  * Each spring function returns a `List<Spring>`. [compute]
  * flattens all four lists, groups by target node, averages the
  * per-node vector, and adds it to the node's position. One pass
- * is one nudge — the user's `o` key hits it once; dragging with
- * `optimizeOnDrag` hits it every mouse-move event.
+ * is one nudge — the user's `o` key hits it once. (A drag with
+ * Shift held uses [Settling] instead, around the dragged nodes.)
  *
  * ## [SpringTarget]
  *
@@ -433,6 +433,11 @@ object LayoutOptimizer {
          * that covers the biggest of them; the few much bigger ones
          * are in no index and are offered to every node, or one huge
          * node would make every look as wide as itself.
+         *
+         * Nodes that moved since are still found when [of] is given
+         * [slack] at least as large as how far two of them may have
+         * moved: they are kept where they were, and measured where they
+         * are.
          */
         class Colliders(nodes: Collection<Node>, private val reach: Double) {
             private val half = { n: Node -> n.cache.shapeBounds.length() / 2 }
@@ -441,8 +446,11 @@ object LayoutOptimizer {
             private val big = nodes.filter { half(it) > usual }
             private val index = SpatialIndex(nodes.filter { half(it) <= usual }, usual * reach) { it.position }
 
-            fun of(n: Node): List<Node> =
-                (index.within(n.position, (half(n) + usual) * reach * MARGIN) + big).filter { it != n }.sortedBy { order.getValue(it) }
+            fun of(n: Node, slack: Double = 0.0): List<Node> {
+                // no node pushes from further than the two half-diagonals, times the reach: a connection point is inside a node's box
+                val mayPush = { o: Node -> o != n && (o.position - n.position).length() <= (half(n) + half(o)) * reach * MARGIN + slack }
+                return (index.within(n.position, (half(n) + usual) * reach * MARGIN + slack) + big).filter(mayPush).sortedBy { order.getValue(it) }
+            }
 
             private companion object {
                 /** A node this many times the usual size is a big one. */

@@ -6,6 +6,7 @@ import graph_tools.ViewModes
 import graph_tools.GraphTools
 import graph_tools.LayoutOptimizer
 import graph_tools.MoveNodesCommand
+import graph_tools.Settling
 import graph_tools.Node
 import utils.Constants
 import utils.Utils.orElse
@@ -165,6 +166,8 @@ class GestureController(
         // case an exit path forgot to clear them.
         moveStartPositions = null
         moveAnchor = null
+        settleStart = null
+        settledInMove = false
         rotateStartPositions = null
         rotateCenter = null
         scaleStartPositions = null
@@ -215,6 +218,8 @@ class GestureController(
      */
     private fun captureMoveStart() {
         moveStartPositions = captureStart(graphView.g.movable(graphView.g.selectedNodes))
+        // the others too, for when Shift is held: what follows the dragged nodes follows them from where it was relative to them
+        settleStart = graphView.g.visibleNodes().associateWith { it.position }
     }
 
     /**
@@ -477,6 +482,11 @@ class GestureController(
             startDepths?.get(n)?.let { Depth.set(n, it) }
             graphView.g.needsRecomputing(n)
         }
+        // and what the springs moved meanwhile
+        captured?.let { settledBefore(it) }?.forEach { (n, p) ->
+            n.position = p
+            graphView.g.needsRecomputing(n)
+        }
         state = null
         graphView.repaint()
         return true
@@ -527,7 +537,7 @@ class GestureController(
     /** A node nearer the viewer than the plane seems bigger, and has less far to go to stay under the pointer. */
     private fun apparentScale(n: Node): Double = graphView.apparent(n)?.scale ?: 1.0
 
-    fun dragMoveNode(pos: Vector2, restrictOperator: Boolean) {
+    fun dragMoveNode(pos: Vector2, settling: Boolean) {
         val start = moveStartPositions
         val anchor = moveAnchor
         if (start != null && anchor != null) {
@@ -563,11 +573,51 @@ class GestureController(
                 graphView.place(it, Point3(now.xy + diff / apparentScale(it), now.z))
             }
         }
-        if (graphView.optimizeOnDrag || restrictOperator) {
-            LayoutOptimizer.optimize(graphView.g, movingNodes = true, restrictOperator = restrictOperator == graphView.optimizeOnDrag)
+        if (settling) {
+            settledInMove = true
+            settleAround(STEPS_PER_MOVE)
         }
         graphView.repaint()
     }
+
+    /** At most this many descendants follow the dragged nodes ([settleAround]): springs on more would not keep up with the pointer. */
+    private val FOLLOWING = 50
+
+    /** Steps of the springs per move of the pointer: the nodes are on their way while it moves, and come to rest when it is let go. */
+    private val STEPS_PER_MOVE = 5
+
+    /** The move in progress settled the nodes around the dragged ones: they are let rest when it ends. */
+    private var settledInMove = false
+
+    /** Where the nodes seen were when the move in progress started ([captureMoveStart]); null outside one. */
+    private var settleStart: Map<Node, Vector2>? = null
+
+    /**
+     * Shift held while nodes are dragged: those dragged move exactly
+     * with the pointer, and by [Settling]'s springs, until they rest,
+     * the nodes on them make way (pulled back to where they were, no
+     * harder than [Settling.ORIGIN_CAP]) and the descendants that hang
+     * from them alone ([Settling.subtree]) follow them. Nothing else
+     * moves; only nodes that are seen take part.
+     */
+    private fun settleAround(steps: Int?) {
+        val g = graphView.g
+        val shown = g.visibleNodes()
+        val start = settleStart.orEmpty()
+        val dragged = g.movable(g.selectedNodes)
+        // how far the dragged nodes are from where they were
+        val by = dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero
+        val follow = Settling.subtree(g, dragged, shown, FOLLOWING)
+        val near = LayoutOptimizer.impl.Colliders(shown, LayoutOptimizer.impl.collisionReach())
+        // on them: nearer than touching, not only within the collision spring's reach
+        val touching = 1 / LayoutOptimizer.impl.collisionReach()
+        val inTheWay = dragged.flatMap { d -> near.of(d).filter { it !in dragged && LayoutOptimizer.impl.computeCollisionSpring(g, it, d, touching) != null } }
+        Settling.settle(g, follow + inTheWay, shown, { it !in dragged }, leading = follow, touching = true, steps = steps) { n -> start[n]?.let { if (n in follow) it + by else it } }
+    }
+
+    /** Before the dragged nodes, the others [settleAround] moved: where they were. */
+    private fun settledBefore(dragged: Map<Node, Vector2>): Map<Node, Vector2> =
+        settleStart.orEmpty().filter { (n, p) -> n !in dragged && n.position != p }
 
 
     /** A button was released at [pos] (workspace) / [screen], with or without [control] held. */
@@ -634,7 +684,11 @@ class GestureController(
         val before = moveStartPositions ?: return
         moveStartPositions = null
         moveAnchor = null
-        commitMoved(before)
+        if (settledInMove) settleAround(null)
+        // what the springs moved is in the same undo step as what was dragged
+        commitMoved(before + settledBefore(before))
+        settleStart = null
+        settledInMove = false
     }
 
     fun dragOrEndSelectionBox(saveHistory: Boolean) {

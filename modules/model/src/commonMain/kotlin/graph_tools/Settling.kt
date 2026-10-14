@@ -59,20 +59,66 @@ object Settling {
      * those in their way that [yields] says may move, until they
      * rest. [origin] is where a node would be by the document, as
      * things are now; null for a node the document says nothing of.
-     * The nodes are moved in place; those that took part are returned.
+     * Those of [leading] push the nodes that give way out of their way
+     * and are not pushed back by them: they get where their origin is
+     * whatever they meet. The nodes are moved in place; those that
+     * took part are returned.
+     *
+     * With [touching] only nodes that are on one that moves join it,
+     * not all that it pushes.
+     *
+     * With [steps] only that many steps are taken, with all springs: a
+     * part of the way, for nodes that are on their way somewhere that
+     * is still changing (a drag); one last call without [steps] lets
+     * them rest.
      */
-    fun settle(g: Graph, fresh: Set<Node>, among: Set<Node>, yields: (Node) -> Boolean, origin: (Node) -> Vector2? = { null }): Set<Node> {
+    fun settle(
+        g: Graph,
+        fresh: Set<Node>,
+        among: Set<Node>,
+        yields: (Node) -> Boolean,
+        leading: Set<Node> = emptySet(),
+        touching: Boolean = false,
+        steps: Int? = null,
+        origin: (Node) -> Vector2? = { null },
+    ): Set<Node> {
+        val near = Near(among, rebuiltEachStep = g.attachmentOwners.isNotEmpty())
+        // who joins: any node pushed that gives way, or with [touching] only one that is on the node that pushes
+        val wakes = { pusher: Node, pushed: Node ->
+            yields(pushed) && (!touching || LayoutOptimizer.impl.computeCollisionSpring(g, pushed, pusher, 1 / LayoutOptimizer.impl.collisionReach()) != null)
+        }
         tailrec fun run(moving: Set<Node>, damping: Double, left: Int): Set<Node> {
-            val done = step(g, moving, among, yields, origin, damping)
+            val done = step(g, moving, among, near, yields, wakes, leading, origin, damping)
             val rests = done.furthest < SETTLED && done.moving.size == moving.size
             return if (rests || left <= 1) done.moving else run(done.moving, damping * COOLING, left - 1)
         }
         // and then, with nothing pulling any more, off each other those that are still on each other: many nodes pulled to one place
         tailrec fun apart(moving: Set<Node>, left: Int): Set<Node> {
-            val done = step(g, moving, among, yields, origin, DAMPING, pulling = false)
+            val done = step(g, moving, among, near, yields, wakes, leading, origin, DAMPING, pulling = false)
             return if (done.furthest < SETTLED || left <= 1) done.moving else apart(done.moving, left - 1)
         }
-        return if (fresh.isEmpty()) fresh else apart(run(fresh, DAMPING, MAX_STEPS), MAX_STEPS)
+        return when {
+            fresh.isEmpty() -> fresh
+            steps != null -> run(fresh, DAMPING, steps)
+            else -> apart(run(fresh, DAMPING, MAX_STEPS), MAX_STEPS)
+        }
+    }
+
+    /**
+     * The descendants of [roots] that are theirs alone: among the nodes
+     * seen ([among]), those all of whose parents that are seen are
+     * [roots] or such descendants themselves. [roots] are not in it.
+     * Level by level from [roots], and no more than [most]: a level
+     * that would make it more is left out, and those below it.
+     */
+    fun subtree(g: Graph, roots: Set<Node>, among: Set<Node>, most: Int = Int.MAX_VALUE): Set<Node> {
+        tailrec fun grow(inside: Set<Node>): Set<Node> {
+            val more = inside.flatMap { n -> g.findOutEdges(n).map { it.dst } }
+                .filter { it in among && it !in inside && g.findInEdges(it).all { e -> e.src in inside || e.src !in among } }
+                .toSet()
+            return if (more.isEmpty() || inside.size - roots.size + more.size > most) inside else grow(inside + more)
+        }
+        return grow(roots) - roots
     }
 
     /** In the last steps nodes are only kept this far apart, in times the distance at which they touch: no further than they need to be read. */
@@ -82,7 +128,10 @@ object Settling {
         g: Graph,
         moving: Set<Node>,
         among: Set<Node>,
+        near: Near,
         yields: (Node) -> Boolean,
+        wakes: (Node, Node) -> Boolean,
+        leading: Set<Node>,
         origin: (Node) -> Vector2?,
         damping: Double,
         pulling: Boolean = true,
@@ -90,9 +139,9 @@ object Settling {
         EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet())
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
         val strength = if (pulling) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
-        // the nodes are elsewhere at each step: which are near is found anew
-        val near = LayoutOptimizer.impl.Colliders(among, LayoutOptimizer.impl.collisionReach(strength))
-        val pushes = moving.flatMap { n -> near.of(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it to o } } }
+        // which are near is looked up anew at each step: the nodes are elsewhere
+        val nearOf = near.forStep(LayoutOptimizer.impl.collisionReach(strength))
+        val pushes = moving.flatMap { n -> nearOf(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it to o } } }
         val pulls = if (!pulling) emptyList() else moving.flatMap { n ->
             g.edgeMap[n].orEmpty().mapNotNull { e ->
                 val other = if (e.src == n) e.dst else e.src
@@ -104,18 +153,59 @@ object Settling {
         }
         // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
         val mean = { springs: List<LayoutOptimizer.Spring> -> springs.groupBy({ it.n }, { it.v }).mapValues { (_, vs) -> vs.reduce(Vector2::plus) / vs.size } }
-        val pushed = mean(pushes.map { it.first })
+        // one that leads is not pushed by what gives way to it; that is still woken and pushed by it
+        val pushed = mean(pushes.filter { (s, o) -> s.n !in leading || o in leading || !yields(o) }.map { it.first })
         val pulled = if (pulling) mean(pulls + home + alike(g, moving, among)) else emptyMap()
         val moves = (pushed.keys + pulled.keys).associateWith { n ->
             val off = pushed[n]
             val to = pulled[n] ?: Vector2.Zero
             (if (off == null) to else off + to * PULL_WHEN_PUSHED) * damping
         }
-        moves.forEach { (n, by) -> n.position = n.position + by }
+        moves.forEach { (n, by) ->
+            near.moving(n)
+            n.position = n.position + by
+        }
         if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
-        val woken = pushes.map { it.second }.filter { it !in moving && yields(it) }
+        val woken = pushes.filter { (s, o) -> o !in moving && wakes(s.n, o) }.map { it.second }
         return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0)
     }
+
+    /**
+     * Which of [among] are near a node, at each step: a
+     * [LayoutOptimizer.impl.Colliders] made once and looked into wider
+     * by how far the nodes moved since, made anew only when that is
+     * more than [REBUILD] (or the reach asked for changes). Only the
+     * nodes that settle move, and they say so ([moving]) before; with
+     * [rebuiltEachStep] (attached nodes, which move with their owners)
+     * it is made anew at each step.
+     */
+    private class Near(private val among: Set<Node>, private val rebuiltEachStep: Boolean) {
+        private var colliders: LayoutOptimizer.impl.Colliders? = null
+        private var reach = 0.0
+
+        /** Where the nodes that moved since it was made were then. */
+        private val madeAt = mutableMapOf<Node, Vector2>()
+
+        fun moving(n: Node) {
+            madeAt.getOrPut(n) { n.position }
+        }
+
+        fun forStep(reach: Double): (Node) -> List<Node> {
+            val drift = madeAt.maxOfOrNull { (n, at) -> (n.position - at).length() } ?: 0.0
+            val made = colliders?.takeIf { !rebuiltEachStep && reach == this.reach && drift <= REBUILD }
+            val now = made ?: LayoutOptimizer.impl.Colliders(among, reach).also {
+                colliders = it
+                this.reach = reach
+                madeAt.clear()
+            }
+            // two nodes that both moved may have come nearer by both their ways
+            val slack = if (made == null) 0.0 else 2 * drift
+            return { n -> now.of(n, slack) }
+        }
+    }
+
+    /** How far the nodes may have moved before [Near] makes its index anew. */
+    private const val REBUILD = 60.0
 
     /** [LayoutOptimizer.impl.computeUniformOutSprings] among the nodes seen: the edges out of one node to as long as each other, for the children that move. */
     private fun alike(g: Graph, moving: Set<Node>, among: Set<Node>): List<LayoutOptimizer.Spring> {
