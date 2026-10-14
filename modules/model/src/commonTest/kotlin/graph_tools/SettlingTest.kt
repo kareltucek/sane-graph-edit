@@ -45,6 +45,20 @@ class SettlingTest {
         assertTrue(light.position.x - 10 > 3 * -heavy.position.x, "the light one went further: ${light.position}, ${heavy.position}")
     }
 
+    @Test
+    fun `steps cut short take turns - each node gets to move, and all come off each other`() {
+        val g = Graph()
+        val pile = List(20) { Node("node $it", Vector2(kotlin.math.cos(it.toDouble()) * 3, kotlin.math.sin(it.toDouble()) * 3)) }
+        pile.forEach { g.add(it) }
+        g.ensureCachesFresh(force = true)
+        // no time at all: each step takes one node, the others wait
+        Settling.Run(g, pile.toSet(), { Settling.USUAL }, budget = 0L).also {
+            it.stir(pile.toSet())
+            it.toRest()
+        }
+        assertTrue(pile.all { a -> pile.all { b -> a == b || !overlap(a, b) } }, "${pile.map { it.position }}")
+    }
+
     /** The node placed and [yielding] may move, as easily as each other; the others not. */
     private fun Fixture.weight(vararg yielding: Node): (Node) -> Double = { if (it == fresh || it in yielding) Settling.USUAL else Settling.FIXED }
 

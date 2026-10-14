@@ -581,8 +581,8 @@ class GestureController(
         graphView.repaint()
     }
 
-    /** At most this many descendants follow the dragged nodes ([settleAround]): springs on more would not keep up with the pointer. */
-    private val FOLLOWING = 50
+    /** How long a step of the nodes on their way may take, in milliseconds: with many, they take turns ([Settling.Run]). */
+    private val STEP_BUDGET = 50L
 
     /** Where the nodes seen were when the move in progress started ([captureMoveStart]); null outside one. */
     private var settleStart: Map<Node, Vector2>? = null
@@ -612,7 +612,7 @@ class GestureController(
         val start = settleStart.orEmpty()
         val dragged = g.movable(g.selectedNodes)
         val run = settling ?: g.visibleNodes().let { shown ->
-            following = Settling.subtree(g, dragged, shown, FOLLOWING)
+            following = Settling.subtree(g, dragged, shown)
             val weight = { n: Node ->
                 when {
                     n in dragged -> Settling.FIXED
@@ -624,7 +624,7 @@ class GestureController(
             // how far the dragged nodes are from where they were, as they are now
             val by = { dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero }
             // nodes only kept off each other: those the user put near each other stay near, and only those on others are pushed
-            Settling.Run(g, shown, weight, close = true) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
+            Settling.Run(g, shown, weight, close = true, budget = STEP_BUDGET) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
         }
         // on them: nearer than touching, not only within the collision spring's reach
         val touching = 1 / LayoutOptimizer.impl.collisionReach()
@@ -675,9 +675,11 @@ class GestureController(
         return more || restrict != null
     }
 
-    /** Let the nodes on their way rest now, and make the undo step of the move they were part of, if it has ended. */
+    /**
+     * Something else is to happen: the nodes on their way stop where they are (letting them rest at once could take long
+     * with many), and the undo step of the move they were part of is made, if it has ended.
+     */
     fun finishSettling() {
-        settling?.toRest()
         settledMove?.let { (before, depths) -> graphView.commitMoved(before + settledBefore(before), depths) }
         settledMove = null
         if (state != States.MovingNodes) {

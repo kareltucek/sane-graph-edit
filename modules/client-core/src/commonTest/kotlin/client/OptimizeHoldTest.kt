@@ -28,6 +28,7 @@ class OptimizeHoldTest {
 
     @Test
     fun `held, the nodes move a pass a picture, let go they stop, and undo takes all of it back`() {
+        view.byHeldKey = true
         Actions.optimizeWhileHeld(view, restrict = false)
         val afterPress = moved()
         assertTrue(afterPress != before, "a pass at once")
@@ -42,5 +43,15 @@ class OptimizeHoldTest {
         assertEquals(afterRelease, moved(), "let go, nothing moves")
         view.g.undo()
         assertEquals(before, moved(), "one undo step")
+    }
+
+    @Test
+    fun `asked for by no key that is held, it lays out a while at once, as one undo step, and asks for no pictures`() {
+        view.byHeldKey = false
+        Actions.optimizeWhileHeld(view, restrict = false)
+        assertTrue(moved() != before)
+        assertEquals(false, view.gestures.frame())
+        view.g.undo()
+        assertEquals(before, moved())
     }
 }

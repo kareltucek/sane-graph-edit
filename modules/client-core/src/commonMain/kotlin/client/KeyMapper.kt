@@ -648,8 +648,10 @@ class KeyMapper(
 
     private fun executeCommand(name: String) {
         val gv = activeView ?: return
-        // nodes still on their way rest before a command acts (an undo takes back their move whole); a gesture's own keys leave them be
+        // nodes still on their way stop before a command acts (an undo takes back their move whole); a gesture's own keys leave them be
         if (mode != Mode.Transform) gv.gestures.finishSettling()
+        // a key the user holds will be let go; one of a macro or a mapping will not
+        gv.byHeldKey = !replaying
         val operator = waitingOperator
         when {
             operator != null -> {
@@ -720,6 +722,7 @@ class KeyMapper(
      */
     fun executeCommandLine(line: String) {
         activeView?.gestures?.finishSettling()
+        activeView?.byHeldKey = false
         val parts = line.split("\\s+".toRegex(), limit = 2)
         val cmd = parts[0]
         val args = parts.getOrNull(1)

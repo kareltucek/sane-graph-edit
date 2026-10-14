@@ -82,6 +82,12 @@ class EditorView(
     /** Where a renderer reports what the mouse does. */
     val pointer: PointerInput = PointerInput(this)
 
+    /**
+     * The command being run was asked for by a key the user holds down, which will be let go: not by a macro, a mapping or
+     * the `:` line. What lasts while a key is held (`o`) does a fixed share of it otherwise.
+     */
+    var byHeldKey: Boolean = false
+
     /** Told when a transform gesture (grab, rotate, scale) starts (true) and ends (false): keys then mean something else. */
     var onTransformMode: (Boolean) -> Unit = {}
 

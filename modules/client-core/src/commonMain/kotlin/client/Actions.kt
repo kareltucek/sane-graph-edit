@@ -626,10 +626,23 @@ object Actions {
         graphView.repaint()
     }
 
-    /** `o` / `O`: the springs take a pass for each picture drawn while the key is held ([GestureController.startOptimizing]). */
+    /**
+     * `o` / `O`: the springs take a pass for each picture drawn while the key is held ([GestureController.startOptimizing]);
+     * asked for otherwise (a macro, a mapping, `:optimize`), as many passes as fit in [UNHELD_OPTIMIZE_MS], as one undo step.
+     */
     fun optimizeWhileHeld(graphView: EditorView, restrict: Boolean) {
-        graphView.gestures.startOptimizing(restrict)
+        if (graphView.byHeldKey) graphView.gestures.startOptimizing(restrict)
+        else {
+            val before = graphView.g.nodes.associateWith { it.position }
+            val until = utils.Platform.nowMillis() + UNHELD_OPTIMIZE_MS
+            do LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict) while (utils.Platform.nowMillis() < until)
+            graphView.commitMoved(before, emptyMap())
+            graphView.repaint()
+        }
     }
+
+    /** How long `o` lays out when no key is held that will be let go. */
+    private const val UNHELD_OPTIMIZE_MS = 20L
 
     fun selectAll(graphView: EditorView) {
         val visible = graphView.g.visibleNodes()

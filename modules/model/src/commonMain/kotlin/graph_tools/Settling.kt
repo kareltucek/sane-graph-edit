@@ -54,7 +54,8 @@ object Settling {
     /** The origin spring asks for no more than this in a step, however far the node is from where it was. */
     const val ORIGIN_CAP = 40.0
 
-    private data class Step(val moving: Set<Node>, val furthest: Double)
+    /** What a step did: who moves now, the furthest one went, and how many it took ([step]'s deadline). */
+    private data class Step(val moving: Set<Node>, val furthest: Double, val taken: Int)
 
     /**
      * How readily a node gives way ([Run]'s weight): of two nodes on
@@ -79,12 +80,19 @@ object Settling {
      * near each other stay so, and only those that are on one that
      * moves are pushed, and join it. [origin] is where a node is
      * pulled back to, asked at each step; null for none.
+     *
+     * With [budget] a step takes no longer than that many
+     * milliseconds: the nodes it does not get to wait, and the next
+     * step takes all in an order of chance, so that over a few steps
+     * each gets its turn. The nodes then come to rest later, and the
+     * pictures keep coming.
      */
     class Run(
         private val g: Graph,
         private val among: Set<Node>,
         private val weight: (Node) -> Double,
         private val close: Boolean = false,
+        private val budget: Long? = null,
         private val origin: (Node) -> Vector2? = { null },
     ) {
         var moving: Set<Node> = emptySet()
@@ -93,7 +101,18 @@ object Settling {
         private var left = MAX_STEPS
         private var pulling = true
         private var resting = true
+        private var cut = false
         private val near = Near(among, rebuiltEachStep = g.attachmentOwners.isNotEmpty())
+
+        /**
+         * The round in progress: steps cut short ([budget]) make up one
+         * between them, once they have taken as many nodes as move. The
+         * limit of steps and the cooling count rounds; whether the nodes
+         * rest is told at the end of one.
+         */
+        private var covered = 0
+        private var furthest = 0.0
+        private var grew = false
 
         /** [nodes] join those that move, and all start anew: where they are going changed. */
         fun stir(nodes: Set<Node>) {
@@ -102,6 +121,9 @@ object Settling {
             left = MAX_STEPS
             pulling = true
             resting = moving.isEmpty()
+            covered = 0
+            furthest = 0.0
+            grew = false
         }
 
         /**
@@ -112,21 +134,34 @@ object Settling {
          */
         fun step(): Boolean {
             if (!resting) {
-                val done = step(g, moving, among, near, weight, origin, damping, pulling, close)
-                val rests = done.furthest < SETTLED && done.moving.size == moving.size
+                val order = if (cut) moving.shuffled() else moving.toList()
+                val deadline = budget?.let { utils.Platform.nowMillis() + it }
+                val done = step(g, moving, order, among, near, weight, origin, damping, pulling, close, deadline)
+                cut = done.taken < order.size
+                covered += done.taken
+                furthest = maxOf(furthest, done.furthest)
+                grew = grew || done.moving.size != moving.size
                 moving = done.moving
-                left -= 1
-                when {
-                    !rests && left > 0 -> damping *= if (pulling) COOLING else 1.0
-                    pulling -> {
-                        pulling = false
-                        damping = DAMPING
-                        left = MAX_STEPS
-                    }
-                    else -> resting = true
-                }
+                if (covered >= moving.size) endRound()
             }
             return !resting
+        }
+
+        private fun endRound() {
+            val rests = furthest < SETTLED && !grew
+            covered = 0
+            furthest = 0.0
+            grew = false
+            left -= 1
+            when {
+                !rests && left > 0 -> damping *= if (pulling) COOLING else 1.0
+                pulling -> {
+                    pulling = false
+                    damping = DAMPING
+                    left = MAX_STEPS
+                }
+                else -> resting = true
+            }
         }
 
         fun toRest() {
@@ -155,15 +190,13 @@ object Settling {
      * The descendants of [roots] that are theirs alone: among the nodes
      * seen ([among]), those all of whose parents that are seen are
      * [roots] or such descendants themselves. [roots] are not in it.
-     * Level by level from [roots], and no more than [most]: a level
-     * that would make it more is left out, and those below it.
      */
-    fun subtree(g: Graph, roots: Set<Node>, among: Set<Node>, most: Int = Int.MAX_VALUE): Set<Node> {
+    fun subtree(g: Graph, roots: Set<Node>, among: Set<Node>): Set<Node> {
         tailrec fun grow(inside: Set<Node>): Set<Node> {
             val more = inside.flatMap { n -> g.findOutEdges(n).map { it.dst } }
                 .filter { it in among && it !in inside && g.findInEdges(it).all { e -> e.src in inside || e.src !in among } }
                 .toSet()
-            return if (more.isEmpty() || inside.size - roots.size + more.size > most) inside else grow(inside + more)
+            return if (more.isEmpty()) inside else grow(inside + more)
         }
         return grow(roots) - roots
     }
@@ -171,9 +204,16 @@ object Settling {
     /** In the last steps nodes are only kept this far apart, in times the distance at which they touch: no further than they need to be read. */
     private const val APART = 1.15
 
+    /**
+     * One step of the nodes of [order] ([moving], in the order to take
+     * them): what the springs ask of each, then all moved by it. With
+     * [deadline] (a [utils.Platform.nowMillis]) the nodes not reached
+     * by then wait for the next step; at least one is taken.
+     */
     private fun step(
         g: Graph,
         moving: Set<Node>,
+        order: List<Node>,
         among: Set<Node>,
         near: Near,
         weight: (Node) -> Double,
@@ -181,40 +221,44 @@ object Settling {
         damping: Double,
         pulling: Boolean,
         close: Boolean,
+        deadline: Long?,
     ): Step {
         EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet())
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
         val strength = if (pulling && !close) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
         // which are near is looked up anew at each step: the nodes are elsewhere
         val nearOf = near.forStep(LayoutOptimizer.impl.collisionReach(strength))
-        val pushes = moving.flatMap { n -> nearOf(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it to o } } }
-        val pulls = if (!pulling) emptyList() else moving.flatMap { n ->
-            g.edgeMap[n].orEmpty().mapNotNull { e ->
-                val other = if (e.src == n) e.dst else e.src
-                if (other != n && other in among) LayoutOptimizer.impl.computeBBSpring(g, n, other, e) else null
-            }
-        }
-        val home = moving.mapNotNull { n ->
-            origin(n)?.let { to -> (to - n.position).let { by -> LayoutOptimizer.Spring(n, if (by.length() > ORIGIN_CAP) by.toScale(ORIGIN_CAP) else by) } }
-        }
-        // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
-        val mean = { springs: List<LayoutOptimizer.Spring> -> springs.groupBy({ it.n }, { it.v }).mapValues { (_, vs) -> vs.reduce(Vector2::plus) / vs.size } }
         // of two on each other each takes the other's part of their weights: all of it from a fixed one, half from one as heavy
         val share = { n: Node, o: Node -> weight(o).let { w -> if (w.isInfinite()) 1.0 else w / (weight(n) + w) } }
-        val pushed = mean(pushes.map { (s, o) -> LayoutOptimizer.Spring(s.n, s.v * share(s.n, o)) })
-        val pulled = if (pulling) mean(pulls + home + alike(g, moving, among)) else emptyMap()
-        val moves = (pushed.keys + pulled.keys).associateWith { n ->
-            val off = pushed[n]
-            val to = pulled[n] ?: Vector2.Zero
-            (if (off == null) to else off + to * PULL_WHEN_PUSHED) * damping
+        val mean = { vs: List<Vector2> -> if (vs.isEmpty()) null else vs.reduce(Vector2::plus) / vs.size }
+        val moves = mutableMapOf<Node, Vector2>()
+        val woken = mutableSetOf<Node>()
+        var taken = 0
+        while (taken < order.size && (deadline == null || taken == 0 || utils.Platform.nowMillis() < deadline)) {
+            val n = order[taken]
+            taken += 1
+            val pushes = nearOf(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it.v * share(n, o) to o } }
+            woken += pushes.map { it.second }.filter { it !in moving && weight(it).isFinite() }
+            val pulls = if (!pulling) emptyList() else {
+                val edges = g.edgeMap[n].orEmpty().mapNotNull { e ->
+                    val other = if (e.src == n) e.dst else e.src
+                    if (other != n && other in among) LayoutOptimizer.impl.computeBBSpring(g, n, other, e).v else null
+                }
+                val home = origin(n)?.let { to -> (to - n.position).let { by -> if (by.length() > ORIGIN_CAP) by.toScale(ORIGIN_CAP) else by } }
+                edges + listOfNotNull(home) + alike(g, n, among)
+            }
+            // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
+            val off = mean(pushes.map { it.first })
+            val to = mean(pulls)
+            val by = off?.let { it + (to ?: Vector2.Zero) * PULL_WHEN_PUSHED } ?: to
+            if (by != null) moves[n] = by * damping
         }
         moves.forEach { (n, by) ->
             near.moving(n)
             n.position = n.position + by
         }
         if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
-        val woken = pushes.map { it.second }.filter { it !in moving && weight(it).isFinite() }
-        return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0)
+        return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken)
     }
 
     /**
@@ -254,18 +298,12 @@ object Settling {
     /** How far the nodes may have moved before [Near] makes its index anew. */
     private const val REBUILD = 60.0
 
-    /** [LayoutOptimizer.impl.computeUniformOutSprings] among the nodes seen: the edges out of one node to as long as each other, for the children that move. */
-    private fun alike(g: Graph, moving: Set<Node>, among: Set<Node>): List<LayoutOptimizer.Spring> {
-        val parents = moving.flatMap { n -> g.findInEdges(n).map { it.src } }.filter { it in among }.toSet()
-        return parents.flatMap { parent ->
+    /** [LayoutOptimizer.impl.computeUniformOutSprings] among the nodes seen: the edges out of each parent of [child] as long as each other. */
+    private fun alike(g: Graph, child: Node, among: Set<Node>): List<Vector2> =
+        g.findInEdges(child).map { it.src }.filter { it in among && it != child }.distinct().mapNotNull { parent ->
             val children = g.findOutEdges(parent).map { it.dst }.filter { it in among && it != parent }.distinct()
-            val lengths = children.map { (it.position - parent.position).length() }
-            val average = if (children.size < 2) 0.0 else lengths.average()
-            children.filter { it in moving }.mapNotNull { child ->
-                val offset = child.position - parent.position
-                if (children.size < 2 || offset.length() < 0.001) null
-                else LayoutOptimizer.Spring(child, (parent.position + offset.toUnit() * average - child.position) * 0.5)
-            }
+            val offset = child.position - parent.position
+            if (children.size < 2 || offset.length() < 0.001) null
+            else (parent.position + offset.toUnit() * children.map { (it.position - parent.position).length() }.average() - child.position) * 0.5
         }
-    }
 }
