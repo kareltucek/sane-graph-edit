@@ -159,17 +159,11 @@ object Settling {
                 lastStep = now
                 // against the clock, the part of a window that has passed since the last step; else a whole window a step
                 val share = if (clock == null) 1.0 else ((now - previous).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1.0)
-                // a node moves for the time since its own last turn: one that waited while others had theirs catches up, but
-                // never goes further than its springs ask (more would swing past where they pull it)
-                val windows = { n: Node ->
-                    if (clock == null) 1.0 else ((now - (turns[n] ?: previous)).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1 / damping)
-                }
                 // after a step cut short, those still waiting first; when all have had their turn, all again by chance
                 val order = if (cut) waiting.filter { it in moving }.ifEmpty { moving.shuffled(chance) } else moving.toList()
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, firm, damping, windows, pulling, close, depth, down(g, depth), deadline)
-                order.take(done.taken).forEach { turns[it] = now }
+                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, down(g, depth), deadline)
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
                 covered += done.taken
@@ -184,9 +178,6 @@ object Settling {
 
         /** The order of turns when steps are cut short: by chance, but the same each time. */
         private val chance = kotlin.random.Random(0)
-
-        /** When each node last had its turn ([clock]). */
-        private val turns = mutableMapOf<Node, Long>()
 
         /** The nodes a step cut short did not get to, in turn; once steps have been cut, [cut] stays so. */
         private var waiting: List<Node> = emptyList()
@@ -269,9 +260,9 @@ object Settling {
      * One step of the nodes of [order] ([moving], in the order to take
      * them): what the springs ask of each, then all moved by it. With
      * [deadline] (a [utils.Platform.nowMillis]) the nodes not reached
-     * by then wait for the next step; at least one is taken. A node
-     * moves for as many windows as [windows] says; how far the nodes
-     * went is told per window.
+     * by then wait for the next step; at least one is taken. The nodes
+     * move for [passed] of a window (times how many fewer were taken);
+     * how far they went is told per window.
      */
     private fun step(
         g: Graph,
@@ -283,7 +274,7 @@ object Settling {
         origin: (Node) -> Vector3?,
         firm: Set<Node>,
         damping: Double,
-        windows: (Node) -> Double,
+        passed: Double,
         pulling: Boolean,
         close: Boolean,
         depth: Boolean,
@@ -340,9 +331,12 @@ object Settling {
             val by = loose?.let { it * damping + (tug ?: Vector3.Zero) } ?: tug
             if (by != null) moves[n] = by
         }
+        // cut short, those taken move for those that were not, as many times further as they are fewer (no matter that
+        // it may swing): the nodes go as fast however many there are
+        val windows = passed * (if (taken < order.size) order.size.toDouble() / taken else 1.0)
         moves.forEach { (n, by) ->
             near.moving(n)
-            if (depth) n.point = n.point + by * windows(n) else n.position = n.position + by.xy * windows(n)
+            if (depth) n.point = n.point + by * windows else n.position = n.position + by.xy * windows
         }
         if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
         return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken)
