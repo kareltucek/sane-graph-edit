@@ -17,4 +17,8 @@ object Workspace {
     /** [dir] as a single file name: `/home/me` is `%2Fhome%2Fme`. */
     fun encode(dir: Path): String =
         dir.toAbsolutePath().normalize().toString().replace("%", "%25").replace("/", "%2F")
+
+    /** The directory [encode] made [name] of; null for a name it did not make. */
+    fun decode(name: String): Path? =
+        name.replace("%2F", "/").replace("%25", "%").takeIf { it.startsWith("/") && encode(Fs.path(it)) == name }?.let { Fs.path(it) }
 }

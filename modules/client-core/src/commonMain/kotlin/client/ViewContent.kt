@@ -444,6 +444,18 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     }
 
     /** Replace the graph with the built-in help graph (the `help` node of a [FileTree]). */
+    /** Replace the graph with the [Workspaces] graph, as an untitled one. */
+    fun showWorkspacesInPlace() {
+        replaceGraph(Workspaces.build())
+        currentFile = null
+        browseDir = null
+        sourceView = null
+        untitledName = Workspaces.TITLE
+        shell.stateChanged()
+        if (view.size.x > 0) view.setViewTo(Vector2.Zero, view.viewTransform.scale)
+        shell.sessionChanged()
+    }
+
     fun showHelpInPlace() {
         replaceGraph(Graph.defaultGraph())
         currentFile = null

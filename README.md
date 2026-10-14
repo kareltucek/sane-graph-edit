@@ -491,6 +491,7 @@ navigation, not data.
 | `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line) |
 | `:file`         | Show the full path of the tab's file (or the browsed directory) |
 | `:cd <dir>`     | Switch the workspace to `dir` (see [Workspaces](#workspaces)); bare `:cd` shows it |
+| `:open-workspace` | New tab with the workspaces that have a session and the graphs open in each; `gf` on a workspace switches to it, on a graph opens it here |
 | `Ctrl+E`        | Export graph as SVG                                    |
 | `Ctrl+Shift+E`  | Export only the selected nodes as SVG                  |
 

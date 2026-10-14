@@ -149,6 +149,8 @@ fun registerEditingCommands() {
     r.register("reload") { it.content.reload() }
     r.register("file") { it.content.showFilePath() }
     r.register("pick-file") { FilePicker.run(it) }
+    // the workspaces and their graphs, in a tab of their own: gf on one goes there
+    r.register("open-workspace") { it.shell.newTab()?.content?.showWorkspacesInPlace() }
     r.register("follow-file-link") { it.content.followFileLink() }
     r.register("follow-file-link-in-tab") { it.content.followFileLinkInTab() }
     r.register("jump-back") { it.content.jumpBack() }
