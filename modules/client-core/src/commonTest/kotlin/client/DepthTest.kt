@@ -86,6 +86,46 @@ class DepthTest {
         assertEquals(0.0, view.viewTransform.depth)
     }
 
+    /** Scale [nodes] from where the pointer is to the middle of them on the screen: to nothing. */
+    private fun scaleToNothing(nodes: Set<Node>) {
+        view.g.cleanSelect(nodes)
+        view.lastScreenCursorPosition = Vector2(700, 500)
+        view.gestures.startOrEndScale()
+        val middle = view.viewTransform.toScreen(view.middleOf(nodes)!!)
+        view.gestures.dragScale(middle)
+    }
+
+    @Test
+    fun `in 3D mode scaling brings the depths together too, in 2D mode it leaves them`() {
+        scaleToNothing(setOf(flat, far))
+        assertTrue(abs(view.viewPoint(flat).z - view.viewPoint(far).z) < 1e-6, "one depth: ${flat.point} ${far.point}")
+        view.gestures.cancelActiveModal()
+        assertEquals(1000.0, Depth.of(far))
+
+        view.viewTransform.threeD = false
+        scaleToNothing(setOf(flat, far))
+        assertEquals(1000.0, Depth.of(far))
+        assertEquals(0.0, Depth.of(flat))
+    }
+
+    @Test
+    fun `in 3D mode rotating kept to an axis turns through depth, otherwise across the screen`() {
+        val top = Node("top", Vector2(0, -100))
+        val bottom = Node("bottom", Vector2(0, 100))
+        listOf(top, bottom).forEach { view.g.add(it) }
+        view.g.ensureCachesFresh()
+        view.g.cleanSelect(setOf(top, bottom))
+        // a quarter turn: from right of the middle to below it
+        view.lastCursorPosition = Vector2(100, 0)
+        view.gestures.startOrEndRotate()
+        view.gestures.dragRotate(Vector2(0, 100))
+        assertEquals(0.0, Depth.of(top), "around the view's axis: no depth")
+        // kept to x: around the screen's across, the top goes into the depth
+        view.gestures.lockY = true
+        view.gestures.dragRotate(Vector2(0, 100))
+        assertTrue(abs(Depth.of(top)) > 90, "into depth: ${top.point}")
+    }
+
     @Test
     fun `giving a node a depth turns 3D mode on`() {
         view.viewTransform.threeD = false

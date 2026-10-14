@@ -336,12 +336,28 @@ class GestureController(
         val delta = currentAngle - rotateStartAngle
         val cos = cos(delta)
         val sin = sin(delta)
-        // around the axis the view looks along: in a view from the front, in the graph's plane
+        val cz = middleDepth(start)
+        // in 3D mode kept to an axis (`x`, `y`): around the screen's across or its up and down; otherwise around the axis
+        // the view looks along (in a view from the front, in the graph's plane)
+        val around = when {
+            !graphView.viewTransform.threeD -> null
+            lockY && !lockX -> "across"
+            lockX && !lockY -> "upright"
+            else -> null
+        }
         for ((n, origPos) in start) {
             val was = startSeen(n, origPos)
             val dx = was.x - center.x
             val dy = was.y - center.y
-            graphView.place(n, Point3(center.x + dx * cos - dy * sin, center.y + dx * sin + dy * cos, was.z))
+            val dz = was.z - cz
+            graphView.place(
+                n,
+                when (around) {
+                    "across" -> Point3(was.x, center.y + dy * cos - dz * sin, cz + dy * sin + dz * cos)
+                    "upright" -> Point3(center.x + dx * cos - dz * sin, was.y, cz + dx * sin + dz * cos)
+                    else -> Point3(center.x + dx * cos - dy * sin, center.y + dx * sin + dy * cos, was.z)
+                },
+            )
         }
         graphView.repaint()
     }
@@ -435,14 +451,20 @@ class GestureController(
         }
         val sx = if (lockX) 1.0 else factor
         val sy = if (lockY) 1.0 else factor
+        // in 3D mode the depth each node is seen at as well, toward the selection's middle, unless an axis is kept to
+        val sz = if (!graphView.viewTransform.threeD || lockX || lockY) 1.0 else factor
+        val anchorZ = middleDepth(start)
 
-        // across the view: the depth each node is seen at stays
         for ((n, origPos) in start) {
             val was = startSeen(n, origPos)
-            graphView.place(n, Point3(anchor.x + (was.x - anchor.x) * sx, anchor.y + (was.y - anchor.y) * sy, was.z))
+            graphView.place(n, Point3(anchor.x + (was.x - anchor.x) * sx, anchor.y + (was.y - anchor.y) * sy, anchorZ + (was.z - anchorZ) * sz))
         }
         graphView.repaint()
     }
+
+    /** The depth the nodes of [start] are seen at, on average, as the gesture began. */
+    private fun middleDepth(start: Map<Node, Vector2>): Double =
+        start.entries.map { (n, p) -> startSeen(n, p).z }.average().takeIf { it.isFinite() } ?: 0.0
 
     /**
      * Called by the toggle methods to flip the KeyMapper into

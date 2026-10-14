@@ -551,8 +551,8 @@ object Actions {
      * drag function so nodes snap to the axis-locked position
      * without waiting for the next mouse-move event. Scale is
      * the common case; grab's next delta is zero (cursor
-     * hasn't moved) so re-running dragMoveNode is a no-op; we
-     * skip rotate entirely (axis lock is meaningless in 2D).
+     * hasn't moved) so re-running dragMoveNode is a no-op;
+     * rotate turns around the locked axis in 3D mode.
      */
     private fun reapplyActiveGesture(graphView: EditorView) {
         val c = graphView.gestures
@@ -565,7 +565,10 @@ object Actions {
             // axis instead of leaving it stranded.
             GestureController.States.MovingNodes ->
                 c.dragMoveNode(graphView.lastCursorPosition, settling = false)
-            else -> Unit  // rotate: axis lock is a 2D no-op.
+            // in 3D mode an axis lock turns around that axis of the screen; in 2D it does nothing
+            GestureController.States.Rotating ->
+                c.dragRotate(graphView.lastCursorPosition)
+            else -> Unit
         }
     }
 
