@@ -127,6 +127,8 @@ class GestureController(
     var state: States? = initialState
         set(value) {
             val prev = field
+            // a new gesture: what the last one left on its way rests first, and its undo step is made
+            if (prev == null && value != null) finishSettling()
             field = value
             if (prev != null && prev.isTransformGesture && value == null) {
                 onGestureEnded()
@@ -166,8 +168,8 @@ class GestureController(
         // case an exit path forgot to clear them.
         moveStartPositions = null
         moveAnchor = null
-        settleStart = null
-        settledInMove = false
+        // what the nodes still on their way were is wanted when they rest
+        if (settling == null) settleStart = null
         rotateStartPositions = null
         rotateCenter = null
         scaleStartPositions = null
@@ -482,11 +484,13 @@ class GestureController(
             startDepths?.get(n)?.let { Depth.set(n, it) }
             graphView.g.needsRecomputing(n)
         }
-        // and what the springs moved meanwhile
+        // and what the springs moved meanwhile, which stops
         captured?.let { settledBefore(it) }?.forEach { (n, p) ->
             n.position = p
             graphView.g.needsRecomputing(n)
         }
+        settling = null
+        following = emptySet()
         state = null
         graphView.repaint()
         return true
@@ -573,51 +577,84 @@ class GestureController(
                 graphView.place(it, Point3(now.xy + diff / apparentScale(it), now.z))
             }
         }
-        if (settling) {
-            settledInMove = true
-            settleAround(STEPS_PER_MOVE)
-        }
+        if (settling) settleAround()
         graphView.repaint()
     }
 
     /** At most this many descendants follow the dragged nodes ([settleAround]): springs on more would not keep up with the pointer. */
     private val FOLLOWING = 50
 
-    /** Steps of the springs per move of the pointer: the nodes are on their way while it moves, and come to rest when it is let go. */
-    private val STEPS_PER_MOVE = 5
-
-    /** The move in progress settled the nodes around the dragged ones: they are let rest when it ends. */
-    private var settledInMove = false
-
     /** Where the nodes seen were when the move in progress started ([captureMoveStart]); null outside one. */
     private var settleStart: Map<Node, Vector2>? = null
 
+    /** The nodes on their way, one step for each picture drawn ([frame]); null when none are. */
+    private var settling: Settling.Run? = null
+
+    /** The descendants that follow the dragged nodes in the move in progress. */
+    private var following: Set<Node> = emptySet()
+
+    /** A move that ended while nodes were still on their way: its undo step, made when they rest ([finishSettling]). */
+    private var settledMove: Pair<Map<Node, Vector2>, Map<Node, Double>>? = null
+
     /**
      * Shift held while nodes are dragged: those dragged move exactly
-     * with the pointer, and by [Settling]'s springs, until they rest,
-     * the nodes on them make way (pulled back to where they were, no
-     * harder than [Settling.ORIGIN_CAP]) and the descendants that hang
-     * from them alone ([Settling.subtree]) follow them. Nothing else
-     * moves; only nodes that are seen take part.
+     * with the pointer; by [Settling]'s springs, a step for each
+     * picture drawn, the nodes on them make way (pulled back to where
+     * they were, no harder than [Settling.ORIGIN_CAP]) and the
+     * descendants that hang from them alone ([Settling.subtree])
+     * follow them. Of two on each other the one that matters less
+     * gives way more: the dragged ones not at all, then those that
+     * follow, then the others, the ghosts most. Only nodes that are
+     * seen take part.
      */
-    private fun settleAround(steps: Int?) {
+    private fun settleAround() {
         val g = graphView.g
-        val shown = g.visibleNodes()
         val start = settleStart.orEmpty()
         val dragged = g.movable(g.selectedNodes)
-        // how far the dragged nodes are from where they were
-        val by = dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero
-        val follow = Settling.subtree(g, dragged, shown, FOLLOWING)
-        val near = LayoutOptimizer.impl.Colliders(shown, LayoutOptimizer.impl.collisionReach())
+        val run = settling ?: g.visibleNodes().let { shown ->
+            following = Settling.subtree(g, dragged, shown, FOLLOWING)
+            val weight = { n: Node ->
+                when {
+                    n in dragged -> Settling.FIXED
+                    n in following -> Settling.HEAVY
+                    g.isFaint(n) -> Settling.LIGHT
+                    else -> Settling.USUAL
+                }
+            }
+            // how far the dragged nodes are from where they were, as they are now
+            val by = { dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero }
+            // nodes only kept off each other: those the user put near each other stay near, and only those on others are pushed
+            Settling.Run(g, shown, weight, close = true) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
+        }
         // on them: nearer than touching, not only within the collision spring's reach
         val touching = 1 / LayoutOptimizer.impl.collisionReach()
+        val near = LayoutOptimizer.impl.Colliders(g.visibleNodes(), LayoutOptimizer.impl.collisionReach())
         val inTheWay = dragged.flatMap { d -> near.of(d).filter { it !in dragged && LayoutOptimizer.impl.computeCollisionSpring(g, it, d, touching) != null } }
-        Settling.settle(g, follow + inTheWay, shown, { it !in dragged }, leading = follow, touching = true, steps = steps) { n -> start[n]?.let { if (n in follow) it + by else it } }
+        run.stir(following + inTheWay)
     }
 
     /** Before the dragged nodes, the others [settleAround] moved: where they were. */
     private fun settledBefore(dragged: Map<Node, Vector2>): Map<Node, Vector2> =
         settleStart.orEmpty().filter { (n, p) -> n !in dragged && n.position != p }
+
+    /** Before a picture is drawn: the nodes on their way take a step. True while they have not come to rest. */
+    fun frame(): Boolean {
+        val more = settling?.step() ?: false
+        if (!more && settledMove != null) finishSettling()
+        return more
+    }
+
+    /** Let the nodes on their way rest now, and make the undo step of the move they were part of, if it has ended. */
+    fun finishSettling() {
+        settling?.toRest()
+        settledMove?.let { (before, depths) -> graphView.commitMoved(before + settledBefore(before), depths) }
+        settledMove = null
+        if (state != States.MovingNodes) {
+            settling = null
+            settleStart = null
+            following = emptySet()
+        }
+    }
 
 
     /** A button was released at [pos] (workspace) / [screen], with or without [control] held. */
@@ -684,11 +721,9 @@ class GestureController(
         val before = moveStartPositions ?: return
         moveStartPositions = null
         moveAnchor = null
-        if (settledInMove) settleAround(null)
-        // what the springs moved is in the same undo step as what was dragged
-        commitMoved(before + settledBefore(before))
-        settleStart = null
-        settledInMove = false
+        // nodes still on their way: the undo step waits for them to rest, and has what they moved too
+        if (settling != null) settledMove = before to (startDepths ?: emptyMap()).filterKeys { it in before }
+        else commitMoved(before)
     }
 
     fun dragOrEndSelectionBox(saveHistory: Boolean) {

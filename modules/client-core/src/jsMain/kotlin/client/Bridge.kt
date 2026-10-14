@@ -196,6 +196,9 @@ class JsView internal constructor(
         return action != null
     }
 
+    /** Before each picture: nodes on their way take a step ([GestureController.frame]). True while another picture is wanted. */
+    fun frame(): Boolean = view.gestures.frame()
+
     /**
      * What to draw, sizes brought up to date:
      * `{scale, offsetX, offsetY, nodes: [{id, x, y, width, height, textWidth, textHeight, lines, shape, bg, fg, palette, fontSize, selected}],

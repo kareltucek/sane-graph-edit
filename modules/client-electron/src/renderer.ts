@@ -1174,7 +1174,12 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     let before = 0;
     const paint = () => {
         scheduled = false;
-        current((view) => draw(view, grid));
+        current((view) => {
+            // nodes on their way move a step for each picture, so that they are seen going
+            const moving = view.frame();
+            draw(view, grid);
+            if (moving) repaint();
+        });
         if (DRAW_TIMES !== undefined) {
             const now = performance.now();
             if (again === 0) again = TIMED_FRAMES;

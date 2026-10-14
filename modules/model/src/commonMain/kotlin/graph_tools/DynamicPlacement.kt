@@ -91,7 +91,9 @@ object DynamicPlacement {
             if (next.isNotEmpty()) start(placed + next, left - next.toSet())
         }
         start(fixed, fresh)
-        val moved = Settling.settle(g, fresh, among, { g.isFaint(it) }) { n -> home(n, neighbours(n).filter { it in among }) }
+        // the nodes placed, the ghosts that give way to them more readily, and the pinned ones that do not move
+        val weight = { n: Node -> if (n in fresh) Settling.USUAL else if (g.isFaint(n)) Settling.LIGHT else Settling.FIXED }
+        val moved = Settling.settle(g, fresh, among, weight) { n -> home(n, neighbours(n).filter { it in among }) }
         (fresh + moved).forEach { g.needsRecomputing(it) }
         Attachments.reglue(g)
     }

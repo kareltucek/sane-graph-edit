@@ -73,8 +73,11 @@ class GraphCanvas(
             Plotter.screenDimensions = Vector2(this.width.toDouble(), this.height.toDouble())
             Plotter.setTransforms(g2d, parent.viewTransform, optimizeLevel)
 
+            // nodes on their way move a step for each picture
+            val moving = parent.model.gestures.frame()
             // the client says what to show; measuring its text is this renderer's part
             Plotter.drawScene(g2d, parent.model.scene(AwtTextMeasurer(g2d)))
+            if (moving) parent.repaint()
             // the link letters shown there follow the selection, which changes in many places
             parent.refreshStatus()
         }

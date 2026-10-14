@@ -33,9 +33,25 @@ class SettlingTest {
             abs(a.position.y - b.position.y) < (a.cache.shapeBounds.y + b.cache.shapeBounds.y) / 2
 
     @Test
+    fun `of two nodes on each other the lighter gives way more`() {
+        val g = Graph()
+        val heavy = Node("heavy", Vector2(0, 0))
+        val light = Node("light", Vector2(10, 0))
+        g.add(heavy)
+        g.add(light)
+        g.ensureCachesFresh(force = true)
+        Settling.settle(g, setOf(heavy, light), setOf(heavy, light), { if (it == heavy) Settling.HEAVY else Settling.LIGHT })
+        assertFalse(overlap(heavy, light))
+        assertTrue(light.position.x - 10 > 3 * -heavy.position.x, "the light one went further: ${light.position}, ${heavy.position}")
+    }
+
+    /** The node placed and [yielding] may move, as easily as each other; the others not. */
+    private fun Fixture.weight(vararg yielding: Node): (Node) -> Double = { if (it == fresh || it in yielding) Settling.USUAL else Settling.FIXED }
+
+    @Test
     fun `a node in the way that may move does, what may not stays`() {
         val f = Fixture()
-        val moved = Settling.settle(f.g, setOf(f.fresh), f.all, yields = { it == f.inTheWay || it == f.far })
+        val moved = Settling.settle(f.g, setOf(f.fresh), f.all, f.weight(f.inTheWay, f.far))
         assertEquals(setOf(f.fresh, f.inTheWay), moved)
         assertFalse(overlap(f.fresh, f.inTheWay))
         assertFalse(overlap(f.fresh, f.parent))
@@ -47,7 +63,7 @@ class SettlingTest {
     @Test
     fun `a node in the way that may not move pushes the new one off`() {
         val f = Fixture()
-        val moved = Settling.settle(f.g, setOf(f.fresh), f.all, yields = { false })
+        val moved = Settling.settle(f.g, setOf(f.fresh), f.all, f.weight())
         assertEquals(setOf(f.fresh), moved)
         assertEquals(Vector2(205, 3), f.inTheWay.position)
         assertFalse(overlap(f.fresh, f.inTheWay))
@@ -59,7 +75,7 @@ class SettlingTest {
         // by the document far to the right of its parent, and up
         val home = Vector2(4000, -1000)
         f.fresh.position = home
-        Settling.settle(f.g, setOf(f.fresh), setOf(f.parent, f.fresh), yields = { false }) { if (it == f.fresh) home else null }
+        Settling.settle(f.g, setOf(f.fresh), setOf(f.parent, f.fresh), f.weight()) { if (it == f.fresh) home else null }
         assertTrue(f.fresh.position.length() < 600, "brought in: ${f.fresh.position}")
         assertTrue(f.fresh.position.toUnit().dot(home.toUnit()) > 0.95, "in the direction it was: ${f.fresh.position}")
         assertFalse(overlap(f.fresh, f.parent))
@@ -68,9 +84,9 @@ class SettlingTest {
     @Test
     fun `settled nodes rest`() {
         val f = Fixture()
-        Settling.settle(f.g, setOf(f.fresh), f.all, yields = { it == f.inTheWay })
+        Settling.settle(f.g, setOf(f.fresh), f.all, f.weight(f.inTheWay))
         val before = f.all.associateWith { it.position }
-        Settling.settle(f.g, setOf(f.fresh), f.all, yields = { it == f.inTheWay })
+        Settling.settle(f.g, setOf(f.fresh), f.all, f.weight(f.inTheWay))
         assertTrue(f.all.all { (it.position - before.getValue(it)).length() < 5.0 })
     }
 }

@@ -648,6 +648,8 @@ class KeyMapper(
 
     private fun executeCommand(name: String) {
         val gv = activeView ?: return
+        // nodes still on their way rest before a command acts (an undo takes back their move whole); a gesture's own keys leave them be
+        if (mode != Mode.Transform) gv.gestures.finishSettling()
         val operator = waitingOperator
         when {
             operator != null -> {
@@ -717,6 +719,7 @@ class KeyMapper(
      * during init-file loading before the UI is up).
      */
     fun executeCommandLine(line: String) {
+        activeView?.gestures?.finishSettling()
         val parts = line.split("\\s+".toRegex(), limit = 2)
         val cmd = parts[0]
         val args = parts.getOrNull(1)
