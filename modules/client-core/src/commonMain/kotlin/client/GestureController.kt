@@ -756,7 +756,7 @@ class GestureController(
     }
 
     fun editNode(n: Node, screenClickCoordinates: Vector2) {
-        graphView.startNodeEdit(n, screenClickCoordinates)
+        graphView.startNodeEdit(n, screenClickCoordinates, typing = true)
     }
 
     fun startStylePicker(mouseoverNodes: MutableSet<Node>, screenspaceCoordinates: Vector2) {

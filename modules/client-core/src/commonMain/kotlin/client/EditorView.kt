@@ -24,8 +24,11 @@ interface Renderer {
     /** The status line is out of date. */
     fun refreshStatus()
 
-    /** Let the user edit the node's text in place; [screenClick] is where to put the caret. */
-    fun startNodeEdit(nodeId: String, screenClick: Vector2?)
+    /**
+     * Let the user edit the node's text in place; [screenClick] is where to put the caret; with [typing] the user entered the
+     * node to type in it (`Space`, a double click): an editor that has modes starts in the one that types.
+     */
+    fun startNodeEdit(nodeId: String, screenClick: Vector2?, typing: Boolean = false)
 
     fun endNodeEdit()
 
@@ -85,11 +88,11 @@ class EditorView(
     /** Told when a transform gesture (grab, rotate, scale) starts (true) and ends (false): keys then mean something else. */
     var onTransformMode: (Boolean) -> Unit = {}
 
-    fun startNodeEdit(n: Node, screenClick: Vector2?) {
+    fun startNodeEdit(n: Node, screenClick: Vector2?, typing: Boolean = false) {
         // a node whose text is kept in a file is edited as its buffer has it
         FileContent.entering(this, n)
         g.ensureCachesFresh()
-        startNodeEdit(n.id, screenClick)
+        startNodeEdit(n.id, screenClick, typing)
     }
 
     init {

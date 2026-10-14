@@ -199,7 +199,7 @@ export class GridEditor {
     }
 
     /**
-     * Neovim on [text] with the cursor at [row], [column] (from 0), plain text in [colours], in insert mode.
+     * Neovim on [text] with the cursor at [row], [column] (from 0), plain text in [colours]; in insert mode with [insert].
      * [onText] is told the text whenever it changes; [onExit] when neovim ends by itself (`:q`);
      * [onShown] when the editor takes the text's place on the screen; [onDrawn] whenever what it shows changed;
      * [onLine] the one line to show below the graph while editing (the command line being typed, or the mode), or null for none;
@@ -212,6 +212,7 @@ export class GridEditor {
         column: number,
         colours: Colours,
         filetype: string,
+        insert: boolean,
         on: {
             text: (text: string) => void;
             exit: () => void;
@@ -232,7 +233,7 @@ export class GridEditor {
         editor.onLine = on.line;
         editor.onMessage = on.message;
         editor.onStatus = on.status;
-        editor.load(text, row, column, colours, filetype);
+        editor.load(text, row, column, colours, filetype, insert);
         GridEditor.warm();
         return editor;
     }
@@ -400,9 +401,10 @@ export class GridEditor {
     }
 
     /** Give the waiting neovim its text, as if it had been started on it: nothing to undo, the cursor in place. */
-    private load(text: string, row: number, column: number, colours: Colours, filetype: string) {
+    private load(text: string, row: number, column: number, colours: Colours, filetype: string, insert: boolean) {
         // the kind of text decides neovim's highlighting, indenting and the rest of what it does by file type
         const kind = filetype === "" ? "" : ` | setlocal filetype=${filetype}`;
+        const mode = insert ? " | startinsert" : "";
         this.lines = text.split("\n");
         const lines = [...this.lines];
         this.nvim
@@ -414,7 +416,7 @@ export class GridEditor {
                     .then(() => nvim.command(
                         `let &undolevels = g:sge_undolevels | set nomodified | call setcursorcharpos(${row + 1}, ${column + 1})` +
                         ` | call winrestview({'topline': 1, 'leftcol': 0})${kind}` +
-                        ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background} | startinsert`,
+                        ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background}${mode}`,
                     )))
             .catch(() => {
                 // no neovim: the editor shows nothing, and closes with the text unchanged

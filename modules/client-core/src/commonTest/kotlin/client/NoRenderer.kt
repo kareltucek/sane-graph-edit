@@ -6,7 +6,7 @@ import utils.Vector2
 object NoRenderer : Renderer {
     override fun repaint() {}
     override fun refreshStatus() {}
-    override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {}
+    override fun startNodeEdit(nodeId: String, screenClick: Vector2?, typing: Boolean) {}
     override fun endNodeEdit() {}
     override fun startStylePicker(screen: Vector2?) {}
     override fun endStylePicker() {}

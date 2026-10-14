@@ -224,7 +224,7 @@ class GraphView(
         );
     }
 
-    override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
+    override fun startNodeEdit(nodeId: String, screenClick: Vector2?, typing: Boolean) {
         endNodeEdit()
         nodeEditor.startNodeEdit(nodeId, screenClick)
         // nothing to show when the node is gone

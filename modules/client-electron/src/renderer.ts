@@ -680,13 +680,16 @@ function textPlace(n: SceneNode, whole: Scene, grid: client.GridMetrics): Place 
     };
 }
 
-/** Open neovim on the node [id]; with [click] (a position in the view) the cursor goes to the character clicked. */
-function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
+/**
+ * Open neovim on the node [id]; with [click] (a position in the view) the cursor goes to the character clicked; with [typing]
+ * (the user entered the node to type: `Space`, a double click) in insert mode.
+ */
+function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, typing: boolean) {
     // the click that asks for this also closed the editor that was open; that one tells its text first
     endEdit(view);
     // a terminal node has no text to edit: entering it is going to its shell
     if (lastScene?.nodes.find((it) => it.id === id)?.type === "terminal") enterTerminal(view, id);
-    else (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click));
+    else (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click, typing));
 }
 
 // --- terminal nodes: a shell in a terminal over the node, started when the node is first entered, running on afterwards ---
@@ -812,7 +815,7 @@ function sizeTerminals(view: client.JsView, scene: Scene, grid: client.GridMetri
     });
 }
 
-function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
+function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, typing: boolean) {
     const n = lastScene?.nodes.find((it) => it.id === id);
     const text = view.textToEdit(id);
     if (n === undefined || lastScene === null || text == null || editing !== null) return;
@@ -824,7 +827,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
     view.textEditStarted(id);
     if (useGridEditor) {
         // drawn in the node, so in the node's colours whatever they are
-        const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), {
+        const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), typing, {
             text: (now) => view.textTyped(now),
             exit: () => endEdit(view),
             shown: () => page.repaint(),
@@ -1195,7 +1198,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         }
     };
     page.repaint = repaint;
-    page.editNode = (id, atClick, x, y) => current((view) => editNode(view, grid, id, atClick ? { x, y } : null));
+    page.editNode = (id, atClick, x, y, typing) => current((view) => editNode(view, grid, id, atClick ? { x, y } : null, typing));
     page.endEdit = () => current((view) => endEdit(view));
     page.tabs = () => showTabs(app);
     page.cacheStats = () => cacheStats(grid, app.current()?.threeD ?? false);
@@ -1450,7 +1453,7 @@ const CAPTURE_DELAY_MS = 1500;
 /** What the client core asks of this page (`openView`); filled in once there is a view. */
 const page: {
     repaint: () => void;
-    editNode: (id: string, atClick: boolean, x: number, y: number) => void;
+    editNode: (id: string, atClick: boolean, x: number, y: number, typing: boolean) => void;
     endEdit: () => void;
     setting: (name: string, value: string) => void;
     showLine: (text: string) => void;

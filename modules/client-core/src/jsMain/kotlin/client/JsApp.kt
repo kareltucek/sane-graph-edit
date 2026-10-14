@@ -109,8 +109,8 @@ class JsApp internal constructor(private val client: EditorClient, private val m
                 override fun refreshStatus() {
                     if (isCurrent()) made?.status()
                 }
-                override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
-                    if (isCurrent()) page.editNode(nodeId, screenClick != null, screenClick?.x ?: 0.0, screenClick?.y ?: 0.0)
+                override fun startNodeEdit(nodeId: String, screenClick: Vector2?, typing: Boolean) {
+                    if (isCurrent()) page.editNode(nodeId, screenClick != null, screenClick?.x ?: 0.0, screenClick?.y ?: 0.0, typing)
                 }
                 override fun endNodeEdit() {
                     if (isCurrent()) page.endEdit()
