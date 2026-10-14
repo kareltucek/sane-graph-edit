@@ -306,9 +306,10 @@ object Settling {
             val off = mean(pushes.map { it.first })
             val to = mean(pulls)
             val loose = off?.let { it + (to ?: Vector2.Zero) * PULL_WHEN_PUSHED } ?: to
-            // a firm one is tugged to its origin on top of the rest, however far and whatever pushes it, and not less as the
-            // others cool: a share of the way each window, so that it is there in [FOLLOW_MS]
-            val tug = home?.takeIf { n in firm }?.let { it * FOLLOW_PER_WINDOW }
+            // a firm one is tugged to its origin on top of the rest, however far, and not less as the others cool: a share of
+            // the way each window, so that it is there in [FOLLOW_MS]; less while something pushes it, or it stays on what
+            // is in its place
+            val tug = home?.takeIf { n in firm }?.let { it * FOLLOW_PER_WINDOW * (if (off == null) 1.0 else PULL_WHEN_PUSHED) }
             val by = loose?.let { it * damping + (tug ?: Vector2.Zero) } ?: tug
             if (by != null) moves[n] = by
         }
