@@ -1300,9 +1300,14 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     lineInput.addEventListener("blur", () => {
         if (lineOpen()) lineInput.focus();
     });
-    // closing the window is asking to quit: the tabs with unsaved changes have a say
+    // Closing the window (its button, the window manager's kill) is asking to quit: the tabs with unsaved changes have a say.
+    // No question can be asked while the page unloads (Chromium answers it with no), so the closing waits: the tabs are asked
+    // right after, and the page closes itself when they agree.
     window.addEventListener("beforeunload", (e) => {
-        if (!leaving && !app.quit()) e.returnValue = false;
+        if (!leaving) {
+            e.returnValue = false;
+            setTimeout(() => app.quit());
+        }
     });
     showTabs(app);
     repaint();
