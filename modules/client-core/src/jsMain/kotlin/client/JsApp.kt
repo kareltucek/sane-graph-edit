@@ -123,7 +123,9 @@ class JsApp internal constructor(private val client: EditorClient, private val m
                 }
             }
             val view = EditorView(graph, renderer, shell, client, path)
-            made = JsView(view, measurer, keys, page).also { shown[view] = it }
+            // during a transform gesture the keys are its controls (axis locks, confirm, cancel)
+            view.onTransformMode = { on -> keys.mode = if (on) KeyMapper.Mode.Transform else KeyMapper.Mode.Normal }
+            made =JsView(view, measurer, keys, page).also { shown[view] = it }
             return view
         }
 

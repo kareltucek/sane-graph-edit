@@ -68,9 +68,10 @@ interface CursorStyle {
 /**
  * Room beyond the text, so that neovim need not scroll before its
  * screen has grown: the cursor behind the last character plus the
- * character typed next, and the line a new line opens.
+ * characters typed before the node has grown, and the line a new
+ * line opens.
  */
-const SPARE_COLUMNS = 2;
+const SPARE_COLUMNS = 4;
 const SPARE_ROWS = 1;
 
 /** Neovim draws at least this much whatever size it is given. */
