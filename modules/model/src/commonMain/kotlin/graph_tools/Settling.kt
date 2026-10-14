@@ -141,19 +141,25 @@ object Settling {
         fun step(): Boolean {
             if (!resting) {
                 val now = clock()
-                // against the clock, the part of a window that has passed since the last step; else a whole window a step
-                val share = if (budget == null) 1.0 else ((now - (lastStep ?: now)).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1.0)
+                val previous = lastStep ?: now
                 lastStep = now
+                // against the clock, the part of a window that has passed since the last step; else a whole window a step
+                val share = if (budget == null) 1.0 else ((now - previous).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1.0)
+                // a node moves for the time since its own last turn: one that waited while others had theirs catches up, but
+                // never goes further than its springs ask (more would swing past where they pull it)
+                val windows = { n: Node ->
+                    if (budget == null) 1.0 else ((now - (turns[n] ?: previous)).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1 / damping)
+                }
                 // after a step cut short, those still waiting first; when all have had their turn, all again by chance
                 val order = if (cut) waiting.filter { it in moving }.ifEmpty { moving.shuffled(chance) } else moving.toList()
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, damping * share, pulling, close, deadline)
+                val done = step(g, moving, order, among, near, weight, origin, damping, windows, pulling, close, deadline)
+                order.take(done.taken).forEach { turns[it] = now }
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
                 covered += done.taken
-                // how far it would have gone in a window: a short step is no sign of rest
-                if (share > 0) furthest = maxOf(furthest, done.furthest / share)
+                furthest = maxOf(furthest, done.furthest)
                 grew = grew || done.moving.size != moving.size
                 moving = done.moving
                 if (budget != null && pulling) damping *= COOLING.pow(share)
@@ -164,6 +170,9 @@ object Settling {
 
         /** The order of turns when steps are cut short: by chance, but the same each time. */
         private val chance = kotlin.random.Random(0)
+
+        /** When each node last had its turn ([clock]). */
+        private val turns = mutableMapOf<Node, Long>()
 
         /** The nodes a step cut short did not get to, in turn; once steps have been cut, [cut] stays so. */
         private var waiting: List<Node> = emptyList()
@@ -233,7 +242,9 @@ object Settling {
      * One step of the nodes of [order] ([moving], in the order to take
      * them): what the springs ask of each, then all moved by it. With
      * [deadline] (a [utils.Platform.nowMillis]) the nodes not reached
-     * by then wait for the next step; at least one is taken.
+     * by then wait for the next step; at least one is taken. A node
+     * moves for as many windows as [windows] says; how far the nodes
+     * went is told per window.
      */
     private fun step(
         g: Graph,
@@ -244,6 +255,7 @@ object Settling {
         weight: (Node) -> Double,
         origin: (Node) -> Vector2?,
         damping: Double,
+        windows: (Node) -> Double,
         pulling: Boolean,
         close: Boolean,
         deadline: Long?,
@@ -280,7 +292,7 @@ object Settling {
         }
         moves.forEach { (n, by) ->
             near.moving(n)
-            n.position = n.position + by
+            n.position = n.position + by * windows(n)
         }
         if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
         return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken)
