@@ -121,3 +121,59 @@ columns, the fold onto room walls.
 6. ~~Gravity 0.1, across 0.3?~~ **Fine for now; tuned by trying.**
 
 `- / =` now change the level of detail: no springs (removed from §4).
+
+## 7. Multilevel: contract, settle, unpack (spec, agreed 2026-10-14, not built)
+
+Karel: contract clusters until the graph is small, run the springs on it
+with volume-based multipliers, carry each cluster's move to its members,
+recurse; once the top level settles, continue with the levels below.
+
+```mermaid
+flowchart TD
+  g0["level 0: the nodes"] -->|solar systems| g1["level 1: systems"]
+  g1 -->|solar systems| g2["level 2 ..."]
+  g2 --> top["top: small enough"]
+  top -->|"steps until rest; each move carried down to all members"| down["next level below moves"]
+  down -->|"... until level 0 rests"| done["done"]
+```
+
+### Mass
+
+- **Node:** r = (its longest spring distance: collision, or an edge's
+  length) / 2; mass = r² in 2D mode, r³ in 3D mode. Hubs want more room,
+  so their longer edges giving them more mass is meant.
+- **System:** k × the sum of its members' masses; k ≈ 1.5 *(guess)*.
+- **A contracted node** gets its reach from its mass alone (√M, ∛M), not
+  from its own degree, so levels stay consistent; its springs (collision,
+  edge length) follow from that reach as for a node; its weight is M.
+  Edges between two systems become one, pulling × their count; edges
+  inside a system are dropped on that level.
+
+### Clusters: solar systems (after FM3, Hachul 2004, deterministic)
+
+1. **Suns:** walk the nodes by importance, edges × mass, highest first
+   (ties: document order); a node not within 2 edges of a sun becomes one.
+   Suns end up at least 3 edges apart; every node within 2 of a sun.
+2. **Planets:** neighbours of suns; one next to several suns joins the
+   system with the least mass so far (ties: the shorter edge).
+3. **Moons:** nodes 2 edges from their nearest sun join through one of its
+   planets, by the same rule.
+4. **Cap:** a system stops taking members at a mass cap *(open)*; those
+   left over become suns of their own.
+5. Levels until the graph has at most ~50 nodes *(guess)*.
+
+### Settling the levels
+
+- The top level runs the settling (§3) on contracted nodes; a contracted
+  node's move is applied to every node it holds, all the way down.
+- At rest, the level below becomes the moving one, starting from where the
+  level above left it; down to level 0.
+
+### Open
+
+1. **Leaves weigh like their parent:** a leaf's longest spring is the edge
+   to its parent, whose length holds the parent's reach. Fine as packing
+   for small parents; a huge node with many tiny leaves comes out much
+   heavier than its footprint. Fallback if it shows: an edge's length is
+   split between its ends by their reaches, each counting its own part.
+2. Which features use it (`o` on all / many nodes only?), and the cap.
