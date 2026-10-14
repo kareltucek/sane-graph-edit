@@ -145,10 +145,9 @@ object Settling {
                 lastStep = now
                 // against the clock, the part of a window that has passed since the last step; else a whole window a step
                 val share = if (budget == null) 1.0 else ((now - previous).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1.0)
-                // a node moves for the time since its own last turn: one that waited while others had theirs catches up, but
-                // never goes further than its springs ask (more would swing past where they pull it)
+                // a node moves for the time since its own last turn: one that waited while others had theirs catches up
                 val windows = { n: Node ->
-                    if (budget == null) 1.0 else ((now - (turns[n] ?: previous)).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1 / damping)
+                    if (budget == null) 1.0 else ((now - (turns[n] ?: previous)).toDouble() / LayoutOptimizer.WINDOW_MS).coerceAtLeast(0.0)
                 }
                 // after a step cut short, those still waiting first; when all have had their turn, all again by chance
                 val order = if (cut) waiting.filter { it in moving }.ifEmpty { moving.shuffled(chance) } else moving.toList()
