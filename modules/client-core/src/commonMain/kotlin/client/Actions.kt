@@ -626,6 +626,11 @@ object Actions {
         graphView.repaint()
     }
 
+    /** `o` / `O`: the springs take a pass for each picture drawn while the key is held ([GestureController.startOptimizing]). */
+    fun optimizeWhileHeld(graphView: EditorView, restrict: Boolean) {
+        graphView.gestures.startOptimizing(restrict)
+    }
+
     fun selectAll(graphView: EditorView) {
         val visible = graphView.g.visibleNodes()
         if (graphView.g.selectedNodes == visible) {

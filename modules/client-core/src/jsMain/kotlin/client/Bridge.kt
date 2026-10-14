@@ -496,6 +496,11 @@ class JsView internal constructor(
         view.pointer.wheel(Vector2(x, y), deltaY / WHEEL_PIXELS_PER_STEP)
     }
 
+    /** A key was let go; [key] is a DOM `KeyboardEvent.key`. Letting go of a modifier stops nothing. */
+    fun keyUp(key: String) {
+        if (key !in modifierKeys) view.gestures.stopOptimizing()
+    }
+
     /**
      * A key went down; [key] is a DOM `KeyboardEvent.key`. True if
      * it was passed to the key mapping, false for keys that mean

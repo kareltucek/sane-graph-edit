@@ -637,11 +637,42 @@ class GestureController(
     private fun settledBefore(dragged: Map<Node, Vector2>): Map<Node, Vector2> =
         settleStart.orEmpty().filter { (n, p) -> n !in dragged && n.position != p }
 
-    /** Before a picture is drawn: the nodes on their way take a step. True while they have not come to rest. */
+    /** `o` / `O` held: whether it is `O` ([LayoutOptimizer.optimize]'s restrict); null while neither is. */
+    private var optimizing: Boolean? = null
+
+    /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
+    private var optimizingFrom: Map<Node, Vector2>? = null
+
+    /**
+     * `o` / `O` pressed: a pass of the optimizer's springs now, and one
+     * for each picture drawn until a key is let go ([stopOptimizing]).
+     * The keyboard's repeats of the key change nothing.
+     */
+    fun startOptimizing(restrict: Boolean) {
+        if (optimizing == null) {
+            finishSettling()
+            optimizingFrom = graphView.g.nodes.associateWith { it.position }
+            optimizing = restrict
+            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
+            graphView.repaint()
+        }
+    }
+
+    /** A key was let go: the nodes stop, and all they moved since `o` / `O` was pressed is one undo step. */
+    fun stopOptimizing() {
+        val before = optimizingFrom
+        optimizing = null
+        optimizingFrom = null
+        if (before != null) graphView.commitMoved(before, emptyMap())
+    }
+
+    /** Before a picture is drawn: the nodes on their way take a step. True while they have not come to rest, or `o` is held. */
     fun frame(): Boolean {
+        val restrict = optimizing
+        if (restrict != null) LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
         val more = settling?.step() ?: false
         if (!more && settledMove != null) finishSettling()
-        return more
+        return more || restrict != null
     }
 
     /** Let the nodes on their way rest now, and make the undo step of the move they were part of, if it has ended. */

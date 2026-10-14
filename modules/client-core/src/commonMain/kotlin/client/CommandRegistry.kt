@@ -66,8 +66,8 @@ fun registerEditingCommands() {
     r.register("clear-edges") { impl.clearEdges(it) }
     r.register("delete") { impl.deleteNode(it, false) }
     r.register("delete-reconnect") { impl.deleteNode(it, true) }
-    r.register("optimize") { impl.optimize(it, false) }
-    r.register("optimize-restrict") { impl.optimize(it, true) }
+    r.register("optimize") { impl.optimizeWhileHeld(it, false) }
+    r.register("optimize-restrict") { impl.optimizeWhileHeld(it, true) }
     // The per-second factor is LayoutOptimizer.springScaleStep
     // (default 0.8, tuneable via `:set spring-scale-step=<n>`).
     // `spring-longer` uses the inverse so held keys cancel

@@ -210,6 +210,9 @@ object LayoutOptimizer {
                 val res = when {
                     // No selection → relax the whole graph.
                     !moving && size == 0 -> MoveEveryone
+                    // `O` on one node: it stays where it is, and the
+                    // children that hang from it are laid out around it.
+                    !moving && restrict && size == 1 -> MoveChildsOnly
                     // Non-empty selection via `o` or `O`: move ONLY the
                     // selected nodes. Unselected nodes stay anchored,
                     // and cross-boundary edges are ignored (so an
@@ -356,9 +359,8 @@ object LayoutOptimizer {
                                 }
                             edges
                         }
-                        .letIf(!tgt.moveSelected) {
-                            it.filter { !g.selectedNodes.contains(it.first) }
-                        }
+                        // the spring is the second node's (see [computeBBSprings]): only for those that are to move, not the parent of a selected node
+                        .let { triples -> computeNodeSet(g, tgt).toSet().let { movable -> triples.filter { it.second in movable } } }
                 }
 
                 SpringTarget.MoveSelectedOnly -> {

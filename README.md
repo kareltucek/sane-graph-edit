@@ -195,7 +195,8 @@ Flags:
 | `c`       | Clear edges (within selection, or incident to selection)        |
 | `d`       | Delete selected nodes                                           |
 | `D`       | Delete selected nodes but reconnect predecessors to successors  |
-| `o` / `O` | Run layout optimiser (free / restricted around the drag node)   |
+| `o`       | Layout optimiser while held: the selected nodes (all, with none selected) move a spring pass a picture until the key is let go; one undo step |
+| `O`       | The same, around one selected node: it stays where it is and its children are laid out around it (several selected: as `o`) |
 | `g`       | Toggle "grab" mode — move the selection without holding a button |
 
 ### Keyboard — selection & navigation

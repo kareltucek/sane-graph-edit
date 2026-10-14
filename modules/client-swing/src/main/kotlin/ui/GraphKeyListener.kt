@@ -86,7 +86,10 @@ class GraphKeyListener(
         e.consume()
     }
 
-    override fun keyReleased(e: KeyEvent) {}
+    // `o` held lays out a pass a picture until a key is let go
+    override fun keyReleased(e: KeyEvent) {
+        if (e.keyCode !in modifierKeys) graphView.model.gestures.stopOptimizing()
+    }
 
     private val modifierKeys = setOf(VK_SHIFT, VK_CONTROL, VK_ALT, VK_META, VK_ALT_GRAPH)
 

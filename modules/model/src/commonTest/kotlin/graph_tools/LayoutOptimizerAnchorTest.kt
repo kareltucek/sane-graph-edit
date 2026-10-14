@@ -8,12 +8,13 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 /**
- * Regression tests for the optimize-anchor fix: when `o` or `O`
- * is pressed with a non-empty selection, only the selected
- * nodes should move. Nodes outside the selection must stay
- * exactly where they were — including neighbours of selected
- * nodes that would otherwise be pulled along by the spring
- * model.
+ * Regression tests for the optimize-anchor fix: when `o` is
+ * pressed with a non-empty selection, only the selected nodes
+ * should move. Nodes outside the selection must stay exactly
+ * where they were — including neighbours of selected nodes that
+ * would otherwise be pulled along by the spring model. `O` on a
+ * single node is the other way round: that node stays, its
+ * children move.
  */
 class LayoutOptimizerAnchorTest {
 
@@ -100,19 +101,25 @@ class LayoutOptimizerAnchorTest {
     }
 
     @Test
-    fun `O with single selection still keeps anchors still`() {
-        // restrict=true with size=1 — also an "only selected
-        // moves" path post-fix (previously moved children).
+    fun `O on one node keeps it and its parent still and lays out its children around it`() {
         val g = Graph()
-        val anchor = Node("anchor", Vector2(-200, 0))
+        val parent = Node("parent", Vector2(-200, 0))
         val selected = Node("selected", Vector2(0, 0))
-        g.add(anchor); g.add(selected)
-        g.add(Edge(anchor, selected))
+        // on each other: the collision spring pushes them apart
+        val child1 = Node("child1", Vector2(0, 100))
+        val child2 = Node("child2", Vector2(1, 100))
+        listOf(parent, selected, child1, child2).forEach { g.add(it) }
+        g.add(Edge(parent, selected))
+        g.add(Edge(selected, child1))
+        g.add(Edge(selected, child2))
+        g.ensureCachesFresh(force = true)
 
-        val anchorBefore = anchor.position
         g.cleanSelect(setOf(selected))
         LayoutOptimizer.optimize(g, movingNodes = false, restrictOperator = true)
 
-        assertEquals(anchorBefore, anchor.position, "anchor must not move with `O` and a selection")
+        assertEquals(Vector2(-200, 0), parent.position, "the parent must not move with `O`")
+        assertEquals(Vector2(0, 0), selected.position, "the node `O` is pressed on stays where it is")
+        assertEquals(true, child1.position != Vector2(0, 100) || child2.position != Vector2(1, 100), "its children are laid out")
+        assertEquals(true, listOf(child1, child2).all { it.position.x.isFinite() && it.position.y.isFinite() }, "to somewhere: ${child1.position} ${child2.position}")
     }
 }

@@ -742,7 +742,11 @@ function keyFromPage(key: string, ctrl: boolean, shift: boolean) {
     else if (lineOpen() && character && !ctrl) {
         lineInput.value += key;
         lineInput.dispatchEvent(new Event("input"));
-    } else (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey: ctrl, shiftKey: shift, bubbles: true }));
+    } else {
+        // pressed and let go at once: the headset says no more of it, and what lasts while a key is held must end
+        (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key, ctrlKey: ctrl, shiftKey: shift, bubbles: true }));
+        window.dispatchEvent(new KeyboardEvent("keyup", { key, ctrlKey: ctrl, shiftKey: shift, bubbles: true }));
+    }
 }
 
 /** The terminals of the view that is drawn: what their nodes show is asked of them ([paintingOf]). */
@@ -1293,6 +1297,8 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         // and while the line is open they are the line's
         else if (editing === null && !lineOpen() && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
     }));
+    // letting go of a key ends what lasts while it is held (`o`)
+    window.addEventListener("keyup", (e) => current((view) => view.keyUp(e.key)));
     wirePicker(current);
     lineInput.addEventListener("input", () => current((view) => view.lineTyped(lineInput.value)));
     lineInput.addEventListener("keydown", (e) => {
