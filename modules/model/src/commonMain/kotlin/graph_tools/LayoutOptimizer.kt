@@ -139,8 +139,11 @@ object LayoutOptimizer {
         }
     }
 
-    /** The time a pass of the springs stands for, in milliseconds: what they ask for is the move of this long. */
-    const val WINDOW_MS = 50.0
+    /**
+     * The time a pass of the springs stands for, in milliseconds: what they ask for is the move of this long. A picture
+     * at 60 a second: the springs' strengths were found with a pass for each picture drawn.
+     */
+    const val WINDOW_MS = 16.0
 
     private fun doubleRun(
         g: Graph,
