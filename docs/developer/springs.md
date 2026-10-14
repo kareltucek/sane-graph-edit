@@ -62,6 +62,14 @@ changes.
   time (× 0.985 per window); the follow spring does not cool.
 - **Joining**: a node pushed by one that moves joins the moving ones,
   unless fixed.
+- **Collisions with the 16 nearest** only (found in a grid as fine as the
+  nodes are dense): a pile costs about as much as its nodes, not their
+  square.
+- **Budget** (Shift-drag, `o`): a step stops after 50 ms; the nodes it took
+  move for the others (× all / taken), but by that extra no further than
+  their own size.
+- **`o` by importance**: (children + 1) × size is both its weight (the
+  less important give way) and its order (the most important first).
 - **Rest**: when nothing moved more than 0.5 per window over a round and
   no follower is more than 2 from its place; then a last pass that only
   pushes apart (to 1.15 × touching); at most 200 rounds each.

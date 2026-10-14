@@ -465,12 +465,34 @@ object LayoutOptimizer {
                 return (index.within(n.position, (half(n) + usual) * reach * MARGIN + slack) + big).filter(mayPush).sortedBy { order.getValue(it) }
             }
 
+            /**
+             * Of those [of] would give, the [count] nearest to [n]: where many are piled up, a node is pushed by those
+             * around it, not by the whole pile, which would cost as much as the pile is big for each node of it.
+             */
+            fun nearest(n: Node, count: Int, slack: Double = 0.0): List<Node> {
+                val mayPush = { o: Node -> o != n && (o.position - n.position).length() <= (half(n) + half(o)) * reach * MARGIN + slack }
+                return (dense.nearest(n.position, count, but = n) + big).filter(mayPush).sortedBy { (it.position - n.position).lengthSquared() }.take(count)
+            }
+
+            /**
+             * For [nearest]: the nodes in cells as big as they are dense, a few to a cell, so that the nearest are found
+             * among a few cells also where the nodes are piled up (where [index], whose cells are as big as nodes reach,
+             * would have the whole pile in one).
+             */
+            private val dense = nodes.map { it.position }.let { ps ->
+                val area = if (ps.isEmpty()) 1.0 else (ps.maxOf { it.x } - ps.minOf { it.x }) * (ps.maxOf { it.y } - ps.minOf { it.y })
+                SpatialIndex(nodes, kotlin.math.sqrt(area * PER_CELL / nodes.size.coerceAtLeast(1)).coerceAtLeast(0.001)) { it.position }
+            }
+
             private companion object {
                 /** A node this many times the usual size is a big one. */
                 const val BIG = 4.0
 
                 /** A little further than reckoned, against rounding. */
                 const val MARGIN = 1.001
+
+                /** About how many nodes a cell of [dense] has. */
+                const val PER_CELL = 4.0
             }
         }
 

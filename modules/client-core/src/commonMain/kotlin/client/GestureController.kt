@@ -697,8 +697,10 @@ class GestureController(
                 LayoutOptimizer.impl.computeNodeSet(g, LayoutOptimizer.SpringTarget.MoveChildsOnly).filter { it in shown && it !in selected }.toSet()
             else -> selected
         }
-        val weight = { n: Node -> if (n in moving) Settling.USUAL else Settling.FIXED }
-        return Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = graphView.viewTransform.threeD).also {
+        // a node with many children, and a big one, matters more: it goes first and pushes the others away, they give way
+        val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
+        val weight = { n: Node -> if (n in moving) importance(n) else Settling.FIXED }
+        return Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = graphView.viewTransform.threeD, rank = importance).also {
             it.stir(moving, past)
         }
     }

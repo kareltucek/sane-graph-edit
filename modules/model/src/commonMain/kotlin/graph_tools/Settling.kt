@@ -89,8 +89,9 @@ object Settling {
      *
      * With [budget] a step takes no longer than that many
      * milliseconds: the nodes it does not get to wait, and the next
-     * step takes all in an order of chance, so that over a few steps
-     * each gets its turn. The nodes then come to rest later, and the
+     * step takes all in an order of chance (by [rank], the highest
+     * first, when there is one), so that over a few steps each gets its
+     * turn. The nodes then come to rest later, and the
      * pictures keep coming. With a [clock] the run goes by it: what
      * the springs ask for is the move of a
      * [LayoutOptimizer.WINDOW_MS], and a step moves the part of it for
@@ -106,6 +107,7 @@ object Settling {
         private val budget: Long? = null,
         private val clock: (() -> Long)? = null,
         private val depth: Boolean = false,
+        private val rank: ((Node) -> Double)? = null,
         private val origin: (Node) -> Vector3? = { null },
     ) {
         var moving: Set<Node> = emptySet()
@@ -160,7 +162,9 @@ object Settling {
                 // against the clock, the part of a window that has passed since the last step; else a whole window a step
                 val share = if (clock == null) 1.0 else ((now - previous).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1.0)
                 // after a step cut short, those still waiting first; when all have had their turn, all again by chance
-                val order = if (cut) waiting.filter { it in moving }.ifEmpty { moving.shuffled(chance) } else moving.toList()
+                // with a [rank], the most important first every time, so that a step cut short has moved them
+                val fresh = { rank?.let { r -> moving.sortedByDescending(r) } ?: if (cut) moving.shuffled(chance) else moving.toList() }
+                val order = if (cut) waiting.filter { it in moving }.ifEmpty { fresh() } else fresh()
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
                 val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, down(g, depth), deadline)
@@ -336,7 +340,11 @@ object Settling {
         val windows = passed * (if (taken < order.size) order.size.toDouble() / taken else 1.0)
         moves.forEach { (n, by) ->
             near.moving(n)
-            if (depth) n.point = n.point + by * windows else n.position = n.position + by.xy * windows
+            // moving for others that were not taken, no node goes further than its own size in a step (or than it would
+            // for itself): none is flung across the graph
+            val far = maxOf(n.cache.shapeBounds.length(), by.length() * passed)
+            val go = (if (depth) by * windows else Vector3(by.xy * windows, 0.0)).let { if (it.length() > far) it.toScale(far) else it }
+            n.point = n.point + go
         }
         if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
         return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken)
@@ -372,9 +380,12 @@ object Settling {
             }
             // two nodes that both moved may have come nearer by both their ways
             val slack = if (made == null) 0.0 else 2 * drift
-            return { n -> now.of(n, slack) }
+            return { n -> now.nearest(n, COLLIDING, slack) }
         }
     }
+
+    /** A node is pushed by at most this many of those near it, the nearest ([Near]). */
+    private const val COLLIDING = 16
 
     /** How far the nodes may have moved before [Near] makes its index anew. */
     private const val REBUILD = 60.0
