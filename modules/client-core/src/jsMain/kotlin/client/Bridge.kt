@@ -33,6 +33,9 @@ internal class GridMeasurer(private val grid: GridMetrics) : TextMeasurer {
     }
 }
 
+/** What a terminal node shows that has no text of its own while its shell is not running. */
+private const val TERMINAL_TEXT = "Terminal: click to activate"
+
 /** One view of a document, for a renderer to draw and to feed the user's input to. */
 @JsExport
 class JsView internal constructor(
@@ -244,7 +247,9 @@ class JsView internal constructor(
         j.height = shape.y
         j.textWidth = text.x
         j.textHeight = text.y
-        j.lines = n.lines.toTypedArray()
+        // a terminal no one has named says what it is while its shell is not running (when it runs, what it shows is drawn instead)
+        val unnamed = n.lines.joinToString("\n").let { it == Constants.defaultNodeText || it.isBlank() }
+        j.lines = (if (n.type.kind == graph_tools.NodeType.Kind.Terminal && unnamed) listOf(TERMINAL_TEXT) else n.lines).toTypedArray()
         j.shape = n.shape
         val (bg, fg) = ColorStyle.PickerSet.shown(n.bg, n.fg, dark)
         j.bg = bg?.let(::css)
