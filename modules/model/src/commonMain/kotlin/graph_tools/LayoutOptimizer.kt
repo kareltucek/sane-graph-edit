@@ -247,10 +247,11 @@ object LayoutOptimizer {
             val d1 = g.edgeMap[node]?.size.orElse(0).toDouble()
             val d2 = g.edgeMap[other]?.size.orElse(0).toDouble()
 
-            val f1 = 0.2 * kotlin.math.min(d1, d2).let { if (it > 2) it + 1 else it }
-            val f2 = 0.0 * (kotlin.math.max(d1, d2) - 5).coerceAtLeast(0.0)
-            return 1.0 + f1 + f2
+            return degFactor(kotlin.math.min(d1, d2))
         }
+
+        /** [degFactor] of an edge whose smaller degree is [d]. */
+        fun degFactor(d: Double): Double = 1.0 + 0.2 * (if (d > 2) d + 1 else d)
 
         fun computeBBSpring(g: Graph, node: Node, othr: Node, e: Edge, strength: Double = 1.0): Spring {
             val cn = (e.src == node).fold(e.cache.dstPt, e.cache.srcPt).let { +it - node.position }

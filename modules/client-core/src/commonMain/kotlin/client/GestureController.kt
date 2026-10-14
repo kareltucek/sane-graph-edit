@@ -7,6 +7,8 @@ import graph_tools.GraphTools
 import graph_tools.LayoutOptimizer
 import graph_tools.MoveNodesCommand
 import graph_tools.Settling
+import graph_tools.Stepping
+import graph_tools.Multilevel
 import graph_tools.Node
 import utils.Constants
 import utils.Utils.orElse
@@ -673,7 +675,7 @@ class GestureController(
     }
 
     /** `o` / `O` held: the nodes it lays out, a step for each picture ([frame]); null while neither is held. */
-    private var laying: Settling.Run? = null
+    private var laying: Stepping? = null
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null
@@ -687,7 +689,7 @@ class GestureController(
      * children that hang from it alone, the node itself staying ([LayoutOptimizer.SpringTarget.MoveChildsOnly]). The run
      * begins as if [past] milliseconds ago, so that its first step moves at once.
      */
-    fun layout(restrict: Boolean, past: Double): Settling.Run {
+    fun layout(restrict: Boolean, past: Double): Stepping {
         val g = graphView.g
         val shown = g.visibleNodes()
         val selected = g.movable(g.selectedNodes).filter { it in shown }.toSet()
@@ -700,9 +702,10 @@ class GestureController(
         // a node with many children, and a big one, matters more: it goes first and pushes the others away, they give way
         val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
         val weight = { n: Node -> if (n in moving) importance(n) else Settling.FIXED }
-        return Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = graphView.viewTransform.threeD, rank = importance).also {
-            it.stir(moving, past)
-        }
+        val depth = graphView.viewTransform.threeD
+        // the whole graph by levels: its clusters settle first, then what they hold
+        return if (selected.isEmpty()) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past)
+        else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance).also { it.stir(moving, past) }
     }
 
     /**

@@ -122,7 +122,7 @@ columns, the fold onto room walls.
 
 `- / =` now change the level of detail: no springs (removed from §4).
 
-## 7. Multilevel: contract, settle, unpack (spec, agreed 2026-10-14, not built)
+## 7. Multilevel: contract, settle, unpack (agreed and built 2026-10-14: `Multilevel`)
 
 Karel: contract clusters until the graph is small, run the springs on it
 with volume-based multipliers, carry each cluster's move to its members,
@@ -142,9 +142,11 @@ part of a decomposed graph is unclear).
 
 ### Mass (mass first, springs from the masses; Karel's revision)
 
-- **Mass = the room a node wants:** (its reach × spring-scale, × 3 in 3D
-  mode)^d, d = 2 or 3; a node's reach averaged over the ways (its outline
-  as a square of the same area; in 3D its depth too).
+- **Mass = the room a node wants:** (its reach × its furthest spring,
+  × 3 in 3D mode)^d, d = 2 or 3; a node's reach averaged over the ways
+  (its outline as a square of the same area; in 3D its depth too); its
+  furthest spring is the collision's, or the edges' with the degree
+  factor of its own degree (Karel: as the springs count children).
 - **System:** k × the sum of its members' masses; k ≈ 1.5 *(guess)*.
 - **Springs from the masses of both ends, one rule on every level:** edge
   length = (reach of one + reach of the other) × spring-scale × degree
@@ -167,9 +169,9 @@ part of a decomposed graph is unclear).
    system with the least mass so far (ties: the shorter edge).
 3. **Moons:** nodes 2 edges from their nearest sun join through one of its
    planets, by the same rule.
-4. **Cap:** a system stops taking members at a mass cap *(open)*; those
-   left over become suns of their own.
-5. Levels until the graph has at most ~50 nodes *(guess)*.
+4. **No cap** (Karel: no strict size cap); joining the lightest balances.
+5. Levels until the graph has at most 50 nodes *(guess)*, or a level
+   keeps more than 0.8 of the nodes below (it does not contract).
 
 ### Settling the levels
 
@@ -182,6 +184,6 @@ part of a decomposed graph is unclear).
 
 1. ~~Leaves weigh like their parent~~ (gone with mass first: a node's mass
    is its own room).
-2. ~~Which features~~ (`o` on the whole graph). The cap.
-3. Hubs' room: with the smaller-degree rule a hub's mass does not grow
-   with its edges; k (and the leaves' own masses) must cover it.
+2. ~~Which features~~ (`o` on the whole graph). ~~The cap~~ (none).
+3. ~~Hubs' room~~ (a node's mass counts its own degree).
+4. Edges between two systems are one edge, not yet pulling × their count.

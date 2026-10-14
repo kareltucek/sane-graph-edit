@@ -39,6 +39,11 @@ import kotlin.math.pow
  * so that two nodes pushing each other do not swing. The origin
  * spring acts until the nodes rest, as all of this does.
  */
+/** Nodes on their way, a step at a time ([Settling.Run], [Multilevel.Run]); [step] is false once they rest. */
+interface Stepping {
+    fun step(): Boolean
+}
+
 object Settling {
     private const val MAX_STEPS = 200
 
@@ -109,7 +114,7 @@ object Settling {
         private val depth: Boolean = false,
         private val rank: ((Node) -> Double)? = null,
         private val origin: (Node) -> Vector3? = { null },
-    ) {
+    ) : Stepping {
         var moving: Set<Node> = emptySet()
             private set
         private var damping = DAMPING
@@ -154,7 +159,7 @@ object Settling {
          * other those still on each other (many nodes pulled to one
          * place); at most [MAX_STEPS] of each.
          */
-        fun step(): Boolean {
+        override fun step(): Boolean {
             if (!resting) {
                 val now = clock?.invoke() ?: 0L
                 val previous = lastStep ?: now
@@ -428,7 +433,7 @@ object Settling {
      * [THICKNESS] of its smaller side deep, so that two one behind the
      * other keep apart too.
      */
-    private object Space {
+    internal object Space {
         /** How deep a node is reckoned, in parts of its smaller side. */
         const val THICKNESS = 0.5
 
@@ -440,7 +445,8 @@ object Settling {
             val length = way.length()
             val across = way.xy.length()
             val inPlane = if (across < 1e-9) 0.0 else n.cache.shape.connectionPoint(way.xy / across, n).length()
-            val deep = minOf(n.cache.shapeBounds.x, n.cache.shapeBounds.y) * THICKNESS / 2
+            // a cluster ([Multilevel]) is a ball, not a card
+            val deep = minOf(n.cache.shapeBounds.x, n.cache.shapeBounds.y) * (if (Multilevel.isCluster(n)) 1.0 else THICKNESS) / 2
             // between the outline across and the depth, as the way leans
             return if (length < 1e-9) inPlane else kotlin.math.sqrt((inPlane * across / length).let { it * it } + (deep * way.z / length).let { it * it })
         }
