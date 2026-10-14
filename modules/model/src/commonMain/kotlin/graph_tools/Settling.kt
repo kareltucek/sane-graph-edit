@@ -428,7 +428,7 @@ object Settling {
         const val THICKNESS = 0.5
 
         /** In space nodes in front hide those behind: they are kept this many times further apart, by collisions and by edges. */
-        const val SPARSER = 1.5
+        const val SPARSER = 3.0
 
         /** How far from its middle [n] reaches the way [way] goes. */
         fun reach(n: Node, way: Vector3): Double {

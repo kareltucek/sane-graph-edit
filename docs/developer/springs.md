@@ -93,7 +93,7 @@ columns, the fold onto room walls.
 - **Springs for `o`:** collision (2), edge, equal siblings, gravity,
   antigravity; in 3D mode in space, with across. No origin.
 - **Antigravity in both modes** for `o` and Shift-drag.
-- **3D mode is sparser:** collision and edge distances × 1.5, every feature.
+- **3D mode is sparser:** collision and edge distances × 3 (Karel, after 1.5), every feature.
 - **Explore in 3D mode settles in space** (with a strong gravity later).
 - The optimizer (`LayoutOptimizer`) keeps only what the settling uses from
   it (spring helpers, collision search).
