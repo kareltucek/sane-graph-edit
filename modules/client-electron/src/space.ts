@@ -315,7 +315,41 @@ class Rings {
     private used = 0;
     /** The nodes ringed this frame. */
     private seen = new Set<string>();
-    readonly lines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true }));
+    private readonly geometry = new THREE.BufferGeometry();
+    /** Pixels a copy is moved by: right, down. */
+    private static readonly SHIFTS = [[0, 0], [1, 0], [0, 1], [1, 1]];
+    /**
+     * The rings, and the same moved a pixel right, down and both, on the graphics card: two pixels wide, which a line never
+     * is, and more than the one-pixel outline every node has. Four draws of one buffer, nothing more to send.
+     */
+    readonly lines = Rings.SHIFTS.map(() => new THREE.LineSegments(this.geometry, new THREE.ShaderMaterial({
+        vertexColors: true,
+        uniforms: { shift: { value: new THREE.Vector2() } },
+        vertexShader: `
+            uniform vec2 shift;
+            varying vec3 tint;
+            void main() {
+                tint = color;
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                gl_Position.xy += shift * gl_Position.w;
+            }`,
+        fragmentShader: `
+            varying vec3 tint;
+            void main() {
+                gl_FragColor = vec4(tint, 1.0);
+                // the colours are linear, as three's own materials have them; the screen's are not
+                #include <colorspace_fragment>
+            }`,
+    })));
+
+    /** How big a pixel is: the canvas is [width] by [height] of them. */
+    pixels(width: number, height: number) {
+        this.lines.forEach((line, i) => {
+            const [x, y] = Rings.SHIFTS[i];
+            // a pixel is 2 / width of the screen's -1 to 1 across
+            (line.material.uniforms.shift.value as THREE.Vector2).set(2 * x / width, -2 * y / height);
+        });
+    }
 
     begin() {
         this.seen = new Set();
@@ -352,8 +386,8 @@ class Rings {
                 this.free.push(slot);
             }
         });
-        this.lines.geometry.setDrawRange(0, this.used * Rings.POINTS);
-        this.lines.visible = this.slots.size > 0;
+        this.geometry.setDrawRange(0, this.used * Rings.POINTS);
+        this.lines.forEach((line) => line.visible = this.slots.size > 0);
     }
 
     private take(): number {
@@ -372,8 +406,8 @@ class Rings {
         colours.set(this.colours);
         this.positions = positions;
         this.colours = colours;
-        this.lines.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-        this.lines.geometry.setAttribute("color", new THREE.BufferAttribute(colours, 3));
+        this.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+        this.geometry.setAttribute("color", new THREE.BufferAttribute(colours, 3));
     }
 
     private write(slot: number, point: number, x: number, y: number, z: number, r: number, g: number, b: number) {
@@ -390,7 +424,7 @@ class Rings {
     private changed(slot: number) {
         const start = slot * Rings.POINTS * 3;
         ["position", "color"].forEach((name) => {
-            const attribute = this.lines.geometry.getAttribute(name) as THREE.BufferAttribute;
+            const attribute = this.geometry.getAttribute(name) as THREE.BufferAttribute;
             attribute.addUpdateRange(start, Rings.POINTS * 3);
             attribute.needsUpdate = true;
         });
@@ -432,9 +466,11 @@ export class SpaceRenderer<N extends SpaceNode> {
         this.scene.add(this.small.mesh);
         this.walls.frustumCulled = false;
         this.scene.add(this.walls);
-        this.rings.lines.frustumCulled = false;
-        this.rings.lines.renderOrder = 1e9 + 1;
-        this.scene.add(this.rings.lines);
+        this.rings.lines.forEach((line) => {
+            line.frustumCulled = false;
+            line.renderOrder = 1e9 + 1;
+            this.scene.add(line);
+        });
     }
 
     /** The lines to show of the room at the next drawing, as the view sees them: the two ends of each, x, y and z after each other. Null: none. */
@@ -532,6 +568,7 @@ export class SpaceRenderer<N extends SpaceNode> {
         inkOf: (n: N) => string,
     ): boolean {
         this.rings.begin();
+        this.rings.pixels(pixelWidth, pixelHeight);
         this.frame++;
         // one pixel of the canvas for each of the screen's, as the flat canvas has it, or all of it is resampled
         this.renderer.setPixelRatio(1);
