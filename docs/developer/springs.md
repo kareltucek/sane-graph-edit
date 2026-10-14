@@ -137,16 +137,25 @@ flowchart TD
   down -->|"... until level 0 rests"| done["done"]
 ```
 
-### Mass
+Only for `o` on the whole graph (Karel: how collisions would work on a
+part of a decomposed graph is unclear).
 
-- **Node:** r = (its longest spring distance: collision, or an edge's
-  length) / 2; mass = r² in 2D mode, r³ in 3D mode. Hubs want more room,
-  so their longer edges giving them more mass is meant.
+### Mass (mass first, springs from the masses; Karel's revision)
+
+- **Mass = the room a node wants:** (its reach × spring-scale, × 3 in 3D
+  mode)^d, d = 2 or 3; a node's reach averaged over the ways (its outline
+  as a square of the same area; in 3D its depth too).
 - **System:** k × the sum of its members' masses; k ≈ 1.5 *(guess)*.
-- **A contracted node** gets its reach from its mass alone (√M, ∛M), not
-  from its own degree, so levels stay consistent; its springs (collision,
-  edge length) follow from that reach as for a node; its weight is M.
-  Edges between two systems become one, pulling × their count; edges
+- **Springs from the masses of both ends, one rule on every level:** edge
+  length = (reach of one + reach of the other) × spring-scale × degree
+  factor of the smaller degree (kept, Karel) (× 3 in 3D); collision the
+  same with its touching factor.
+  - A real node's reach stays its outline the way the other lies (as
+    now): a wide node packs wide. **Nothing changes for real nodes.**
+  - A contracted node's reach is the same any way: the reach that wants
+    room M (M^(1/d) / (spring-scale, × 3 in 3D)). Its degree is its edges
+    on that level; its weight is M.
+- Edges between two systems become one, pulling × their count; edges
   inside a system are dropped on that level.
 
 ### Clusters: solar systems (after FM3, Hachul 2004, deterministic)
@@ -171,9 +180,8 @@ flowchart TD
 
 ### Open
 
-1. **Leaves weigh like their parent:** a leaf's longest spring is the edge
-   to its parent, whose length holds the parent's reach. Fine as packing
-   for small parents; a huge node with many tiny leaves comes out much
-   heavier than its footprint. Fallback if it shows: an edge's length is
-   split between its ends by their reaches, each counting its own part.
-2. Which features use it (`o` on all / many nodes only?), and the cap.
+1. ~~Leaves weigh like their parent~~ (gone with mass first: a node's mass
+   is its own room).
+2. ~~Which features~~ (`o` on the whole graph). The cap.
+3. Hubs' room: with the smaller-degree rule a hub's mass does not grow
+   with its edges; k (and the leaves' own masses) must cover it.
