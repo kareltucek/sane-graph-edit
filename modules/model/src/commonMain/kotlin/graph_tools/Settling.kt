@@ -2,6 +2,7 @@ package graph_tools
 
 import Graph
 import utils.Vector2
+import kotlin.math.exp
 import kotlin.math.pow
 
 /**
@@ -81,9 +82,9 @@ object Settling {
      * near each other stay so, and only those that are on one that
      * moves are pushed, and join it. [origin] is where a node is
      * pulled back to, asked at each step; null for none. Those of
-     * [firm] are pulled there whole, not as one of the springs on
-     * them and no harder than [ORIGIN_CAP]: they follow it closely,
-     * a generation as well as the next.
+     * [firm] are tugged there gently but without letting up, on top
+     * of the springs on them: in [FOLLOW_MS] they are there, a
+     * generation as well as the next, if nothing keeps them off.
      *
      * With [budget] a step takes no longer than that many
      * milliseconds: the nodes it does not get to wait, and the next
@@ -185,7 +186,9 @@ object Settling {
         private var lastStep: Long? = null
 
         private fun endRound() {
-            val rests = furthest < SETTLED && !grew
+            // the tug on a firm node is small when it is near: it is there only when it is there
+            val arrived = !pulling || firm.all { n -> origin(n)?.let { (it - n.position).length() < ARRIVED } ?: true }
+            val rests = furthest < SETTLED && !grew && arrived
             covered = 0
             furthest = 0.0
             grew = false
@@ -238,6 +241,15 @@ object Settling {
         }
         return grow(roots) - roots
     }
+
+    /** A firm node this near its origin is there. */
+    private const val ARRIVED = 2.0
+
+    /** In how many milliseconds a firm node ([Run]) has come 95 % of the way to its origin, if nothing else moves it. */
+    private const val FOLLOW_MS = 2000.0
+
+    /** The share of the way to its origin a firm node goes in a [LayoutOptimizer.WINDOW_MS]: 95 % (e^-3 left) in [FOLLOW_MS]. */
+    private val FOLLOW_PER_WINDOW = 1 - exp(-3 * LayoutOptimizer.WINDOW_MS / FOLLOW_MS)
 
     /** In the last steps nodes are only kept this far apart, in times the distance at which they touch: no further than they need to be read. */
     private const val APART = 1.15
@@ -294,9 +306,11 @@ object Settling {
             val off = mean(pushes.map { it.first })
             val to = mean(pulls)
             val loose = off?.let { it + (to ?: Vector2.Zero) * PULL_WHEN_PUSHED } ?: to
-            // a firm one is pulled to its origin whole, on top of the rest, however far and whatever pushes it
-            val by = home?.takeIf { n in firm }?.let { it + (loose ?: Vector2.Zero) } ?: loose
-            if (by != null) moves[n] = by * damping
+            // a firm one is tugged to its origin on top of the rest, however far and whatever pushes it, and not less as the
+            // others cool: a share of the way each window, so that it is there in [FOLLOW_MS]
+            val tug = home?.takeIf { n in firm }?.let { it * FOLLOW_PER_WINDOW }
+            val by = loose?.let { it * damping + (tug ?: Vector2.Zero) } ?: tug
+            if (by != null) moves[n] = by
         }
         moves.forEach { (n, by) ->
             near.moving(n)

@@ -60,6 +60,24 @@ class SettlingTest {
         assertTrue(pile.all { a -> pile.all { b -> a == b || !overlap(a, b) } }, "${pile.map { it.position }}")
     }
 
+    @Test
+    fun `a firm node is tugged to its origin gently but there in two seconds`() {
+        val g = Graph()
+        val n = Node("follower", Vector2(0, 0))
+        g.add(n)
+        g.ensureCachesFresh(force = true)
+        val target = Vector2(600, 0)
+        var now = 0L
+        val run = Settling.Run(g, setOf(n), { Settling.HEAVY }, close = true, firm = setOf(n), clock = { now }) { target }
+        run.stir(setOf(n))
+        // pictures at 60 a second
+        val seconds = { s: Double -> repeat((s * 1000 / 16).toInt()) { now += 16; run.step() } }
+        seconds(0.25)
+        assertTrue(n.position.x < 300, "gently: after a quarter of a second ${n.position}")
+        seconds(1.75)
+        assertTrue(n.position.x > 540, "there after two seconds: ${n.position}")
+    }
+
     /** The node placed and [yielding] may move, as easily as each other; the others not. */
     private fun Fixture.weight(vararg yielding: Node): (Node) -> Double = { if (it == fresh || it in yielding) Settling.USUAL else Settling.FIXED }
 
