@@ -68,8 +68,14 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     private fun isText(target: FileLink.Target): Boolean {
         val path = target.path
         val whole = path != null && target.nodeId == null && target.section == null && !path.name.endsWith(".dot") && Fs.exists(path) && !Fs.isDirectory(path)
-        return path != null && (target.lines != null || whole)
+        val told = target.type == FileLink.Type.File && path != null && (target.lines != null || whole)
+        return told || (target.type is FileLink.Type.Text && path != null)
     }
+
+    /** What is wrong with following [target] when it is a directory or workspace that is not a directory; null when nothing is. */
+    private fun notADirectory(target: FileLink.Target): String? =
+        target.path?.takeIf { (target.type == FileLink.Type.Directory || target.type == FileLink.Type.Workspace) && !Fs.isDirectory(it) }
+            ?.let { "not a directory: $it" }
 
     /** This view's jump history (`Ctrl+O` / `Ctrl+I`). */
     var jumps: JumpList = JumpList()
@@ -476,13 +482,16 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     private fun selectedLink(command: String, letter: Char, quiet: Boolean): FileLink.Target? {
         val node = view.g.selectedNodes.singleOrNull()
         val link = node?.let { FileLink.of(it, letter) }
+        val typeName = node?.let { FileLink.typeOf(it, letter) }
+        val type = FileLink.Type.parse(typeName)
         val problem = when {
             node == null -> "select exactly one node"
             link == null -> "the node has no `${FileLink.attributeName(letter)}` attribute"
+            type == null -> "`${FileLink.typeAttributeName(letter)}` is not a type a link can have: $typeName"
             else -> null
         }
         if (problem != null && !quiet) shell.message("$command: $problem")
-        return link?.let { FileLink.resolve(it, currentFile) }
+        return if (problem == null && link != null && type != null) FileLink.resolve(link, currentFile, type) else null
     }
 
     /**
@@ -495,7 +504,11 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val lines = target.lines
         val inThisGraph = lines == null && (path == null || path == currentFile?.toAbsolutePath()?.normalize())
         val from = currentLocation()
+        val wrong = notADirectory(target)
         when {
+            wrong != null -> shell.message(wrong)
+            // as `:cd` does: the tabs are the workspace's, whatever this one held is kept by its session
+            target.type == FileLink.Type.Workspace && path != null -> shell.switchWorkspace(path)
             target.help -> if (confirmDiscard("open the help")) {
                 jumps.record(from)
                 showHelpInPlace()
@@ -524,7 +537,17 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     fun openTargetInTab(target: FileLink.Target) {
         val path = target.path
         val lines = target.lines
+        val wrong = notADirectory(target)
         val opened = when {
+            wrong != null -> {
+                shell.message(wrong)
+                null
+            }
+            // a workspace is not opened in a tab: the tabs become its
+            target.type == FileLink.Type.Workspace && path != null -> {
+                shell.switchWorkspace(path)
+                null
+            }
             // a new tab starts with the help graph
             target.help -> shell.newTab()?.also {
                 it.content.untitledName = FileLink.HELP_TITLE

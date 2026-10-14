@@ -227,7 +227,9 @@ height in the graph's units.
 ### What a node's text is: `content-type`
 
 A node's text is plain unless its `content-type` attribute says
-otherwise:
+otherwise. The same types, and `graph`, `directory`, `workspace` and
+`file`, say what a link points at (`link-content-type-<letter>`); the
+file format's table of content types says which is allowed where:
 
 | `content-type` | The text is            | Shown, while not edited (Electron client)          |
 |----------------|------------------------|-----------------------------------------------------|

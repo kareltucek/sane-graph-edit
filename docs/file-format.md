@@ -57,7 +57,9 @@ digraph storage {
 | `shape`     | `box` / `oval` | Default `box`. |
 | `fontname`  | `monospace` (also `mono`, `courier`) | Monospaced text, e.g. for source code; anything else → the default font. |
 | `marks`     | letters | Persistent marks (uppercase `A`–`Z`), recalled with `'<letter>` in the editor. |
+| `content-type` | a [content type](#content-types) | What the node's text is; none → `plain`. |
 | `link-<letter>`, `link` | `path[:nodeid]` | Links to other graphs (or nodes), followed with `g<letter>`; see below. |
+| `link-content-type-<letter>`, `link-content-type` | a [content type](#content-types) | What the link of the same letter points at; none → `file`. |
 | `attachTo`, `attachSide` | node id; `above` / `below` / `left` / `right` | Glue this node to another one; see below. |
 
 ## `<attribute>-l<n>` — levels of detail
@@ -136,6 +138,40 @@ m -> m_args; m -> m_ret;
   selection-walking commands (`l` / `L`, `t` / `T`, `G`) don't step
   onto them.
 
+## Content types
+
+One list of types serves two attributes: a node's `content-type`
+says what its text is, a link's `link-content-type-<letter>` what
+the link points at. Not every type is allowed in both.
+
+| Type | Node (`content-type`) | Link (`link-content-type-<letter>`): the target is | Link value |
+|------|-----------------------|----------------------------------------------------|------------|
+| `plain` | plain text, shown as it is (the default) | a text file, shown as plain text | `<path>`, `<path>:<lines>`, `<path>#<section>` |
+| `markdown` | markdown, shown formatted | a text file, shown as markdown | as `plain` |
+| `code-<lang>` | code, highlighted as neovim highlights `<lang>` | a text file, shown as code in `<lang>` | as `plain` |
+| `code` | code in no named language | a text file, shown as code | as `plain` |
+| `terminal` | a terminal with the user's shell (Electron) | — not allowed | |
+| `graph` | — not allowed | a graph, whatever its file is called | `<path>`, `<path>:<nodeid>`, `:<nodeid>` |
+| `directory` | — not allowed | a directory, shown as a file tree (`:browse`) | `<path>` |
+| `workspace` | — not allowed | a directory made the workspace (`:cd`) | `<path>` |
+| `file` | — not allowed | told from the path, as below (the default) | any of the above |
+
+- `<lines>` is `<n>` or `<from>-<to>`; `<section>` a markdown heading.
+- A node's text type may be followed by where the text is kept:
+  `content-type="code-kotlin:src/A.kt:10-20"` (see the README). The
+  part after the type is read as a `plain` link value.
+- With a type, a link's value is read only as that type reads it:
+  `"link-c"="notes.dot:12"` with `"link-content-type-c"="code-dot"`
+  is line 12 of `notes.dot`, not its node `12`; with `graph` a path
+  that does not end in `.dot` is still opened as a graph.
+- `file`, or no type: a directory is a file tree, a `.dot` file a
+  graph, `:<x>` a node in it, any other file text, typed by its
+  ending (`.md` markdown, `.scala` `code-scala`, …).
+- A value that is not a type a link can have is reported when the
+  link is followed, and nothing is opened. A node whose
+  `content-type` is not one a node can have is shown as plain text;
+  the value is kept as it is.
+
 ## `link-<letter>` — links to other graphs and nodes
 
 ```dot
@@ -148,6 +184,9 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
 - A node may carry any number of `link-<letter>` attributes, one per
   letter (`a`–`z`, `A`–`Z`). **`link` is an alias for `link-f`**; if a
   node has both, `link-f` wins. Quote the names with `-` for Graphviz.
+- Each may have a type, `link-content-type-<letter>` (`link-content-type`
+  for `link`); see [Content types](#content-types). Without one,
+  what follows is how the value is read.
 - Value: `<path>` or `<path>:<nodeid>`.
   - `<path>`: absolute or relative; a relative path is resolved
     against the directory of the file that contains the node (for an

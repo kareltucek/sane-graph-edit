@@ -28,12 +28,14 @@ object SourceView {
 
     fun title(target: FileLink.Target): String = "${target.path?.name}${part(target)}"
 
-    /** The type of a node that holds [target]: what the file's name says it is, kept where [target] says. */
+    /** The type of a node that holds [target]: what the link says it is, else what the file's name says, kept where [target] says. */
     fun typeOf(target: FileLink.Target): NodeType {
         val path = target.path!!.toAbsolutePath().normalize()
         val extension = path.name.substringAfterLast('.', "").lowercase()
         val source = "$path${part(target)}"
+        val said = (target.type as? FileLink.Type.Text)?.type
         return when {
+            said != null -> said.copy(source = source)
             extension == "md" || extension == "markdown" -> NodeType(NodeType.Kind.Markdown, null, source)
             extension in asNamed -> NodeType(NodeType.Kind.Code, extension, source)
             extension in languages -> NodeType(NodeType.Kind.Code, languages[extension], source)

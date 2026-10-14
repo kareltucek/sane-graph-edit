@@ -43,7 +43,10 @@ class ViewContentTest {
         override fun edit(path: Path): EditorView =
             EditorView(DotGraphLoader.loadFromFile(path.toString()), NoRenderer, this, initialFile = path).also { tabs += it }
         override fun browse(dir: Path): EditorView = newTab()
-        override fun switchWorkspace(dir: Path) {}
+        val workspaces = mutableListOf<Path>()
+        override fun switchWorkspace(dir: Path) {
+            workspaces.add(dir)
+        }
         override fun quit(force: Boolean, all: Boolean) {}
         override fun modesChanged() {}
     }
@@ -68,6 +71,35 @@ class ViewContentTest {
         assertEquals("b.dot", view.content.currentFile?.fileName.toString())
         assertEquals(listOf("t"), view.g.selectedNodes.map { it.attributes.name })
         assertEquals(emptyList(), shell.questions)
+    }
+
+    @Test
+    fun `a link's type says what it opens - a workspace, a graph as text, or nothing when it is no link's type`() {
+        val other = Files.createDirectory(dir.resolve("other"))
+        dir.resolve("b.dot").writeText("digraph b {\n  t;\n  u;\n}\n")
+        val view = viewOfA()
+        val s = view.g.nodes.first()
+        s.attributes.other["link-w"] = "other"
+        s.attributes.other["link-content-type-w"] = "workspace"
+        assertTrue(view.content.followFileLink('w'))
+        assertEquals(listOf(other), shell.workspaces)
+        assertEquals("a.dot", view.content.currentFile?.fileName.toString())
+
+        s.attributes.other["link-content-type-w"] = "workspace"
+        s.attributes.other["link-w"] = "b.dot"
+        assertTrue(view.content.followFileLink('w'))
+        assertEquals(listOf(other), shell.workspaces)
+        assertTrue(shell.messages.last().startsWith("not a directory"), shell.messages.last())
+
+        s.attributes.other["link-content-type-w"] = "terminal"
+        assertFalse(view.content.followFileLink('w'))
+        assertTrue(shell.messages.last().contains("not a type a link can have"), shell.messages.last())
+
+        s.attributes.other["link"] = "b.dot"
+        s.attributes.other["link-content-type"] = "code-dot"
+        assertTrue(view.content.followFileLink())
+        assertEquals(null, view.content.currentFile)
+        assertEquals("code-dot", view.content.sourceView?.let { SourceView.typeOf(it).copy(source = null).attribute })
     }
 
     @Test

@@ -88,7 +88,10 @@ object FileContent {
 
     /** Where the text of [node] is kept, when in a file; [file] is the file of the node's graph. */
     fun of(node: Node, file: Path?): FileLink.Target? =
-        NodeType.of(node).source?.let { source -> resolved.getOrPut("$file\n$source") { FileLink.resolve(source, file) } }
+        NodeType.of(node).let { type ->
+            // text, whatever the file is called: of a graph too, lines are meant, not a node
+            type.source?.let { source -> resolved.getOrPut("$file\n${type.kind}\n$source") { FileLink.resolve(source, file, FileLink.Type.Text(type.copy(source = null))) } }
+        }
             ?.takeIf { it.path != null && it.nodeId == null && !it.help }
 
     /**
