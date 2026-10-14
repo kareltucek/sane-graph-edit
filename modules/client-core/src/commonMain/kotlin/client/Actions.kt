@@ -641,7 +641,7 @@ object Actions {
             if (select) {
                 graphView.g.cleanSelect(setOf(n))
             }
-            graphView.startNodeEdit(n, null, typing = true)
+            graphView.startNodeEdit(n, null)
         }
     }
 

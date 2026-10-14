@@ -364,8 +364,11 @@ class JsView internal constructor(
     /** The text of the node [id], lines separated by `\n`; null when there is no such node. */
     fun nodeText(id: String): String? = view.g.node(id)?.attributes?.text
 
+    /** Whether the node [id] still has the text a new node is given: its editor opens on none, ready to type ([textToEdit]). */
+    fun hasDefaultText(id: String): Boolean = nodeText(id) == Constants.defaultNodeText
+
     /** The text the editor of the node [id] opens on: none for the text a new node is given, so that what is typed replaces it. */
-    fun textToEdit(id: String): String? = nodeText(id)?.let { if (it == Constants.defaultNodeText) "" else it }
+    fun textToEdit(id: String): String? = if (hasDefaultText(id)) "" else nodeText(id)
 
     /** The renderer opened its editor on the node [id]. */
     fun textEditStarted(id: String) {
