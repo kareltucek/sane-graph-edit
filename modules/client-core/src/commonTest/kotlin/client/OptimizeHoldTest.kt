@@ -27,16 +27,21 @@ class OptimizeHoldTest {
     private val moved = { view.g.nodes.associateWith { it.position } }
 
     @Test
-    fun `held, the nodes move a pass a picture, let go they stop, and undo takes all of it back`() {
+    fun `held, the nodes move by the time that passed, let go they stop, and undo takes all of it back`() {
+        var now = 1000L
+        view.gestures.clock = { now }
         view.byHeldKey = true
         Actions.optimizeWhileHeld(view, restrict = false)
         val afterPress = moved()
-        assertTrue(afterPress != before, "a pass at once")
+        assertTrue(afterPress != before, "a short while at once")
         // the keyboard's repeats change nothing
         Actions.optimizeWhileHeld(view, restrict = false)
         assertEquals(afterPress, moved())
         assertEquals(true, view.gestures.frame(), "more pictures are wanted while it is held")
-        assertTrue(moved() != afterPress, "a pass for the picture")
+        assertEquals(afterPress, moved(), "no time passed, nothing moved")
+        now += 16
+        view.gestures.frame()
+        assertTrue(moved() != afterPress, "moved for the time since")
         view.gestures.stopOptimizing()
         val afterRelease = moved()
         assertEquals(false, view.gestures.frame())

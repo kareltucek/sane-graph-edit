@@ -51,8 +51,9 @@ class SettlingTest {
         val pile = List(20) { Node("node $it", Vector2(kotlin.math.cos(it.toDouble()) * 3, kotlin.math.sin(it.toDouble()) * 3)) }
         pile.forEach { g.add(it) }
         g.ensureCachesFresh(force = true)
-        // no time at all: each step takes one node, the others wait
-        Settling.Run(g, pile.toSet(), { Settling.USUAL }, budget = 0L).also {
+        // no time at all: each step takes one node, the others wait; a window of the springs' time passes between steps
+        var now = 0L
+        Settling.Run(g, pile.toSet(), { Settling.USUAL }, budget = 0L, clock = { now.also { now += 50 } }).also {
             it.stir(pile.toSet())
             it.toRest()
         }

@@ -624,7 +624,7 @@ class GestureController(
             // how far the dragged nodes are from where they were, as they are now
             val by = { dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero }
             // nodes only kept off each other: those the user put near each other stay near, and only those on others are pushed
-            Settling.Run(g, shown, weight, close = true, budget = STEP_BUDGET) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
+            Settling.Run(g, shown, weight, close = true, budget = STEP_BUDGET, clock = clock) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
         }
         // on them: nearer than touching, not only within the collision spring's reach
         val touching = 1 / LayoutOptimizer.impl.collisionReach()
@@ -643,9 +643,17 @@ class GestureController(
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var optimizingFrom: Map<Node, Vector2>? = null
 
+    /** The time the springs move by ([LayoutOptimizer.WINDOW_MS]); a test may give its own. */
+    var clock: () -> Long = { utils.Platform.nowMillis() }
+
+    /** When the springs of `o` / `O` held last moved the nodes ([clock]). */
+    private var optimizedAt = 0L
+
     /**
-     * `o` / `O` pressed: a pass of the optimizer's springs now, and one
-     * for each picture drawn until a key is let go ([stopOptimizing]).
+     * `o` / `O` pressed: the optimizer's springs move the nodes for
+     * [Actions.TAPPED_MS] now, and then at each picture drawn for the
+     * time since the last one, until a key is let go
+     * ([stopOptimizing]): as fast however often a picture is drawn.
      * The keyboard's repeats of the key change nothing.
      */
     fun startOptimizing(restrict: Boolean) {
@@ -653,7 +661,8 @@ class GestureController(
             finishSettling()
             optimizingFrom = graphView.g.nodes.associateWith { it.position }
             optimizing = restrict
-            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
+            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict, elapsed = Actions.TAPPED_MS)
+            optimizedAt = clock()
             graphView.repaint()
         }
     }
@@ -669,7 +678,11 @@ class GestureController(
     /** Before a picture is drawn: the nodes on their way take a step. True while they have not come to rest, or `o` is held. */
     fun frame(): Boolean {
         val restrict = optimizing
-        if (restrict != null) LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict)
+        if (restrict != null) {
+            val now = clock()
+            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict, elapsed = (now - optimizedAt).toDouble())
+            optimizedAt = now
+        }
         val more = settling?.step() ?: false
         if (!more && settledMove != null) finishSettling()
         return more || restrict != null

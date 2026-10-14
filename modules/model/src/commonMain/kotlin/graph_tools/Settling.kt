@@ -2,6 +2,7 @@ package graph_tools
 
 import Graph
 import utils.Vector2
+import kotlin.math.pow
 
 /**
  * The springs of [LayoutOptimizer] on a few nodes only, until they
@@ -85,7 +86,11 @@ object Settling {
      * milliseconds: the nodes it does not get to wait, and the next
      * step takes all in an order of chance, so that over a few steps
      * each gets its turn. The nodes then come to rest later, and the
-     * pictures keep coming.
+     * pictures keep coming. With [budget] the run also goes by the
+     * clock: what the springs ask for is the move of a
+     * [LayoutOptimizer.WINDOW_MS], and a step moves the part of it for
+     * the time since the last one, so the nodes go as fast however
+     * often a picture is drawn; without, a step is a whole window.
      */
     class Run(
         private val g: Graph,
@@ -93,6 +98,7 @@ object Settling {
         private val weight: (Node) -> Double,
         private val close: Boolean = false,
         private val budget: Long? = null,
+        private val clock: () -> Long = { utils.Platform.nowMillis() },
         private val origin: (Node) -> Vector2? = { null },
     ) {
         var moving: Set<Node> = emptySet()
@@ -134,18 +140,36 @@ object Settling {
          */
         fun step(): Boolean {
             if (!resting) {
-                val order = if (cut) moving.shuffled() else moving.toList()
+                val now = clock()
+                // against the clock, the part of a window that has passed since the last step; else a whole window a step
+                val share = if (budget == null) 1.0 else ((now - (lastStep ?: now)).toDouble() / LayoutOptimizer.WINDOW_MS).coerceIn(0.0, 1.0)
+                lastStep = now
+                // after a step cut short, those still waiting first; when all have had their turn, all again by chance
+                val order = if (cut) waiting.filter { it in moving }.ifEmpty { moving.shuffled(chance) } else moving.toList()
+                // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, damping, pulling, close, deadline)
-                cut = done.taken < order.size
+                val done = step(g, moving, order, among, near, weight, origin, damping * share, pulling, close, deadline)
+                waiting = order.drop(done.taken)
+                cut = cut || waiting.isNotEmpty()
                 covered += done.taken
-                furthest = maxOf(furthest, done.furthest)
+                // how far it would have gone in a window: a short step is no sign of rest
+                if (share > 0) furthest = maxOf(furthest, done.furthest / share)
                 grew = grew || done.moving.size != moving.size
                 moving = done.moving
+                if (budget != null && pulling) damping *= COOLING.pow(share)
                 if (covered >= moving.size) endRound()
             }
             return !resting
         }
+
+        /** The order of turns when steps are cut short: by chance, but the same each time. */
+        private val chance = kotlin.random.Random(0)
+
+        /** The nodes a step cut short did not get to, in turn; once steps have been cut, [cut] stays so. */
+        private var waiting: List<Node> = emptyList()
+
+        /** When the last step was taken, against the clock ([budget]); null before the first. */
+        private var lastStep: Long? = null
 
         private fun endRound() {
             val rests = furthest < SETTLED && !grew
@@ -154,7 +178,8 @@ object Settling {
             grew = false
             left -= 1
             when {
-                !rests && left > 0 -> damping *= if (pulling) COOLING else 1.0
+                // against the clock it cools with time ([step]), else a round at a time
+                !rests && left > 0 -> damping *= if (pulling && budget == null) COOLING else 1.0
                 pulling -> {
                     pulling = false
                     damping = DAMPING

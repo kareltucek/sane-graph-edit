@@ -127,21 +127,29 @@ object LayoutOptimizer {
      */
     var springScaleStep: Double = 0.8
 
-    fun optimize(g: Graph, movingNodes: Boolean, restrictOperator: Boolean) {
+    /**
+     * What the springs ask for is the move of one [WINDOW_MS]; [elapsed] says how much time this pass stands for, so that
+     * nodes move as fast however often it is run (no more than a window: a slow pass does not overshoot).
+     */
+    fun optimize(g: Graph, movingNodes: Boolean, restrictOperator: Boolean, elapsed: Double = WINDOW_MS) {
         Utils.PerformanceData.withPerformanceCheck("LayoutOptimizer", 5.0, onIssue = { g.printStats() }) {
             val tgt = SpringTarget.fromContext(movingNodes, restrictOperator, g.selectedNodes.size)
 
-            doubleRun(g, tgt, movingNodes, restrictOperator)
+            doubleRun(g, tgt, movingNodes, restrictOperator, elapsed.coerceIn(0.0, WINDOW_MS) / WINDOW_MS)
         }
     }
+
+    /** The time a pass of the springs stands for, in milliseconds: what they ask for is the move of this long. */
+    const val WINDOW_MS = 50.0
 
     private fun doubleRun(
         g: Graph,
         tgt: SpringTarget,
         movingNodes: Boolean,
-        restrictOperator: Boolean
+        restrictOperator: Boolean,
+        share: Double,
     ) {
-        compute(g, tgt, movingNodes, restrictOperator, 1.0)
+        compute(g, tgt, movingNodes, restrictOperator, share)
     }
 
 

@@ -61,16 +61,22 @@ class PointerInputTest {
             it.g.ensureCachesFresh()
         }
         val before = g.nodes.associateWith { it.position }
+        // a renderer draws pictures while the nodes are on their way, a step each, here 60 a second
+        var now = 0L
+        v.gestures.clock = { now }
+        val frame = {
+            now += 16
+            v.gestures.frame()
+        }
+        val frames = { generateSequence { frame() }.takeWhile { it }.take(3000).count() }
         v.pointer.pressed(parent.position, Button.Left, control = false, shift = false)
-        // a renderer draws pictures while the nodes are on their way, a step each
-        val frames = { generateSequence { v.gestures.frame() }.takeWhile { it }.take(1000).count() }
         listOf(250, 400, 600).forEach { x ->
             v.pointer.moved(Vector2(x.toDouble(), 300.0), dragging = true, shift = true)
-            repeat(3) { v.gestures.frame() }
+            repeat(3) { frame() }
         }
         v.pointer.released(Vector2(600, 300), Vector2(600, 300), Button.Left, false)
-        assertEquals(true, v.gestures.frame(), "still on their way when let go")
-        assertTrue(frames() < 1000, "they come to rest")
+        assertEquals(true, frame(), "still on their way when let go")
+        assertTrue(frames() < 3000, "they come to rest")
 
         assertEquals(Vector2(600, 300), parent.position, "the dragged node is where the pointer is")
         // by springs: as near as the collision spring lets it, not exactly where it was relative to the parent
