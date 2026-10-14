@@ -60,6 +60,18 @@ class TabsSessionTest {
     }
 
     @Test
+    fun `a file that is no graph opens as its text in one node, of the kind its name says`() {
+        val notes = dir.resolve("notes.md").also { it.writeText("# Notes\n\nsome text\n") }
+        val tabs = window()
+        tabs.restore()
+        val view = tabs.open(notes)
+        val node = view.g.nodes.single()
+        assertEquals("# Notes\n\nsome text", node.attributes.text.trimEnd())
+        assertEquals(graph_tools.NodeType.Kind.Markdown, graph_tools.NodeType.of(node).kind)
+        assertEquals(null, view.content.currentFile)
+    }
+
+    @Test
     fun `a file that is gone is left out`() {
         val first = window()
         first.restore()

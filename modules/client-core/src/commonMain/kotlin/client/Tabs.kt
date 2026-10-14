@@ -168,8 +168,16 @@ class Tabs(
     fun newTab(graph: Graph = Graph.defaultGraph()): EditorView = add(graph, null)
 
     /** The file or directory [path] in a tab of its own. */
-    fun open(path: Path): EditorView =
-        if (Fs.isDirectory(path)) browse(path) else add(Graph(), path).also { AppState.lastOpenDir = path.toAbsolutePath().getParent() }
+    fun open(path: Path): EditorView {
+        // what the file is, told as a link with no type tells it: a directory a file tree, a graph a graph, any other file
+        // (that is there) its text in one node, of the kind its name says (markdown, code, …)
+        val text = !Fs.isDirectory(path) && !path.name.endsWith(".dot") && Fs.exists(path)
+        return when {
+            Fs.isDirectory(path) -> browse(path)
+            text -> add(Graph(), null).also { it.content.showSourceInPlace(FileLink.Target(path.toAbsolutePath().normalize(), null)) }
+            else -> add(Graph(), path)
+        }.also { if (!Fs.isDirectory(path)) AppState.lastOpenDir = path.toAbsolutePath().getParent() }
+    }
 
     /** The file tree of [dir] in a tab of its own. */
     fun browse(dir: Path): EditorView =
