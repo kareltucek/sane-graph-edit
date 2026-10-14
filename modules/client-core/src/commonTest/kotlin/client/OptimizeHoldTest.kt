@@ -51,6 +51,56 @@ class OptimizeHoldTest {
     }
 
     @Test
+    fun `only the selection moves - a node it runs into stays where it is`() {
+        view.g.cleanSelect(setOf(b))
+        view.byHeldKey = false
+        Actions.optimizeWhileHeld(view, restrict = false)
+        assertEquals(before.getValue(a), a.position, "not selected, on b: stays")
+        assertEquals(before.getValue(c), c.position)
+        assertTrue(b.position != before.getValue(b), "selected: moves")
+    }
+
+    @Test
+    fun `O on one node keeps it and lays out its children`() {
+        val parent = Node("parent", Vector2(0, 0))
+        val kid1 = Node("kid one", Vector2(0, 100))
+        val kid2 = Node("kid two", Vector2(3, 100))
+        val g = Graph().also { g ->
+            listOf(parent, kid1, kid2).forEach { g.add(it) }
+            g.add(Edge(parent, kid1))
+            g.add(Edge(parent, kid2))
+        }
+        val v = EditorView(g, NoRenderer).also {
+            it.size = Vector2(800, 600)
+            it.g.ensureCachesFresh(force = true)
+        }
+        g.cleanSelect(setOf(parent))
+        Actions.optimizeWhileHeld(v, restrict = true)
+        assertEquals(Vector2(0, 0), parent.position)
+        assertTrue(kid1.position != Vector2(0, 100) || kid2.position != Vector2(3, 100), "the children are laid out")
+    }
+
+    @Test
+    fun `in 3D mode the nodes laid out spread across the plane`() {
+        val parent = Node("parent", Vector2(0, 0))
+        val kid1 = Node("kid one", Vector2(0, 100))
+        val kid2 = Node("kid two", Vector2(3, 100))
+        val g = Graph().also { g ->
+            listOf(parent, kid1, kid2).forEach { g.add(it) }
+            g.add(Edge(parent, kid1))
+            g.add(Edge(parent, kid2))
+        }
+        val v = EditorView(g, NoRenderer).also {
+            it.size = Vector2(800, 600)
+            it.g.ensureCachesFresh(force = true)
+        }
+        v.viewTransform.threeD = true
+        g.cleanSelect(setOf(kid1, kid2))
+        Actions.optimizeWhileHeld(v, restrict = false)
+        assertTrue(kid1.point.z * kid2.point.z < 0, "to opposite sides: ${kid1.point} ${kid2.point}")
+    }
+
+    @Test
     fun `asked for by no key that is held, it lays out a while at once, as one undo step, and asks for no pictures`() {
         view.byHeldKey = false
         Actions.optimizeWhileHeld(view, restrict = false)

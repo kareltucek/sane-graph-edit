@@ -127,8 +127,13 @@ object Settling {
         private var furthest = 0.0
         private var grew = false
 
-        /** [nodes] join those that move, and all start anew: where they are going changed. */
-        fun stir(nodes: Set<Node>) {
+        /**
+         * [nodes] join those that move, and all start anew: where they
+         * are going changed. A run stirred first goes by the [clock] as
+         * if it had begun [past] milliseconds ago: its first step moves
+         * at once.
+         */
+        fun stir(nodes: Set<Node>, past: Double = 0.0) {
             moving = moving + nodes.filter { weight(it).isFinite() }
             damping = DAMPING
             left = MAX_STEPS
@@ -137,6 +142,8 @@ object Settling {
             covered = 0
             furthest = 0.0
             grew = false
+            // the first step moves for the time since the run began
+            if (lastStep == null) lastStep = clock?.invoke()?.minus(past.toLong())
         }
 
         /**
@@ -214,17 +221,19 @@ object Settling {
 
     /**
      * Move [fresh] and the nodes in their way until they rest, all at
-     * once ([Run]), in the plane. The nodes are moved in place; those
-     * that took part are returned.
+     * once ([Run]); in space with [depth], else in the plane. [origin]
+     * is in the plane: depth is not pulled anywhere. The nodes are
+     * moved in place; those that took part are returned.
      */
     fun settle(
         g: Graph,
         fresh: Set<Node>,
         among: Set<Node>,
         weight: (Node) -> Double,
+        depth: Boolean = false,
         origin: (Node) -> Vector2? = { null },
     ): Set<Node> =
-        Run(g, among, weight, origin = { n -> origin(n)?.let { Vector3(it, n.point.z) } }).also {
+        Run(g, among, weight, depth = depth, origin = { n -> origin(n)?.let { Vector3(it, n.point.z) } }).also {
             it.stir(fresh)
             it.toRest()
         }.moving
@@ -285,7 +294,7 @@ object Settling {
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
         val strength = if (pulling && !close) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
         // which are near is looked up anew at each step: the nodes are elsewhere
-        val nearOf = near.forStep(LayoutOptimizer.impl.collisionReach(strength))
+        val nearOf = near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0))
         // of two on each other each takes the other's part of their weights: all of it from a fixed one, half from one as heavy
         val share = { n: Node, o: Node -> weight(o).let { w -> if (w.isInfinite()) 1.0 else w / (weight(n) + w) } }
         val mean = { vs: List<Vector3> -> if (vs.isEmpty()) null else vs.reduce(Vector3::plus) / vs.size }
@@ -317,7 +326,7 @@ object Settling {
                 }
                 val capped = home?.takeIf { n !in firm }?.let { by -> if (by.length() > ORIGIN_CAP) by.toScale(ORIGIN_CAP) else by }
                 // away from where the parent came from, carrying depth along the flow once there is some
-                val away = if (depth) Space.antigravity(g, n, among) else emptyList()
+                val away = Space.antigravity(g, n, among, place)
                 edges + listOfNotNull(capped) + alike(g, n, among, place) + away + gravity(g, n, among, down, place)
             }
             // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
@@ -418,6 +427,9 @@ object Settling {
         /** How deep a node is reckoned, in parts of its smaller side. */
         const val THICKNESS = 0.5
 
+        /** In space nodes in front hide those behind: they are kept this many times further apart, by collisions and by edges. */
+        const val SPARSER = 1.5
+
         /** How far from its middle [n] reaches the way [way] goes. */
         fun reach(n: Node, way: Vector3): Double {
             val length = way.length()
@@ -431,14 +443,14 @@ object Settling {
         /** [LayoutOptimizer.impl.computeCollisionSpring] in space: [n] off [o] to as far as they touch, times the scale and [strength]. */
         fun collision(n: Node, o: Node, strength: Double): Vector3? {
             val way = o.point - n.point
-            val wanted = (reach(n, way) + reach(o, -way)) * LayoutOptimizer.impl.collisionReach(strength)
+            val wanted = (reach(n, way) + reach(o, -way)) * LayoutOptimizer.impl.collisionReach(strength) * SPARSER
             return if (way.length() < wanted) o.point - way.toUnit() * wanted - n.point else null
         }
 
         /** [LayoutOptimizer.impl.computeBBSpring] in space: [n] to as far from [other] as the edge between them wants. */
         fun edge(g: Graph, n: Node, other: Node): Vector3 {
             val way = other.point - n.point
-            val wanted = (reach(n, way) + reach(other, -way)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(g, n, other)
+            val wanted = (reach(n, way) + reach(other, -way)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(g, n, other) * SPARSER
             return (way - way.toUnit() * wanted) / 2.0
         }
 
@@ -464,15 +476,16 @@ object Settling {
         fun cross(a: Vector3, b: Vector3) = Vector3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x)
 
         /**
-         * The optimizer's gravity spring ([LayoutOptimizer.impl.computeGravitySpring])
-         * in space: [child] pushed on the way its parent came, kept as far
-         * from the parent as it is.
+         * The optimizer's gravity spring ([LayoutOptimizer.impl.computeGravitySpring]),
+         * where [place] has the nodes (in space or in the plane): [child]
+         * pushed on the way its parent came, kept as far from the parent
+         * as it is.
          */
-        fun antigravity(g: Graph, child: Node, among: Set<Node>): List<Vector3> =
+        fun antigravity(g: Graph, child: Node, among: Set<Node>, place: (Node) -> Vector3): List<Vector3> =
             g.findInEdges(child).filter { it.src in among && it.src != child }.mapNotNull { e ->
                 val parent = e.src
-                val came = g.findInEdges(parent).map { (parent.point - it.src.point).toUnit() }.fold(Vector3.Zero, Vector3::plus).toUnit()
-                val dir = (child.point - parent.point).toUnit()
+                val came = g.findInEdges(parent).map { (place(parent) - place(it.src)).toUnit() }.fold(Vector3.Zero, Vector3::plus).toUnit()
+                val dir = (place(child) - place(parent)).toUnit()
                 val factor = if (g.findOutEdges(parent).size < 3) (1 - came.dot(dir)) / 2 else 0.0
                 val push = (came * factor).toUnit() * ANTIGRAVITY
                 (push + (-dir).toScale(push.length())).takeIf { factor > 0 }

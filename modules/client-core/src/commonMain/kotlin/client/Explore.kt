@@ -179,8 +179,8 @@ object Explore {
     /** Put every node back where it was when the mode was entered: where nodes were in the mode is not the document's. */
     private fun putBack(g: Graph) {
         g.beforeExplore?.forEach { (n, p) ->
-            if (n in g.nodes && n.position != p) {
-                n.position = p
+            if (n in g.nodes && n.point != p) {
+                n.point = p
                 g.needsRecomputing(n)
             }
         }
@@ -194,7 +194,7 @@ object Explore {
             on == isOn(view) -> Unit
             on && kept.isEmpty() -> view.shell.message("explore: the graph has no nodes")
             on -> {
-                g.beforeExplore = g.nodes.associateWith { it.position }
+                g.beforeExplore = g.nodes.associateWith { it.point }
                 arrange(view, kept)
                 g.pinned = kept
                 // all but the pinned nodes count as newly shown: the faint ones are put next to them ([graph_tools.DynamicPlacement])

@@ -65,7 +65,7 @@ class Serializer(
 
         return listOf(
             // in explore mode nodes are elsewhere than in the document: what is written is where the document has them
-            "${serialize(nodeNames[e]!!)}${serializeAttributes(e.retrieveAttributes(g.beforeExplore?.get(e) ?: e.position))};"
+            "${serialize(nodeNames[e]!!)}${serializeAttributes(e.retrieveAttributes(g.beforeExplore?.get(e) ?: e.point))};"
         )
     }
 

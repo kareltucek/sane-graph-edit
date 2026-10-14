@@ -634,9 +634,9 @@ object Actions {
     fun optimizeWhileHeld(graphView: EditorView, restrict: Boolean) {
         if (graphView.byHeldKey) graphView.gestures.startOptimizing(restrict)
         else {
-            val before = graphView.g.nodes.associateWith { it.position }
-            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict, elapsed = TAPPED_MS)
-            graphView.commitMoved(before, emptyMap())
+            val before = graphView.g.nodes.associateWith { it.point }
+            graphView.gestures.layout(restrict, TAPPED_MS).step()
+            graphView.gestures.commitPoints(before)
             graphView.repaint()
         }
     }

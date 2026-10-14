@@ -109,7 +109,7 @@ class DynamicPlacementTest {
 
     /** [g] in explore mode from [pins] on, as entering the mode sets it up. */
     private fun explore(g: Graph, pins: Set<Node>) {
-        g.beforeExplore = g.nodes.associateWith { it.position }
+        g.beforeExplore = g.nodes.associateWith { it.point }
         g.pinned = pins
         g.dynamicBaseline = pins
         DynamicPlacement.place(g)
@@ -156,7 +156,7 @@ class DynamicPlacementTest {
         explore(g, setOf(root))
         val kidWas = kid.position
         val otherWas = other.position
-        g.beforeExplore = g.beforeExplore!! + (grandkid to (g.beforeExplore!!.getValue(kid) + Vector2(130, 0)))
+        g.beforeExplore = g.beforeExplore!! + (grandkid to (g.beforeExplore!!.getValue(kid) + utils.Vector3(130.0, 0.0, 0.0)))
         g.pinned = setOf(root, kid)
         DynamicPlacement.place(g)
 

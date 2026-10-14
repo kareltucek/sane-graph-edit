@@ -90,7 +90,7 @@ class PointerInputTest {
 
     @Test
     fun `in explore mode a drag is no undo step - the positions there are not the document's`() {
-        view.g.beforeExplore = view.g.nodes.associateWith { it.position }
+        view.g.beforeExplore = view.g.nodes.associateWith { it.point }
         drag(a.position, Vector2(160, 40))
         assertEquals(Vector2(160, 40), a.position)
         view.g.undo()

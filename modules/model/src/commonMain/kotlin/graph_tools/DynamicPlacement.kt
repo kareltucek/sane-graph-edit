@@ -37,7 +37,7 @@ object DynamicPlacement {
      * nothing while the mode is off, so turning it on doesn't move
      * what's already on screen.
      */
-    fun place(g: Graph) {
+    fun place(g: Graph, depth: Boolean = false) {
         // explore mode ([Graph.pinned]) places what it shows, whatever the setting
         val visible = if (ViewModes.dynamic || g.pinned != null) g.visibleNodes() else null
         val before = g.dynamicBaseline
@@ -48,7 +48,7 @@ object DynamicPlacement {
         val appeared = if (visible != null && before != null && (exploring || !g.history.canRedo)) visible - before else emptySet()
         // attached nodes follow their owner (Attachments.reglue), they aren't placed themselves
         val fresh = appeared.filter { it !in g.attachmentOwners }.toSet()
-        if (fresh.isNotEmpty() && exploring) explore(g, fresh, visible!!, visible - appeared)
+        if (fresh.isNotEmpty() && exploring) explore(g, fresh, visible!!, visible - appeared, depth)
         else if (fresh.isNotEmpty()) {
             val targets = positionsFor(g, fresh, visible!! - appeared)
             if (targets.isNotEmpty()) {
@@ -76,13 +76,13 @@ object DynamicPlacement {
      * are, with no command: where nodes are in the mode is not the
      * document's ([Graph.beforeExplore]).
      */
-    private fun explore(g: Graph, fresh: Set<Node>, visible: Set<Node>, fixed: Set<Node>) {
+    private fun explore(g: Graph, fresh: Set<Node>, visible: Set<Node>, fixed: Set<Node>, depth: Boolean) {
         val among = visible.filter { it !in g.attachmentOwners }.toSet()
         val document = g.beforeExplore.orEmpty()
         val neighbours = { n: Node -> (g.findInEdges(n).map { it.src } + g.findOutEdges(n).map { it.dst }).filter { it != n }.distinct() }
         // where [n] would be if it were to its neighbours [by] as it is in the document; null when the document has neither
         val home = { n: Node, by: List<Node> ->
-            val places = by.mapNotNull { m -> document[n]?.let { own -> document[m]?.let { theirs -> m.position + (own - theirs) } } }
+            val places = by.mapNotNull { m -> document[n]?.let { own -> document[m]?.let { theirs -> m.position + (own.xy - theirs.xy) } } }
             if (places.isEmpty()) null else places.reduce(Vector2::plus) / places.size
         }
         tailrec fun start(placed: Set<Node>, left: Set<Node>) {
@@ -93,7 +93,8 @@ object DynamicPlacement {
         start(fixed, fresh)
         // the nodes placed, the ghosts that give way to them more readily, and the pinned ones that do not move
         val weight = { n: Node -> if (n in fresh) Settling.USUAL else if (g.isFaint(n)) Settling.LIGHT else Settling.FIXED }
-        val moved = Settling.settle(g, fresh, among, weight) { n -> home(n, neighbours(n).filter { it in among }) }
+        // in a view in 3D mode, in space
+        val moved = Settling.settle(g, fresh, among, weight, depth) { n -> home(n, neighbours(n).filter { it in among }) }
         (fresh + moved).forEach { g.needsRecomputing(it) }
         Attachments.reglue(g)
     }

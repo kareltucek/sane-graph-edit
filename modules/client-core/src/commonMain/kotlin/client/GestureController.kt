@@ -644,55 +644,71 @@ class GestureController(
         graphView.commitMoved(before + settled.mapValues { it.value.xy }, depths + settled.mapValues { it.value.z })
     }
 
-    /** `o` / `O` held: whether it is `O` ([LayoutOptimizer.optimize]'s restrict); null while neither is. */
-    private var optimizing: Boolean? = null
+    /** `o` / `O` held: the nodes it lays out, a step for each picture ([frame]); null while neither is held. */
+    private var laying: Settling.Run? = null
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
-    private var optimizingFrom: Map<Node, Vector2>? = null
+    private var layingFrom: Map<Node, Point3>? = null
 
     /** The time the springs move by ([LayoutOptimizer.WINDOW_MS]); a test may give its own. */
     var clock: () -> Long = { utils.Platform.nowMillis() }
 
-    /** When the springs of `o` / `O` held last moved the nodes ([clock]). */
-    private var optimizedAt = 0L
+    /**
+     * `o` / `O`: the settling springs on the nodes it lays out, every other node fixed, in space in 3D mode
+     * ([docs/developer/springs.md]). `o`: the selected nodes, all seen ones when none is selected; `O` on one node: its
+     * children that hang from it alone, the node itself staying ([LayoutOptimizer.SpringTarget.MoveChildsOnly]). The run
+     * begins as if [past] milliseconds ago, so that its first step moves at once.
+     */
+    fun layout(restrict: Boolean, past: Double): Settling.Run {
+        val g = graphView.g
+        val shown = g.visibleNodes()
+        val selected = g.movable(g.selectedNodes).filter { it in shown }.toSet()
+        val moving = when {
+            selected.isEmpty() -> shown
+            restrict && selected.size == 1 ->
+                LayoutOptimizer.impl.computeNodeSet(g, LayoutOptimizer.SpringTarget.MoveChildsOnly).filter { it in shown && it !in selected }.toSet()
+            else -> selected
+        }
+        return Settling.Run(g, shown, { if (it in moving) Settling.USUAL else Settling.FIXED }, clock = clock, depth = graphView.viewTransform.threeD).also {
+            it.stir(moving, past)
+        }
+    }
 
     /**
-     * `o` / `O` pressed: the optimizer's springs move the nodes for
-     * [Actions.TAPPED_MS] now, and then at each picture drawn for the
-     * time since the last one, until a key is let go
-     * ([stopOptimizing]): as fast however often a picture is drawn.
-     * The keyboard's repeats of the key change nothing.
+     * `o` / `O` pressed: the nodes it lays out ([layout]) move for
+     * [Actions.TAPPED_MS] at once, and then at each picture drawn for
+     * the time since the last one, until a key is let go
+     * ([stopOptimizing]). The keyboard's repeats of the key change nothing.
      */
     fun startOptimizing(restrict: Boolean) {
-        if (optimizing == null) {
+        if (laying == null) {
             finishSettling()
-            optimizingFrom = graphView.g.nodes.associateWith { it.position }
-            optimizing = restrict
-            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict, elapsed = Actions.TAPPED_MS)
-            optimizedAt = clock()
+            layingFrom = graphView.g.nodes.associateWith { it.point }
+            laying = layout(restrict, Actions.TAPPED_MS).also { it.step() }
             graphView.repaint()
         }
     }
 
     /** A key was let go: the nodes stop, and all they moved since `o` / `O` was pressed is one undo step. */
     fun stopOptimizing() {
-        val before = optimizingFrom
-        optimizing = null
-        optimizingFrom = null
-        if (before != null) graphView.commitMoved(before, emptyMap())
+        val before = layingFrom
+        laying = null
+        layingFrom = null
+        if (before != null) commitPoints(before)
     }
 
-    /** Before a picture is drawn: the nodes on their way take a step. True while they have not come to rest, or `o` is held. */
+    /** The nodes of [before] that moved since, as one undo step: their positions and their depths. */
+    fun commitPoints(before: Map<Node, Point3>) {
+        val moved = before.filter { (n, p) -> n.point != p }
+        graphView.commitMoved(moved.mapValues { it.value.xy }, moved.mapValues { it.value.z })
+    }
+
+    /** Before a picture is drawn: the nodes on their way take a step. True while they have not come to rest. */
     fun frame(): Boolean {
-        val restrict = optimizing
-        if (restrict != null) {
-            val now = clock()
-            LayoutOptimizer.optimize(graphView.g, movingNodes = false, restrictOperator = restrict, elapsed = (now - optimizedAt).toDouble())
-            optimizedAt = now
-        }
+        val laid = laying?.step() ?: false
         val more = settling?.step() ?: false
         if (!more && settledMove != null) finishSettling()
-        return more || restrict != null
+        return more || laid
     }
 
     /**

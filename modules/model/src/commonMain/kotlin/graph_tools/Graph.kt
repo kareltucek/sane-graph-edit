@@ -67,7 +67,7 @@ class Graph(
      * undone or makes the document modified, and leaving the mode puts
      * every node back here.
      */
-    var beforeExplore: Map<Node, Vector2>? = null
+    var beforeExplore: Map<Node, utils.Vector3>? = null
 
     private var attachmentOwnersCache: Map<Node, Node>? = null
 

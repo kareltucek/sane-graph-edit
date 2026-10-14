@@ -82,7 +82,7 @@ data class SpaceScene(
 /** Bring the node sizes up to date, as [scene] does, and describe what the view shows without projecting it. */
 fun EditorView.spaceScene(measurer: TextMeasurer, asSeen: Boolean = true): SpaceScene {
     g.recompute(measurer)
-    DynamicPlacement.place(g)
+    DynamicPlacement.place(g, depth = viewTransform.threeD)
     g.recompute(measurer)
     val shown = g.visibleNodes()
     val visible = g.nodes.filter { it in shown }
@@ -108,7 +108,7 @@ fun EditorView.spaceScene(measurer: TextMeasurer, asSeen: Boolean = true): Space
 fun EditorView.scene(measurer: TextMeasurer): Scene {
     g.recompute(measurer)
     // after recompute: placement needs the node sizes
-    DynamicPlacement.place(g)
+    DynamicPlacement.place(g, depth = viewTransform.threeD)
     g.recompute(measurer)
 
     val visible = g.visibleNodes()

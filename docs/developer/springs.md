@@ -76,34 +76,40 @@ changes.
 | **o not held** (macro, mapping, `:optimize`) | as held | as held | as held | as held | after 20 ms of time | one step |
 | **O** on one node | its leaf children | the node, its parents, the rest | as `o` | as `o` | as `o` | one step |
 | **O** on several | as `o` | as `o` | as `o` | as `o` | as `o` | one step |
-| **- / =** | all | — | as `o`, one pass per tick, distances scaled | never | each tick | a step per tick |
 | **Shift-drag** | dragged: exactly with the pointer; followers (descendants with no parent outside): heavy; nodes on them: usual; ghosts: light | — | collision (1.15), edge, equal siblings, origin (back), follow, gravity; 3D: across, antigravity | 3D mode | rest, or another gesture/command (they stop) | one step at rest |
 | **explore: nodes coming into view** | them: usual; ghosts in the way: light | pinned nodes | collision (2), edge, equal siblings, origin (where the document has them relative to their neighbours), gravity | never | rest, at once (not animated) | none (explore) |
 
 Not springs: explore's arrangement of roots in columns, `:set dynamic`'s
 columns, the fold onto room walls.
 
-## 5. To be: `o` on the settling
+## 5. To be (agreed 2026-10-14; built the same day — §4's "now" columns for `o` are history)
 
-- `o` held: a run over the selection (all, none selected), one step per
-  picture until the key is let go; not held: 20 ms of time at once.
-- `O` on one node: the run moves its leaf children; the node and the
-  rest fixed.
-- Springs for `o`: collision (2), edge, equal siblings, gravity,
-  antigravity; in 3D mode across. No origin (nothing to go back to).
-- `- / =`: a step of the same run per tick.
+- **`o` on the settling.** Held: a run over the selection (all, none
+  selected), one step per picture until the key is let go; not held: 20 ms
+  of time at once. Only the selection moves: every other node is fixed
+  and does not join.
+- **`O` on one node:** the run moves its leaf children; the node and the
+  rest are fixed.
+- **Springs for `o`:** collision (2), edge, equal siblings, gravity,
+  antigravity; in 3D mode in space, with across. No origin.
+- **Antigravity in both modes** for `o` and Shift-drag.
+- **3D mode is sparser:** collision and edge distances × 1.5, every feature.
+- **Explore in 3D mode settles in space** (with a strong gravity later).
+- The optimizer (`LayoutOptimizer`) keeps only what the settling uses from
+  it (spring helpers, collision search).
 
 ## 6. Questions for Karel
 
-1. `o`: should nodes not selected that the selection runs into make way
-   (join as light), or stay fixed as now?
-2. `o` with the settling's damping and pushes-before-pulls is gentler
-   than the optimizer's full averaged pass: keep that, or a stronger
-   step for `o` (e.g. damping 1)?
-3. Antigravity in 2D for `o`: it is there now (the optimizer's); keep it
-   in 2D for `o` only, or for Shift-drag too?
-4. 3D sparseness: collision and edge distances × 1.5 *(guess)* in 3D mode,
-   for every feature?
-5. Explore in 3D mode: settle in space too?
-6. Gravity strength (0.1 of the way a window) and the across nudge (0.3):
-   to be tuned by trying.
+1. ~~`o`: should nodes not selected that the selection runs into make way
+   (join as light), or stay fixed as now?~~ **Karel: they stay fixed; only
+   the selection moves.**
+2. ~~`o` gentler than the optimizer's full pass?~~ **Keep the settling's
+   step for now; we will see.**
+3. ~~Antigravity in 2D?~~ **In both modes, for `o` and Shift-drag.**
+4. ~~3D sparseness?~~ **Yes: collision and edge distances × 1.5 in 3D mode,
+   every feature.**
+5. ~~Explore in 3D?~~ **Yes, in space. A strong gravity there probably, but
+   later.**
+6. ~~Gravity 0.1, across 0.3?~~ **Fine for now; tuned by trying.**
+
+`- / =` now change the level of detail: no springs (removed from §4).
