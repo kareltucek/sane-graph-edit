@@ -2,6 +2,7 @@ package graph_tools
 
 import Graph
 import utils.Vector2
+import utils.Vector3
 import kotlin.math.exp
 import kotlin.math.pow
 
@@ -104,7 +105,8 @@ object Settling {
         private val firm: Set<Node> = emptySet(),
         private val budget: Long? = null,
         private val clock: (() -> Long)? = null,
-        private val origin: (Node) -> Vector2? = { null },
+        private val depth: Boolean = false,
+        private val origin: (Node) -> Vector3? = { null },
     ) {
         var moving: Set<Node> = emptySet()
             private set
@@ -159,7 +161,7 @@ object Settling {
                 val order = if (cut) waiting.filter { it in moving }.ifEmpty { moving.shuffled(chance) } else moving.toList()
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, firm, damping, windows, pulling, close, deadline)
+                val done = step(g, moving, order, among, near, weight, origin, firm, damping, windows, pulling, close, depth, down(g, depth), deadline)
                 order.take(done.taken).forEach { turns[it] = now }
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
@@ -187,7 +189,7 @@ object Settling {
 
         private fun endRound() {
             // the tug on a firm node is small when it is near: it is there only when it is there
-            val arrived = !pulling || firm.all { n -> origin(n)?.let { (it - n.position).length() < ARRIVED } ?: true }
+            val arrived = !pulling || firm.all { n -> origin(n)?.let { ((if (depth) it else Vector3(it.xy, n.point.z)) - n.point).length() < ARRIVED } ?: true }
             val rests = furthest < SETTLED && !grew && arrived
             covered = 0
             furthest = 0.0
@@ -212,8 +214,8 @@ object Settling {
 
     /**
      * Move [fresh] and the nodes in their way until they rest, all at
-     * once ([Run]). The nodes are moved in place; those that took part
-     * are returned.
+     * once ([Run]), in the plane. The nodes are moved in place; those
+     * that took part are returned.
      */
     fun settle(
         g: Graph,
@@ -222,7 +224,7 @@ object Settling {
         weight: (Node) -> Double,
         origin: (Node) -> Vector2? = { null },
     ): Set<Node> =
-        Run(g, among, weight, origin = origin).also {
+        Run(g, among, weight, origin = { n -> origin(n)?.let { Vector3(it, n.point.z) } }).also {
             it.stir(fresh)
             it.toRest()
         }.moving
@@ -269,12 +271,14 @@ object Settling {
         among: Set<Node>,
         near: Near,
         weight: (Node) -> Double,
-        origin: (Node) -> Vector2?,
+        origin: (Node) -> Vector3?,
         firm: Set<Node>,
         damping: Double,
         windows: (Node) -> Double,
         pulling: Boolean,
         close: Boolean,
+        depth: Boolean,
+        down: Vector3,
         deadline: Long?,
     ): Step {
         EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet())
@@ -284,38 +288,52 @@ object Settling {
         val nearOf = near.forStep(LayoutOptimizer.impl.collisionReach(strength))
         // of two on each other each takes the other's part of their weights: all of it from a fixed one, half from one as heavy
         val share = { n: Node, o: Node -> weight(o).let { w -> if (w.isInfinite()) 1.0 else w / (weight(n) + w) } }
-        val mean = { vs: List<Vector2> -> if (vs.isEmpty()) null else vs.reduce(Vector2::plus) / vs.size }
-        val moves = mutableMapOf<Node, Vector2>()
+        val mean = { vs: List<Vector3> -> if (vs.isEmpty()) null else vs.reduce(Vector3::plus) / vs.size }
+        // where a node is for the springs: in space, or, when depth is not to change, in the plane
+        val place = { n: Node -> if (depth) n.point else Vector3(n.position, 0.0) }
+        val flat = { v: Vector2 -> Vector3(v, 0.0) }
+        val moves = mutableMapOf<Node, Vector3>()
         val woken = mutableSetOf<Node>()
         var taken = 0
         while (taken < order.size && (deadline == null || taken == 0 || utils.Platform.nowMillis() < deadline)) {
             val n = order[taken]
             taken += 1
-            val pushes = nearOf(n).mapNotNull { o -> LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.let { it.v * share(n, o) to o } }
+            val pushes = nearOf(n).mapNotNull { o ->
+                val push = if (depth) Space.collision(n, o, strength) else LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.v?.let(flat)
+                push?.let { it * share(n, o) to o }
+            }
             woken += pushes.map { it.second }.filter { it !in moving && weight(it).isFinite() }
-            val home = if (pulling) origin(n)?.let { it - n.position } else null
+            // in space, nodes on each other also go apart across the plane they are in, each its own way ([Space.nudge])
+            val nudges = if (depth) pushes.mapNotNull { (push, o) -> Space.nudge(g, n, o, push, among) } else emptyList()
+            val home = if (pulling) origin(n)?.let { (if (depth) it else Vector3(it.xy, 0.0)) - place(n) } else null
             val pulls = if (!pulling) emptyList() else {
                 val edges = g.edgeMap[n].orEmpty().mapNotNull { e ->
                     val other = if (e.src == n) e.dst else e.src
-                    if (other != n && other in among) LayoutOptimizer.impl.computeBBSpring(g, n, other, e).v else null
+                    when {
+                        other == n || other !in among -> null
+                        depth -> Space.edge(g, n, other)
+                        else -> flat(LayoutOptimizer.impl.computeBBSpring(g, n, other, e).v)
+                    }
                 }
                 val capped = home?.takeIf { n !in firm }?.let { by -> if (by.length() > ORIGIN_CAP) by.toScale(ORIGIN_CAP) else by }
-                edges + listOfNotNull(capped) + alike(g, n, among)
+                // away from where the parent came from, carrying depth along the flow once there is some
+                val away = if (depth) Space.antigravity(g, n, among) else emptyList()
+                edges + listOfNotNull(capped) + alike(g, n, among, place) + away + gravity(g, n, among, down, place)
             }
             // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
-            val off = mean(pushes.map { it.first })
+            val off = mean(pushes.map { it.first } + nudges)
             val to = mean(pulls)
-            val loose = off?.let { it + (to ?: Vector2.Zero) * PULL_WHEN_PUSHED } ?: to
+            val loose = off?.let { it + (to ?: Vector3.Zero) * PULL_WHEN_PUSHED } ?: to
             // a firm one is tugged to its origin on top of the rest, however far, and not less as the others cool: a share of
             // the way each window, so that it is there in [FOLLOW_MS]; less while something pushes it, or it stays on what
             // is in its place
             val tug = home?.takeIf { n in firm }?.let { it * FOLLOW_PER_WINDOW * (if (off == null) 1.0 else PULL_WHEN_PUSHED) }
-            val by = loose?.let { it * damping + (tug ?: Vector2.Zero) } ?: tug
+            val by = loose?.let { it * damping + (tug ?: Vector3.Zero) } ?: tug
             if (by != null) moves[n] = by
         }
         moves.forEach { (n, by) ->
             near.moving(n)
-            n.position = n.position + by * windows(n)
+            if (depth) n.point = n.point + by * windows(n) else n.position = n.position + by.xy * windows(n)
         }
         if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
         return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken)
@@ -359,11 +377,108 @@ object Settling {
     private const val REBUILD = 60.0
 
     /** [LayoutOptimizer.impl.computeUniformOutSprings] among the nodes seen: the edges out of each parent of [child] as long as each other. */
-    private fun alike(g: Graph, child: Node, among: Set<Node>): List<Vector2> =
+    private fun alike(g: Graph, child: Node, among: Set<Node>, place: (Node) -> Vector3): List<Vector3> =
         g.findInEdges(child).map { it.src }.filter { it in among && it != child }.distinct().mapNotNull { parent ->
             val children = g.findOutEdges(parent).map { it.dst }.filter { it in among && it != parent }.distinct()
-            val offset = child.position - parent.position
+            val offset = place(child) - place(parent)
             if (children.size < 2 || offset.length() < 0.001) null
-            else (parent.position + offset.toUnit() * children.map { (it.position - parent.position).length() }.average() - child.position) * 0.5
+            else (place(parent) + offset.toUnit() * children.map { (place(it) - place(parent)).length() }.average() - place(child)) * 0.5
         }
+
+    /**
+     * Gravity: the way the graph's edges go, on average (from parent to
+     * child; in space when [depth]), as a unit; zero for none. A child
+     * is pulled to lie that way from its parent ([gravity]), so a graph
+     * laid out downwards, or to the right, goes on so.
+     */
+    fun down(g: Graph, depth: Boolean): Vector3 =
+        g.edges.filter { it.src != it.dst }
+            .map { e -> (if (depth) e.dst.point - e.src.point else Vector3(e.dst.position - e.src.position, 0.0)).toUnit() }
+            .fold(Vector3.Zero, Vector3::plus)
+            .toUnit()
+
+    /** How much of the way to lying [down] from its parents a child is pulled in a window. */
+    private const val GRAVITY = 0.1
+
+    /** The pull on [child] to lie [down] from each of its parents among [among], as far from it as it is now. */
+    private fun gravity(g: Graph, child: Node, among: Set<Node>, down: Vector3, place: (Node) -> Vector3): List<Vector3> =
+        if (down == Vector3.Zero) emptyList()
+        else g.findInEdges(child).map { it.src }.filter { it in among && it != child }.distinct().map { parent ->
+            val from = place(parent)
+            (from + down * (place(child) - from).length() - place(child)) * GRAVITY
+        }
+
+    /**
+     * The springs in space ([Vector3]), for a view in 3D mode: a node is
+     * a flat card facing the viewer, as wide and high as its shape and
+     * [THICKNESS] of its smaller side deep, so that two one behind the
+     * other keep apart too.
+     */
+    private object Space {
+        /** How deep a node is reckoned, in parts of its smaller side. */
+        const val THICKNESS = 0.5
+
+        /** How far from its middle [n] reaches the way [way] goes. */
+        fun reach(n: Node, way: Vector3): Double {
+            val length = way.length()
+            val across = way.xy.length()
+            val inPlane = if (across < 1e-9) 0.0 else n.cache.shape.connectionPoint(way.xy / across, n).length()
+            val deep = minOf(n.cache.shapeBounds.x, n.cache.shapeBounds.y) * THICKNESS / 2
+            // between the outline across and the depth, as the way leans
+            return if (length < 1e-9) inPlane else kotlin.math.sqrt((inPlane * across / length).let { it * it } + (deep * way.z / length).let { it * it })
+        }
+
+        /** [LayoutOptimizer.impl.computeCollisionSpring] in space: [n] off [o] to as far as they touch, times the scale and [strength]. */
+        fun collision(n: Node, o: Node, strength: Double): Vector3? {
+            val way = o.point - n.point
+            val wanted = (reach(n, way) + reach(o, -way)) * LayoutOptimizer.impl.collisionReach(strength)
+            return if (way.length() < wanted) o.point - way.toUnit() * wanted - n.point else null
+        }
+
+        /** [LayoutOptimizer.impl.computeBBSpring] in space: [n] to as far from [other] as the edge between them wants. */
+        fun edge(g: Graph, n: Node, other: Node): Vector3 {
+            val way = other.point - n.point
+            val wanted = (reach(n, way) + reach(other, -way)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(g, n, other)
+            return (way - way.toUnit() * wanted) / 2.0
+        }
+
+        /** How much of a push across the plane two nodes on each other also get, each its own way. */
+        const val NUDGE = 0.3
+
+        /**
+         * [n], pushed off [o] by [push], also goes across: along the
+         * vector product of the way to [o] and the way it came from its
+         * parent, so that two children of one parent go to opposite
+         * sides of the plane they are in. A node without a parent goes
+         * straight away from the viewer or towards, by which of the two
+         * comes first.
+         */
+        fun nudge(g: Graph, n: Node, o: Node, push: Vector3, among: Set<Node>): Vector3? {
+            val way = o.point - n.point
+            val parent = g.findInEdges(n).map { it.src }.firstOrNull { it in among && it != n }
+            val across = parent?.let { cross(way, n.point - it.point) }?.takeIf { it.length() > 1e-9 }
+                ?: Vector3(0.0, 0.0, if (n.id < o.id) -1.0 else 1.0)
+            return across.toScale(push.length() * NUDGE).takeIf { push.length() > 0 }
+        }
+
+        fun cross(a: Vector3, b: Vector3) = Vector3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x)
+
+        /**
+         * The optimizer's gravity spring ([LayoutOptimizer.impl.computeGravitySpring])
+         * in space: [child] pushed on the way its parent came, kept as far
+         * from the parent as it is.
+         */
+        fun antigravity(g: Graph, child: Node, among: Set<Node>): List<Vector3> =
+            g.findInEdges(child).filter { it.src in among && it.src != child }.mapNotNull { e ->
+                val parent = e.src
+                val came = g.findInEdges(parent).map { (parent.point - it.src.point).toUnit() }.fold(Vector3.Zero, Vector3::plus).toUnit()
+                val dir = (child.point - parent.point).toUnit()
+                val factor = if (g.findOutEdges(parent).size < 3) (1 - came.dot(dir)) / 2 else 0.0
+                val push = (came * factor).toUnit() * ANTIGRAVITY
+                (push + (-dir).toScale(push.length())).takeIf { factor > 0 }
+            }
+
+        /** How hard [antigravity] pushes, as the optimizer's gravity spring. */
+        const val ANTIGRAVITY = 10.0
+    }
 }

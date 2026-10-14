@@ -221,7 +221,7 @@ class GestureController(
     private fun captureMoveStart() {
         moveStartPositions = captureStart(graphView.g.movable(graphView.g.selectedNodes))
         // the others too, for when Shift is held: what follows the dragged nodes follows them from where it was relative to them
-        settleStart = graphView.g.visibleNodes().associateWith { it.position }
+        settleStart = graphView.g.visibleNodes().associateWith { it.point }
     }
 
     /**
@@ -486,7 +486,7 @@ class GestureController(
         }
         // and what the springs moved meanwhile, which stops
         captured?.let { settledBefore(it) }?.forEach { (n, p) ->
-            n.position = p
+            n.point = p
             graphView.g.needsRecomputing(n)
         }
         settling = null
@@ -582,7 +582,7 @@ class GestureController(
     }
 
     /** Where the nodes seen were when the move in progress started ([captureMoveStart]); null outside one. */
-    private var settleStart: Map<Node, Vector2>? = null
+    private var settleStart: Map<Node, Point3>? = null
 
     /** The nodes on their way, one step for each picture drawn ([frame]); null when none are. */
     private var settling: Settling.Run? = null
@@ -618,11 +618,14 @@ class GestureController(
                     else -> Settling.USUAL
                 }
             }
-            // how far the dragged nodes are from where they were, as they are now
-            val by = { dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.position - it } } ?: Vector2.Zero }
+            // how far the dragged nodes are from where they were, as they are now, in space
+            val by = { dragged.firstNotNullOfOrNull { n -> start[n]?.let { n.point - it } } ?: Point3(0.0, 0.0, 0.0) }
             // nodes only kept off each other: those the user put near each other stay near, and only those on others are pushed
             // those that follow keep to where they were relative to the dragged nodes, however many generations down
-            Settling.Run(g, shown, weight, close = true, firm = following, clock = clock) { n -> start[n]?.let { if (n in following) it + by() else it } }.also { settling = it }
+            // in 3D mode in space: the springs may take nodes off the plane, and spread them across it
+            Settling.Run(g, shown, weight, close = true, firm = following, clock = clock, depth = graphView.viewTransform.threeD) { n ->
+                start[n]?.let { if (n in following) it + by() else it }
+            }.also { settling = it }
         }
         // on them: nearer than touching, not only within the collision spring's reach
         val touching = 1 / LayoutOptimizer.impl.collisionReach()
@@ -631,9 +634,15 @@ class GestureController(
         run.stir(following + inTheWay)
     }
 
-    /** Before the dragged nodes, the others [settleAround] moved: where they were. */
-    private fun settledBefore(dragged: Map<Node, Vector2>): Map<Node, Vector2> =
-        settleStart.orEmpty().filter { (n, p) -> n !in dragged && n.position != p }
+    /** Besides the dragged nodes, the others [settleAround] moved: where they were, in space. */
+    private fun settledBefore(dragged: Map<Node, Vector2>): Map<Node, Point3> =
+        settleStart.orEmpty().filter { (n, p) -> n !in dragged && n.point != p }
+
+    /** The undo step of a move: [before] and [depths] of the dragged nodes, and where the springs took the others from. */
+    private fun commitWithSettled(before: Map<Node, Vector2>, depths: Map<Node, Double>) {
+        val settled = settledBefore(before)
+        graphView.commitMoved(before + settled.mapValues { it.value.xy }, depths + settled.mapValues { it.value.z })
+    }
 
     /** `o` / `O` held: whether it is `O` ([LayoutOptimizer.optimize]'s restrict); null while neither is. */
     private var optimizing: Boolean? = null
@@ -691,7 +700,7 @@ class GestureController(
      * with many), and the undo step of the move they were part of is made, if it has ended.
      */
     fun finishSettling() {
-        settledMove?.let { (before, depths) -> graphView.commitMoved(before + settledBefore(before), depths) }
+        settledMove?.let { (before, depths) -> commitWithSettled(before, depths) }
         settledMove = null
         if (state != States.MovingNodes) {
             settling = null

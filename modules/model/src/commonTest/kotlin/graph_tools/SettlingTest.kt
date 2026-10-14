@@ -66,7 +66,7 @@ class SettlingTest {
         val n = Node("follower", Vector2(0, 0))
         g.add(n)
         g.ensureCachesFresh(force = true)
-        val target = Vector2(600, 0)
+        val target = utils.Vector3(600.0, 0.0, 0.0)
         var now = 0L
         val run = Settling.Run(g, setOf(n), { Settling.HEAVY }, close = true, firm = setOf(n), clock = { now }) { target }
         run.stir(setOf(n))
@@ -76,6 +76,60 @@ class SettlingTest {
         assertTrue(n.position.x < 300, "gently: after a quarter of a second ${n.position}")
         seconds(1.75)
         assertTrue(n.position.x > 540, "there after two seconds: ${n.position}")
+    }
+
+    /** A parent with its own parent above it, and two children on each other under it. */
+    private class Siblings {
+        val g = Graph()
+        val grand = Node("grand", Vector2(0, -200))
+        val parent = Node("parent", Vector2(0, 0))
+        val a = Node("child a", Vector2(0, 120))
+        val b = Node("child b", Vector2(4, 121))
+        val all = setOf(grand, parent, a, b)
+
+        init {
+            all.forEach { g.add(it) }
+            g.add(Edge(grand, parent))
+            g.add(Edge(parent, a))
+            g.add(Edge(parent, b))
+            g.ensureCachesFresh(force = true)
+        }
+
+        fun settle(depth: Boolean) = Settling.Run(g, all, { if (it == a || it == b) Settling.USUAL else Settling.FIXED }, depth = depth).also {
+            it.stir(setOf(a, b))
+            it.toRest()
+        }
+    }
+
+    @Test
+    fun `in space, children on each other go to opposite sides of the plane`() {
+        val s = Siblings()
+        s.settle(depth = true)
+        assertTrue(s.a.point.z * s.b.point.z < 0, "opposite sides: ${s.a.point} ${s.b.point}")
+        assertTrue((s.a.point - s.b.point).length() > 20, "apart: ${s.a.point} ${s.b.point}")
+    }
+
+    @Test
+    fun `in the plane, nothing leaves it`() {
+        val s = Siblings()
+        s.settle(depth = false)
+        assertTrue(s.all.all { it.point.z == 0.0 })
+        assertFalse(overlap(s.a, s.b))
+    }
+
+    @Test
+    fun `gravity is the way the edges go - a child put beside its parent in a graph that goes down is pulled down`() {
+        val g = Graph()
+        val column = List(5) { Node("node $it", Vector2(0, it * 150)) }
+        column.forEach { g.add(it) }
+        column.zipWithNext().forEach { (p, c) -> g.add(Edge(p, c)) }
+        val beside = Node("beside", Vector2(300, 300))
+        g.add(beside)
+        g.add(Edge(column[2], beside))
+        g.ensureCachesFresh(force = true)
+        assertTrue(Settling.down(g, depth = false).y > 0.5, "down: ${Settling.down(g, false)}")
+        Settling.settle(g, setOf(beside), g.nodes.toSet(), { if (it == beside) Settling.USUAL else Settling.FIXED })
+        assertTrue(beside.position.y > 300 + 20, "pulled down: ${beside.position}")
     }
 
     /** The node placed and [yielding] may move, as easily as each other; the others not. */
