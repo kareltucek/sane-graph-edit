@@ -8,11 +8,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /** A point in space: of the graph (a position and a depth), or as a view sees it (across, down, away from the viewer). */
-data class Point3(val x: Double, val y: Double, val z: Double) {
-    val xy: Vector2 get() = Vector2(x, y)
-
-    constructor(xy: Vector2, z: Double) : this(xy.x, xy.y, z)
-}
+typealias Point3 = utils.Vector3
 
 /** How a node appears in a view: where its middle seems to be, in workspace units of the plane the view speaks of, and how many times its size. */
 data class Apparent(val position: Vector2, val scale: Double)

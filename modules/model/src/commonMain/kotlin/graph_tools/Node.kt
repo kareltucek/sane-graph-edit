@@ -8,17 +8,28 @@ import utils.Utils.toHexString
 import utils.Constants
 import utils.Utils.toNiceString
 import utils.Vector2
+import utils.Vector3
 import utils.Rgb
 import kotlin.math.pow
 import kotlin.math.log
 
 class Node(
-    var position: Vector2,
+    position: Vector2,
     var cache: NodeCache = NodeCache(),
     var attributes: NodeAttributes = NodeAttributes(),
     /** Stable for the node's life; the same node has the same id in every client's replica. */
     val id: String = Ids.new(),
 ) {
+    /** Where the node is: across, down, and its depth ([Depth]). The node itself is drawn flat, facing the viewer. */
+    var point: Vector3 = Vector3(position, 0.0)
+
+    /** Where the node is in the plane the graph is drawn in: [point] without its depth, which setting it keeps. */
+    var position: Vector2
+        get() = point.xy
+        set(value) {
+            point = Vector3(value, point.z)
+        }
+
     override fun toString(): String {
         return "Node(...${attributes.text.take(8)}...)"
     }
@@ -247,6 +258,8 @@ class Node(
                     it.getOrNull(2)?.let { z -> Depth.set(this, z) }
                 }
 
+            // the depth as files had it before `pos` had a third number
+            Depth.ATTRIBUTE -> r.toDoubleOrNull()?.let { Depth.set(this, it) }
             else -> attributes.other[l] = r
         }
     }
@@ -255,7 +268,7 @@ class Node(
     fun retrieveAttributes(at: Vector2 = position): Map<String, String> {
         // the content type of this level is written where it always was, among the other attributes
         val here = (detail().attributes() - NodeType.ATTRIBUTE).mapKeys { Detail.written(it.key, level) }
-        val other = attributes.other.filterNotNull().filterKeys { it != Depth.ATTRIBUTE }
+        val other = attributes.other.filterNotNull()
             .mapKeys { if (it.key == NodeType.ATTRIBUTE) Detail.written(it.key, level) else it.key }
         val elsewhere = aside.keys.sorted().flatMap { at -> aside.getValue(at).attributes().map { Detail.written(it.key, at) to it.value } }
         return here + mapOf(

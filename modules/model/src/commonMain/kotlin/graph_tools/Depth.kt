@@ -1,6 +1,7 @@
 package graph_tools
 
 import Graph
+import utils.Vector3
 
 /**
  * A node's third coordinate: how far it is behind the plane the
@@ -8,18 +9,17 @@ import Graph
  * position; negative for a node in front of that plane.
  * In a DOT file it is the third number of `pos` (`pos="x,y,z!"`), and
  * an attribute `z` is read as well; a node with neither is in the
- * plane. Among a node's attributes here it is kept as `z`, so that it
- * is undone and shared like the others.
+ * plane, and its `pos` has two numbers. In memory it is the third
+ * coordinate of [Node.point].
  */
 object Depth {
+    /** The attribute older files have the depth in. */
     const val ATTRIBUTE = "z"
 
-    fun of(node: Node): Double = node.attributes.other[ATTRIBUTE]?.toDoubleOrNull() ?: 0.0
+    fun of(node: Node): Double = node.point.z
 
-    /** Put [node] at [z]. A node in the plane has no attribute: a flat graph's file says nothing of depth. */
     fun set(node: Node, z: Double) {
-        // in full: a node that is dragged is put somewhere many times over, and rounding each time would add up
-        if (z == 0.0) node.attributes.other.remove(ATTRIBUTE) else node.attributes.other[ATTRIBUTE] = z.toString()
+        node.point = Vector3(node.point.xy, z)
     }
 }
 

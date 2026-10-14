@@ -51,6 +51,7 @@ data class NodeFragment(
  */
 fun Node.deepClone(): Node {
     val clone = Node(position)
+    clone.point = point
     clone.attributes.text = this.attributes.text
     clone.attributes.bg = this.attributes.bg
     clone.attributes.fg = this.attributes.fg

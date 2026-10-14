@@ -9,6 +9,7 @@ import kotlinx.serialization.Serializable
 import utils.Utils
 import utils.Utils.toHexString
 import utils.Vector2
+import utils.Vector3
 
 /** Field name → value. A field that is absent has its default value. */
 typealias Fields = Map<String, String>
@@ -169,7 +170,8 @@ object NodeFields {
     }
 
     fun of(n: Node): Fields = (listOf(
-        POS to "${n.position.x},${n.position.y}",
+        // the depth, for a node that has one, is the third number
+        POS to (listOf(n.point.x, n.point.y) + listOfNotNull(n.point.z.takeIf { it != 0.0 })).joinToString(","),
     ) + n.levels.flatMap { detail(n.detail(it), it) } + listOf(
         NAME to n.attributes.name.takeIf { it.isNotEmpty() },
         MARKS to n.attributes.marks.takeIf { it.isNotEmpty() },
@@ -183,7 +185,7 @@ object NodeFields {
             val (k, level) = Node.Detail.split(written, DETAIL)
             when (k) {
                 in DETAIL -> n.setDetail(level, with(n.detail(level), k, v))
-                POS -> v?.split(",")?.let { n.position = Vector2(it[0].toDouble(), it[1].toDouble()) }
+                POS -> v?.split(",")?.let { n.point = Vector3(it[0].toDouble(), it[1].toDouble(), it.getOrNull(2)?.toDouble() ?: 0.0) }
                 NAME -> n.attributes.name = v.orEmpty()
                 MARKS -> n.attributes.marks = v.orEmpty()
                 SESSION_MARKS -> n.cache.sessionMarks = v.orEmpty()
