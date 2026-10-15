@@ -183,6 +183,21 @@ part of a decomposed graph is unclear).
   Before a step each stand-in is put back in the middle of what it holds.
   On main.dot (JVM, 16 ms frames) 2D rests in 238 frames instead of 881,
   3D in 399 instead of 1010; the CPU time to rest is about the same.
+- **Balanced by mass** (2026-10-15, Karel). The graph slid sideways some
+  4400 units a hold: a top system held 907 of 1638 nodes and moved as
+  freely as a small one, and each of its moves was carried to all of
+  them. Now, on every level (the nodes' too, their mass instead of their
+  importance), what two nodes do to each other is shared by mass: each
+  moves by the other's part of their masses, edges too.
+  - Edges: a node adds them up; each counts as one of as many as the
+    busier end has, the same from both ends; it pulls 0.3 while either
+    end is pushed. Exactly balanced.
+  - Pushes: averaged over the node's own (Karel: "own count"); dividing
+    them as the edges left more nodes on each other.
+  - Measured (main.dot, 2D, three holds): drift −280 a hold after the
+    first instead of −4200; 21-24 pairs on each other instead of 25-30;
+    277-286 frames instead of 312-378. The first hold still moves the
+    middle of the masses some 1700 (3D 3000), not explained yet.
 
 ### Seen (Karel, 2026-10-15)
 
