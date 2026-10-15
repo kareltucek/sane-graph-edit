@@ -472,7 +472,9 @@ object LayoutOptimizer {
              */
             fun nearest(n: Node, count: Int, slack: Double = 0.0): List<Node> {
                 val mayPush = { o: Node -> o != n && (o.position - n.position).length() <= (half(n) + half(o)) * reach * MARGIN + slack }
-                return (dense.nearest(n.position, count, but = n) + big).filter(mayPush).sortedBy { (it.position - n.position).lengthSquared() }.take(count)
+                // none of the usual size pushes from further than [of] looks
+                val radius = (half(n) + usual) * reach * MARGIN + slack
+                return (dense.nearest(n.position, count, but = n, radius = radius) + big).filter(mayPush).sortedBy { (it.position - n.position).lengthSquared() }.take(count)
             }
 
             /**
@@ -482,7 +484,11 @@ object LayoutOptimizer {
              */
             private val dense = nodes.map { it.position }.let { ps ->
                 val area = if (ps.isEmpty()) 1.0 else (ps.maxOf { it.x } - ps.minOf { it.x }) * (ps.maxOf { it.y } - ps.minOf { it.y })
-                SpatialIndex(nodes, kotlin.math.sqrt(area * PER_CELL / nodes.size.coerceAtLeast(1)).coerceAtLeast(0.001)) { it.position }
+                val first = kotlin.math.sqrt(area * PER_CELL / nodes.size.coerceAtLeast(1)).coerceAtLeast(0.001)
+                // where the nodes are in clumps, the cells of the clumps are made as small as the clumps are dense
+                generateSequence(SpatialIndex(nodes, first) { it.position } to first) { (index, cell) ->
+                    (cell / 2).takeIf { index.crowding > 2 * PER_CELL && it >= 0.001 }?.let { half -> SpatialIndex(nodes, half) { it.position } to half }
+                }.take(FINER + 1).last().first
             }
 
             private companion object {
@@ -494,6 +500,9 @@ object LayoutOptimizer {
 
                 /** About how many nodes a cell of [dense] has. */
                 const val PER_CELL = 4.0
+
+                /** [dense]'s cells are made at most this many times half as big. */
+                const val FINER = 4
             }
         }
 

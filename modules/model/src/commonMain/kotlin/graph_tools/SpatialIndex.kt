@@ -45,6 +45,9 @@ class SpatialIndex<T>(things: Collection<T>, private val cell: Double, private v
     private val columns = cells.keys.minOfOrNull { it.first }?.let { it..cells.keys.maxOf { c -> c.first } } ?: IntRange.EMPTY
     private val rows = cells.keys.minOfOrNull { it.second }?.let { it..cells.keys.maxOf { c -> c.second } } ?: IntRange.EMPTY
 
+    /** How many things the cell of a thing has, on average over the things: where they are in clumps, more than over the cells. */
+    val crowding: Double = cells.values.sumOf { it.size.toDouble() * it.size } / things.size.coerceAtLeast(1)
+
     private fun cellOf(p: Vector2): Pair<Int, Int> = floor(p.x / cell).toInt() to floor(p.y / cell).toInt()
 
     /** The things in the cells [ring] cells away from the cell [of]: the cell itself for 0, the 8 around it for 1, and so on outwards. */
@@ -74,8 +77,11 @@ class SpatialIndex<T>(things: Collection<T>, private val cell: Double, private v
         }
     }
 
-    /** The [count] things nearest to [p], the nearest first; fewer when there are fewer. [but] is left out: the thing asked from, when it is one of them. */
-    fun nearest(p: Vector2, count: Int, but: T? = null): List<T> {
+    /**
+     * The [count] things nearest to [p], the nearest first; fewer when there are fewer. [but] is left out: the thing asked from, when it is one of them.
+     * Of those further than [radius], some may be given and some not: the look stops there.
+     */
+    fun nearest(p: Vector2, count: Int, but: T? = null, radius: Double = Double.POSITIVE_INFINITY): List<T> {
         val from = cellOf(p)
         // rings beyond this have nothing
         val last = if (cells.isEmpty()) -1 else maxOf(from.first - columns.first, columns.last - from.first, from.second - rows.first, rows.last - from.second)
@@ -85,9 +91,9 @@ class SpatialIndex<T>(things: Collection<T>, private val cell: Double, private v
             // what is in a ring further out is further from [p] than this ring is wide: nothing there is nearer than what was found
             val enough = now.size == count && now.last().second <= ring * cell
             return when {
-                enough || ring >= last -> now
-                // asked from far from everything, or for nearly everything: rather than going on ring by ring, all are looked at
-                ring >= MOST_RINGS -> far(cells.values.flatten()).sortedBy { it.second }.take(count)
+                enough || ring >= last || ring * cell >= radius -> now
+                // asked from far from everything, or for nearly everything: rather than going on ring by ring, all within [radius] are looked at
+                ring >= MOST_RINGS -> far(within(p, radius)).sortedBy { it.second }.take(count)
                 else -> look(ring + 1, now)
             }
         }
