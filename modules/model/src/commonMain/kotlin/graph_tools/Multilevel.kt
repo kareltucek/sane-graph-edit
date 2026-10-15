@@ -186,10 +186,10 @@ object Multilevel {
         private fun runAt(i: Int, past: Double): Settling.Run {
             val level = levels[i]
             val among = level.nodes.toSet()
-            val run = if (i == 0) Settling.Run(g, among, weight, budget = budget, clock = clock, depth = depth, rank = rank)
+            val run = if (i == 0) Settling.Run(g, among, weight, budget = budget, clock = clock, depth = depth, rank = rank, gravity = false)
             else level.mass.let { m ->
                 val edges = { n: Node -> level.g.edgeMap[n].orEmpty().size.toDouble() }
-                Settling.Run(level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) })
+                Settling.Run(level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false)
             }
             return run.also { it.stir(among, past) }
         }

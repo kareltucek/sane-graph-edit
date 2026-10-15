@@ -103,6 +103,8 @@ object Settling {
      * [LayoutOptimizer.WINDOW_MS], and a step moves the part of it for
      * the time since the last one, so the nodes go as fast however
      * often a picture is drawn; without, a step is a whole window.
+     * Without [gravity] children are not pulled to lie the way the edges
+     * go (`o`: it pulls one way only, and the graph slid).
      */
     class Run(
         private val g: Graph,
@@ -114,6 +116,7 @@ object Settling {
         private val clock: (() -> Long)? = null,
         private val depth: Boolean = false,
         private val rank: ((Node) -> Double)? = null,
+        private val gravity: Boolean = true,
         private val origin: (Node) -> Vector3? = { null },
     ) : Stepping {
         var moving: Set<Node> = emptySet()
@@ -174,7 +177,7 @@ object Settling {
                 val order = LayoutTimes.time(Part.Order) { if (cut) waiting.filter { it in moving }.ifEmpty { fresh() } else fresh() }
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, down(g, depth), deadline)
+                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, if (gravity) down(g, depth) else Vector3.Zero, deadline)
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
                 covered += done.taken
