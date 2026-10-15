@@ -71,8 +71,6 @@ const REVEAL_TIMEOUT_MS = 300;
 const BARE = `set laststatus=0 showtabline=0 cmdheight=0 noruler noshowcmd noshowmode signcolumn=no nonumber norelativenumber foldcolumn=${PAD_COLUMNS} ` +
     "nofoldenable nowrap noswapfile sidescrolloff=0 shortmess+=IF | highlight! link FoldColumn Normal";
 
-const hex = (colour: number) => "#" + colour.toString(16).padStart(6, "0");
-
 export class NodeEditor {
     /** Started and waiting for the next edit. */
     private static spare: NodeEditor | null = null;
@@ -126,16 +124,6 @@ export class NodeEditor {
         editor.load(text, row, column, colours);
         NodeEditor.warm(host, font);
         return editor;
-    }
-
-    /** The colours of the waiting neovim's colour scheme; null if it has none that a page could use. */
-    static colours(): Promise<Colours | null> {
-        const nvim = NodeEditor.spare?.nvim ?? Promise.reject(new Error("no neovim"));
-        return nvim
-            .then((it) => it.request("nvim_get_hl", [0, { name: "Normal" }]))
-            .then((normal: { fg?: number; bg?: number }) =>
-                normal.fg !== undefined && normal.bg !== undefined ? { foreground: hex(normal.fg), background: hex(normal.bg) } : null)
-            .catch(() => null);
     }
 
     /** The window goes away: so does the waiting neovim. */

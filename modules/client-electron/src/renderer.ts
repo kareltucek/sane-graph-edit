@@ -1245,9 +1245,12 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         repaint();
     }).observe(canvas, { box: "device-pixel-content-box" });
 
-    // a neovim of the kind in use is kept started; its colour scheme is the page's theme
+    // a neovim of the kind in use is kept started (the one started for the theme is of the grid's kind)
     if (useGridEditor) GridEditor.warm();
-    else NodeEditor.warm(document.body, FONT);
+    else {
+        GridEditor.discardSpare();
+        NodeEditor.warm(document.body, FONT);
+    }
     window.addEventListener("beforeunload", () => {
         GridEditor.endAll();
         NodeEditor.discardSpare();
@@ -1265,12 +1268,6 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             leaveTerminal();
         }
     }, true);
-    (useGridEditor ? GridEditor.colours() : NodeEditor.colours()).then((theirs) => {
-        if (theirs !== null) {
-            nvimColours = theirs;
-            repaint();
-        }
-    });
 
     // What the mouse and the keys mean is the client core's business; this only reports them.
     // Positions from clientX / clientY: offsetX / offsetY of an event made by a test come out divided by the device pixel ratio.
@@ -1542,6 +1539,24 @@ const url = query.get("url");
 const file = query.get("file");
 const grid = measureGrid();
 
+/** How long the graphs wait for neovim's colour scheme at most; if it comes later, the page takes it then. */
+const THEME_WAIT_MS = 3000;
+
+/**
+ * Neovim started and its colour scheme read before the graphs load, so that they are drawn in it from the first
+ * picture; done when it is read, or when neovim fails or keeps them waiting longer than [THEME_WAIT_MS].
+ */
+function themed(): Promise<void> {
+    GridEditor.warm();
+    const theirs = GridEditor.colours().then((it) => {
+        if (it !== null) {
+            nvimColours = it;
+            page.repaint();
+        }
+    });
+    return Promise.race([theirs, new Promise<void>((resolve) => setTimeout(resolve, THEME_WAIT_MS))]);
+}
+
 /** This window runs the editor itself. */
 function startAlone() {
     try {
@@ -1553,18 +1568,20 @@ function startAlone() {
 
 if (problem !== null) {
     say(problem);
-} else if (query.get("attach") !== null) {
-    client.attachApp(file, grid, page, (app, error) => {
-        if (app) start(app, grid);
-        else say(`--attach: ${error}`);
-    });
-} else if (url === null) {
-    startAlone();
-} else {
-    client.openApp(url, file, grid, page, (app, error) => {
-        if (app) start(app, grid);
-        // an address that was found, not asked for, may be what a window that is gone left behind
-        else if (query.get("asked") === null) startAlone();
-        else say(`cannot connect to the editor at ${url}: ${error}`);
-    });
-}
+} else themed().then(() => {
+    if (query.get("attach") !== null) {
+        client.attachApp(file, grid, page, (app, error) => {
+            if (app) start(app, grid);
+            else say(`--attach: ${error}`);
+        });
+    } else if (url === null) {
+        startAlone();
+    } else {
+        client.openApp(url, file, grid, page, (app, error) => {
+            if (app) start(app, grid);
+            // an address that was found, not asked for, may be what a window that is gone left behind
+            else if (query.get("asked") === null) startAlone();
+            else say(`cannot connect to the editor at ${url}: ${error}`);
+        });
+    }
+});
