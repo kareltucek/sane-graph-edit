@@ -45,7 +45,22 @@ class MultilevelTest {
     }
 
     @Test
-    fun `the shells - a ball for each system, one around each sun of the lowest, around what they hold`() {
+    fun `one level only - its systems move, each as a whole`() {
+        val g = pile(90)
+        var now = 0L
+        val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
+        val run = Multilevel.Run(g, g.nodes, importance, importance, null, { now }, false, LayoutOptimizer.WINDOW_MS, only = 1)
+        val systems = run.systems.levels[1].members.values
+        val offsets = { systems.map { held -> held.map { it.point - held.first().point } } }
+        val before = offsets()
+        val start = g.nodes.associateWith { it.point }
+        repeat(50) { run.also { now += 16 }.step() }
+        assertTrue(g.nodes.any { it.point != start.getValue(it) }, "the systems moved")
+        offsets().zip(before).forEach { (now, was) -> now.zip(was).forEach { (a, b) -> assertTrue((a - b).length() < 1e-6, "a system moves as a whole") } }
+    }
+
+    @Test
+    fun `the shells -a ball for each system, one around each sun of the lowest, around what they hold`() {
         val g = pile(90)
         val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
         val run = Multilevel.Run(g, g.nodes, importance, importance, null, { 0L }, true, LayoutOptimizer.WINDOW_MS)

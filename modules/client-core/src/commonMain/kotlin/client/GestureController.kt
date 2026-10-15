@@ -681,7 +681,7 @@ class GestureController(
     /** The systems shown when `o` does not run (`:set suns`): made anew when `o` is let go; null when they are not shown (`:set nosuns`). */
     private var suns: Multilevel.Systems? = null
 
-    /** The one level of the systems drawn (`:set suns=<level>`), also while `o` runs; null: all. */
+    /** The one level of the systems drawn (`:set suns=<level>`), also while `o` runs, and the one `o` on the whole graph moves; null: all. */
     private var sunsLevel: Int? = null
 
     val sunsShown: Boolean get() = suns != null
@@ -734,8 +734,8 @@ class GestureController(
         val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
         val weight = { n: Node -> if (n in moving) importance(n) else Settling.FIXED }
         val depth = graphView.viewTransform.threeD
-        // the whole graph by levels: its clusters settle first, then what they hold
-        return if (selected.isEmpty()) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past)
+        // the whole graph by levels, all at once, or the one of `:set suns=<level>` alone
+        return if (selected.isEmpty()) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevel)
         else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, gravity = false).also { it.stir(moving, past) }
     }
 

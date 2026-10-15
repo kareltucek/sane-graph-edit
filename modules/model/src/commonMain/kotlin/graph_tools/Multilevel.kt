@@ -160,7 +160,8 @@ object Multilevel {
 
     /**
      * `o` on the whole graph: [shown] of [g] by levels, all of them at each step, until all rest; the nodes' own level with
-     * [weight] and [rank], the levels above by their masses. As [Settling.Run] for [budget], [clock], [depth] and [past].
+     * [weight] and [rank], the levels above by their masses; with [only] that level alone. As [Settling.Run] for [budget],
+     * [clock], [depth] and [past].
      * How long each level took goes to [LayoutTimes].
      */
     class Run(
@@ -171,7 +172,8 @@ object Multilevel {
         private val budget: Long?,
         private val clock: (() -> Long)?,
         private val depth: Boolean,
-        past: Double,
+        private val past: Double,
+        private val only: Int? = null,
     ) : Stepping {
         val systems = Platform.clockMillis().let { start ->
             Systems(g, shown, depth).also {
@@ -180,8 +182,6 @@ object Multilevel {
             }
         }
         private val levels = systems.levels
-
-        private val runs = levels.indices.map { runAt(it, past) }
 
         private fun runAt(i: Int, past: Double): Settling.Run {
             val level = levels[i]
@@ -217,20 +217,26 @@ object Multilevel {
             }
         }
 
-        /** A step of every level that does not rest yet, the top first: a node goes its own way plus that of each system it is in. */
+        /** The levels that move: [only] (`:set suns=<level>`; the top one, if there are fewer), or all, the top first. */
+        private val moving = only?.let { listOf(it.coerceIn(0, levels.size - 1)) } ?: levels.indices.reversed().toList()
+
+        private val runs = moving.associateWith { runAt(it, past) }
+
+        /** A step of every level that moves and does not rest yet, the top first: a node goes its own way plus that of each system it is in. */
         override fun step(): Boolean {
-            LayoutTimes.level = 0
+            LayoutTimes.level = moving.last()
             LayoutTimes.time(Part.Recentre) { recentre() }
-            val more = levels.indices.reversed().map { i ->
+            val lowest = moving.filter { it > 0 }.minOrNull()
+            val more = moving.map { i ->
                 LayoutTimes.level = i
                 val level = levels[i]
                 val before = if (i > 0) level.nodes.associateWith { it.point } else emptyMap()
-                runs[i].step().also {
+                runs.getValue(i).step().also {
                     if (i > 0) {
                         LayoutTimes.time(Part.Carry) { level.nodes.forEach { n -> (n.point - before.getValue(n)).takeIf { it != Vector3.Zero }?.let { carry(i, n, it) } } }
                     }
                     // what the systems carried, before the nodes' own step
-                    if (i == 1 && g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
+                    if (i == lowest && g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
                 }
             }
             return more.any { it }
