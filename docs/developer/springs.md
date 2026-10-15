@@ -109,7 +109,7 @@ columns, the fold onto room walls.
   antigravity; in 3D mode in space, with across. No origin. (Gravity off
   for `o`, Karel 2026-10-15: it pulls one way only and the graph slid.)
 - **Antigravity in both modes** for `o` and Shift-drag.
-- **3D mode is sparser:** collision and edge distances × 3 (Karel, after 1.5), every feature.
+- **3D mode is sparser:** collision and edge distances × 2 (Karel 2026-10-15; was 3, after 1.5), every feature.
 - **Explore in 3D mode settles in space** (with a strong gravity later).
 - The optimizer (`LayoutOptimizer`) keeps only what the settling uses from
   it (spring helpers, collision search).
@@ -150,7 +150,7 @@ part of a decomposed graph is unclear).
 ### Mass (mass first, springs from the masses; Karel's revision)
 
 - **Mass = the room a node wants:** the disc (3D mode: ball) of radius
-  its reach × its furthest spring (× 3 in 3D mode), by area (volume);
+  its reach × its furthest spring (× 2 in 3D mode), by area (volume);
   it was that radius^d until 2026-10-15 (Karel: fixed, as the shells,
   drawn by area, were √π, in 3D 1.61, times smaller than what the
   springs keep; a system's reach is now the radius of its room); a node's reach averaged over the ways
@@ -160,19 +160,19 @@ part of a decomposed graph is unclear).
 - **System:** k × the sum of its members' masses; k = 1.5, a guess, the same in both modes (Karel 2026-10-15: it compounds level by level; 1, and 1.3 for 2D, were tried and put back).
 - **Springs from the masses of both ends, one rule on every level:** edge
   length = (reach of one + reach of the other) × spring-scale × degree
-  factor of the smaller degree (kept, Karel) (× 3 in 3D); collision the
+  factor of the smaller degree (kept, Karel) (× 2 in 3D); collision the
   same with its touching factor.
   - A real node's reach stays its outline the way the other lies (as
     now): a wide node packs wide. **Nothing changes for real nodes.**
   - A contracted node's reach is the same any way: the reach that wants
-    room M (M^(1/d) / (spring-scale, × 3 in 3D)). Its degree is its edges
+    room M (M^(1/d) / (spring-scale, × 2 in 3D)). Its degree is its edges
     on that level; its weight is M.
 - Edges between two systems become one, pulling × their count; edges
   inside a system are dropped on that level. (Built 2026-10-15, Karel: the
   count is of the nodes' edges, through all levels; balanced, an edge's
   share is its count among all the counts of the busier end.)
-- Two systems with no edge between them keep 1.5 × as far apart as their
-  rooms reach (Karel 2026-10-15; 1.5 a guess). On main.dot (2D): edges
+- Two systems with no edge between them keep 2 × as far apart as their
+  rooms reach (Karel 2026-10-15; 1.5 first, then 2). On main.dot (2D): edges
   between systems end at 1.0-1.24 × the collision distance (were
   1.17-1.48), the nearest unrelated ones further apart.
 

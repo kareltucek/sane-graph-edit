@@ -24,7 +24,7 @@ object Multilevel {
     private const val PACKING = 1.5
 
     /** Two systems with no edge between them keep this many times as far apart as their rooms reach. */
-    private const val UNRELATED = 1.5
+    private const val UNRELATED = 2.0
 
     /** Levels are made until one has no more nodes than this. */
     private const val SMALL = 50
