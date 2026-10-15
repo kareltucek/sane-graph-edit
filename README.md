@@ -284,7 +284,7 @@ name a section where you can. A file that another program changed
 under an edit is not written over; `:e!` takes its text again.
 The unsaved copy lives as long as the application: `:e` and closing
 a tab leave it, `:wa` saves every graph and every such file, and
-quitting asks about those that are still unsaved. `gf` on a text file opens such a node, and `:w` there
+quitting asks about those that are still unsaved. `gf` on a text file opens such a node, selected (a click or Space edits it), and `:w` there
 writes the file. This is a first version.
 
 A node being edited in the Electron client is never bigger than the

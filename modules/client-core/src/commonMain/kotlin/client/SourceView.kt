@@ -9,7 +9,8 @@ import utils.Vector2
  * Graph for a link to a text file — all of it, `<file>:<line>`,
  * `<file>:<from>-<to>` or `<file>#<section>`: one node whose text is
  * kept in that file ([FileContent]), so that it is edited there. The
- * view opens with the node being edited. The node sits at the origin.
+ * view opens with the node selected, and, when a file is opened rather
+ * than a link followed, being edited. The node sits at the origin.
  */
 object SourceView {
     /** DOT id of the node. */

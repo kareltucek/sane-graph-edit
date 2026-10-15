@@ -46,7 +46,7 @@ class SourceViewTest {
     }
 
     @Test
-    fun `gf on a line link opens the lines to be edited, Ctrl+O and Ctrl+I go back and forth`() {
+    fun `gf on a line link opens the lines, selected but not edited, Ctrl+O and Ctrl+I go back and forth`() {
         val src = source(80)
         val dir = Files.createTempDirectory("sv")
         val g = dir.resolve("g.dot").also { it.writeText("digraph g {\n  m [ link=\"$src:40\" ];\n}\n") }
@@ -57,7 +57,8 @@ class SourceViewTest {
         gv.content.followFileLink()
         assertEquals(null, gv.currentFile)
         assertEquals(title, gv.content.untitledName)
-        assertTrue(gv.content.pendingEdit)
+        assertEquals(listOf(SourceView.NODE_ID), gv.g.selectedNodes.map { it.attributes.name })
+        assertFalse(gv.content.pendingEdit)
 
         gv.content.jumpBack()
         assertEquals("g.dot", gv.currentFile?.fileName.toString())

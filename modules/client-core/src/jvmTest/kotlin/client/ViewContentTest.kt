@@ -74,7 +74,19 @@ class ViewContentTest {
     }
 
     @Test
-    fun `a link's type says what it opens - a workspace, a graph as text, or nothing when it is no link's type`() {
+    fun `a link to a text file shows its node selected, not being edited - keys after it are the graph's`() {
+        dir.resolve("notes.txt").writeText("one\ntwo\n")
+        val view = viewOfA()
+        view.g.nodes.first().attributes.other["link"] = "notes.txt"
+        assertTrue(view.content.followFileLink())
+        assertEquals(listOf(SourceView.NODE_ID), view.g.selectedNodes.map { it.attributes.name })
+        view.content.painted()
+        assertFalse(view.content.pendingEdit)
+        assertEquals(null, view.editing)
+    }
+
+    @Test
+    fun `a link's type says what it opens -a workspace, a graph as text, or nothing when it is no link's type`() {
         val other = Files.createDirectory(dir.resolve("other"))
         dir.resolve("b.dot").writeText("digraph b {\n  t;\n  u;\n}\n")
         val view = viewOfA()

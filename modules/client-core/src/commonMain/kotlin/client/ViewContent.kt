@@ -401,9 +401,9 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     }
 
     /**
-     * Replace the graph with a [SourceView] of [target], and with
-     * [edit] start editing it once it is painted. False (and a
-     * message) if the file can't be read.
+     * Replace the graph with a [SourceView] of [target], its node
+     * selected, and with [edit] start editing it once it is painted.
+     * False (and a message) if the file can't be read.
      */
     fun showSourceInPlace(target: FileLink.Target, edit: Boolean = true): Boolean {
         val graph = try {
@@ -418,6 +418,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             browseDir = null
             sourceView = target
             untitledName = SourceView.title(target)
+            graph.nodes.firstOrNull { it.attributes.name == SourceView.NODE_ID }?.let { graph.cleanSelect(setOf(it)) }
             pendingEdit = edit
             // remembers what the file holds: an edit is told from it
             FileContent.reconcile(view)
@@ -526,8 +527,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 showHelpInPlace()
             }
             target.section != null && lines == null -> shell.message("no section `${target.section}` in ${path?.name}")
+            // the text is only shown: editing it starts as anywhere else (a click, Space), or keys meant for the graph,
+            // as Ctrl+O back, would go to the editor
             isText(target) -> if (confirmDiscard("open ${SourceView.title(target)}")) {
-                if (showSourceInPlace(target)) jumps.record(from)
+                if (showSourceInPlace(target, edit = false)) jumps.record(from)
             }
             inThisGraph -> if (target.nodeId != null) {
                 jumps.record(from)
@@ -574,7 +577,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 shell.message("no section `${target.section}` in ${path.name}")
                 null
             }
-            isText(target) -> shell.newTab()?.takeIf { it.content.showSourceInPlace(target) }
+            isText(target) -> shell.newTab()?.takeIf { it.content.showSourceInPlace(target, edit = false) }
             Fs.isDirectory(path) -> shell.browse(path)
             // the new tab has no size yet; its first paint does the focusing
             else -> editInTab(path)?.also { it.content.pendingFocus = target.nodeId }
