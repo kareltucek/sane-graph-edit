@@ -63,8 +63,14 @@ object Settling {
     /** The origin spring asks for no more than this in a step, however far the node is from where it was. */
     const val ORIGIN_CAP = 40.0
 
-    /** What the springs ask of a node in a balanced step ([Run]): of its pairs, each with the other; of its own. */
-    private class Paired(val pushes: List<Pair<Vector3, Node>>, val edges: List<Pair<Vector3, Node>>, val nudges: List<Vector3>, val pulls: List<Vector3>)
+    /** What the springs ask of a node in a balanced step ([Run]): of its pairs, each with the other, and how much its edges pull together; of its own. */
+    private class Paired(
+        val pushes: List<Pair<Vector3, Node>>,
+        val edges: List<Pair<Vector3, Node>>,
+        val load: Double,
+        val nudges: List<Vector3>,
+        val pulls: List<Vector3>,
+    )
 
     /**
      * Adaptive ([Run]): after this many rounds in a row in which the springs asked for less than in the one before, the
@@ -132,6 +138,10 @@ object Settling {
      * the springs ask that a step moves grows while they ask for less
      * and less, and shrinks when they ask for more ([ADAPT]); the nodes
      * pull until they rest, with no limit of rounds.
+     *
+     * Balanced, an edge pulls [pulls] times ([Multilevel]: as many as the
+     * edges it stands for), and two nodes with no edge between them keep
+     * [unrelated] times as far apart.
      */
     class Run(
         private val g: Graph,
@@ -146,6 +156,8 @@ object Settling {
         private val gravity: Boolean = true,
         private val balanced: Boolean = false,
         private val adaptive: Boolean = false,
+        private val pulls: (Edge) -> Double = { 1.0 },
+        private val unrelated: Double = 1.0,
         private val origin: (Node) -> Vector3? = { null },
     ) : Stepping {
         var moving: Set<Node> = emptySet()
@@ -214,7 +226,7 @@ object Settling {
                 val order = LayoutTimes.time(Part.Order) { if (cut) waiting.filter { it in moving }.ifEmpty { fresh() } else fresh() }
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, if (gravity) down(g, depth) else Vector3.Zero, deadline, balanced)
+                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, if (gravity) down(g, depth) else Vector3.Zero, deadline, balanced, pulls, unrelated)
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
                 covered += done.taken
@@ -343,12 +355,14 @@ object Settling {
         down: Vector3,
         deadline: Long?,
         balanced: Boolean,
+        edgePull: (Edge) -> Double,
+        unrelated: Double,
     ): Step {
         LayoutTimes.time(Part.EdgePoints) { EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet()) }
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
         val strength = if (pulling && !close) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
         // which are near is looked up anew at each step: the nodes are elsewhere
-        val nearOf = LayoutTimes.time(Part.Index) { near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0)) }
+        val nearOf = LayoutTimes.time(Part.Index) { near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0) * unrelated) }
         // of two on each other each takes the other's part of their weights: all of it from a fixed one, half from one as heavy
         val share = { n: Node, o: Node -> weight(o).let { w -> if (w.isInfinite()) 1.0 else w / (weight(n) + w) } }
         val mean = { vs: List<Vector3> -> if (vs.isEmpty()) null else vs.reduce(Vector3::plus) / vs.size }
@@ -364,23 +378,27 @@ object Settling {
             val n = order[taken]
             taken += 1
             val pushes = nearOf(n).mapNotNull { o ->
-                val push = if (depth) Space.collision(n, o, strength) else LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength)?.v?.let(flat)
+                // those with no edge between them keep further apart, when asked to
+                val apart = if (unrelated == 1.0 || g.edgeMap[n].orEmpty().any { it.src == o || it.dst == o }) 1.0 else unrelated
+                val push = if (depth) Space.collision(n, o, strength * apart) else LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength * apart)?.v?.let(flat)
                 push?.let { it * share(n, o) to o }
             }
             woken += pushes.map { it.second }.filter { it !in moving && weight(it).isFinite() }
             // in space, nodes on each other also go apart across the plane they are in, each its own way ([Space.nudge])
             val nudges = if (depth) pushes.mapNotNull { (push, o) -> Space.nudge(g, n, o, push, among) } else emptyList()
             val home = if (pulling) origin(n)?.let { (if (depth) it else Vector3(it.xy, 0.0)) - place(n) } else null
-            // each end of an edge goes half the way; balanced, the other's part of their masses of all of it
-            val edges = if (!pulling) emptyList() else g.edgeMap[n].orEmpty().mapNotNull { e ->
+            // each end of an edge goes half the way; balanced, the other's part of their masses of all of it, as many times as
+            // the edge pulls
+            val weighed = if (!pulling) emptyList() else g.edgeMap[n].orEmpty().mapNotNull { e ->
                 val other = if (e.src == n) e.dst else e.src
                 val half = when {
                     other == n || other !in among -> null
                     depth -> Space.edge(g, n, other)
                     else -> flat(LayoutOptimizer.impl.computeBBSpring(g, n, other, e).v)
                 }
-                half?.let { (if (balanced) it * (2 * share(n, other)) else it) to other }
+                half?.let { Triple(if (balanced) it * (2 * share(n, other) * edgePull(e)) else it, other, edgePull(e)) }
             }
+            val edges = weighed.map { (v, other) -> v to other }
             // what pulls one node only
             val pulls = if (!pulling) emptyList() else {
                 val capped = home?.takeIf { n !in firm }?.let { by -> if (by.length() > ORIGIN_CAP) by.toScale(ORIGIN_CAP) else by }
@@ -389,7 +407,7 @@ object Settling {
                 listOfNotNull(capped) + alike(g, n, among, place) + away + gravity(g, n, among, down, place)
             }
             if (balanced) {
-                paired[n] = Paired(pushes, edges, nudges, pulls)
+                paired[n] = Paired(pushes, edges, weighed.sumOf { it.third }, nudges, pulls)
                 continue
             }
             // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
@@ -403,14 +421,14 @@ object Settling {
             val by = loose?.let { it * damping + (tug ?: Vector3.Zero) } ?: tug
             if (by != null) moves[n] = by
         }
-        // balanced: an edge counts as one of as many as the busier of its two ends has, the same from both, and pulls less
-        // while either end is pushed; the pushes, each shared by mass, are averaged as ever (dividing them as the edges
-        // left more nodes on each other)
+        // balanced: an edge counts by how much it pulls among all that pulls the busier of its two ends, the same from both,
+        // and pulls less while either end is pushed; the pushes, each shared by mass, are averaged as ever (dividing them
+        // as the edges left more nodes on each other)
         val pushed = { m: Node -> paired[m]?.pushes?.isNotEmpty() == true }
         paired.forEach { (n, p) ->
             val off = mean(p.pushes.map { it.first }) ?: Vector3.Zero
             val to = p.edges.fold(Vector3.Zero) { sum, (v, o) ->
-                sum + v * (if (pushed(n) || pushed(o)) PULL_WHEN_PUSHED else 1.0) / maxOf(p.edges.size, paired[o]?.edges?.size ?: 0).toDouble()
+                sum + v * (if (pushed(n) || pushed(o)) PULL_WHEN_PUSHED else 1.0) / maxOf(p.load, paired[o]?.load ?: 0.0)
             }
             val own = (mean(p.nudges) ?: Vector3.Zero) + (mean(p.pulls) ?: Vector3.Zero) * (if (pushed(n)) PULL_WHEN_PUSHED else 1.0)
             moves[n] = (off + to + own) * damping

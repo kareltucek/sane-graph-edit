@@ -157,7 +157,7 @@ part of a decomposed graph is unclear).
   (its outline as a square of the same area; in 3D its depth too); its
   furthest spring is the collision's, or the edges' with the degree
   factor of its own degree (Karel: as the springs count children).
-- **System:** k × the sum of its members' masses; k = 1.3 in 2D, 1.5 in 3D mode (guesses; Karel 2026-10-15: one for each; 1 was tried and put back).
+- **System:** k × the sum of its members' masses; k = 1.5, a guess, the same in both modes (Karel 2026-10-15: it compounds level by level; 1, and 1.3 for 2D, were tried and put back).
 - **Springs from the masses of both ends, one rule on every level:** edge
   length = (reach of one + reach of the other) × spring-scale × degree
   factor of the smaller degree (kept, Karel) (× 3 in 3D); collision the
@@ -168,7 +168,13 @@ part of a decomposed graph is unclear).
     room M (M^(1/d) / (spring-scale, × 3 in 3D)). Its degree is its edges
     on that level; its weight is M.
 - Edges between two systems become one, pulling × their count; edges
-  inside a system are dropped on that level.
+  inside a system are dropped on that level. (Built 2026-10-15, Karel: the
+  count is of the nodes' edges, through all levels; balanced, an edge's
+  share is its count among all the counts of the busier end.)
+- Two systems with no edge between them keep 1.5 × as far apart as their
+  rooms reach (Karel 2026-10-15; 1.5 a guess). On main.dot (2D): edges
+  between systems end at 1.0-1.24 × the collision distance (were
+  1.17-1.48), the nearest unrelated ones further apart.
 
 ### Clusters: solar systems (after FM3, Hachul 2004, deterministic)
 

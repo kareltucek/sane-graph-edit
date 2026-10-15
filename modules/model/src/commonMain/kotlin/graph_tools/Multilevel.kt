@@ -15,12 +15,16 @@ import kotlin.math.sqrt
  * system carried to all it holds, so that a node goes its own way plus that of each system it is in.
  *
  * A node's mass is the room it wants: the disc (in 3D the ball) as far as its springs keep others from its middle,
- * by area (volume). A system weighs [PACKING] (in space [PACKING_IN_SPACE]) times its members together and stands as one round node that wants as much.
+ * by area (volume). A system weighs [PACKING] times its members together and stands as one round node that wants as much.
+ * An edge between two systems pulls as many times as there are edges between the nodes they hold ([Level.count]); two
+ * systems with none between them keep [UNRELATED] times further apart.
  */
 object Multilevel {
-    /** A system wants this many times the room of its members together: in the plane, and in space (3D mode). */
-    private const val PACKING = 1.3
-    private const val PACKING_IN_SPACE = 1.5
+    /** A system wants this many times the room of its members together; on each level again. */
+    private const val PACKING = 1.5
+
+    /** Two systems with no edge between them keep this many times as far apart as their rooms reach. */
+    private const val UNRELATED = 1.5
 
     /** Levels are made until one has no more nodes than this. */
     private const val SMALL = 50
@@ -33,8 +37,20 @@ object Multilevel {
 
     fun isCluster(n: Node): Boolean = n.attributes.other.containsKey(CLUSTER)
 
-    /** One level: its [nodes] in [g], what each weighs, and, above the nodes, what each holds of the level below and which of those is its sun. */
-    internal class Level(val g: Graph, val nodes: List<Node>, val mass: Map<Node, Double>, val members: Map<Node, List<Node>>, val sun: Map<Node, Node>)
+    /**
+     * One level: its [nodes] in [g], what each weighs, and, above the nodes, what each holds of the level below, which of
+     * those is its sun, and of each edge how many edges of the nodes it stands for ([count]).
+     */
+    internal class Level(
+        val g: Graph,
+        val nodes: List<Node>,
+        val mass: Map<Node, Double>,
+        val members: Map<Node, List<Node>>,
+        val sun: Map<Node, Node>,
+        private val counts: Map<Edge, Int> = emptyMap(),
+    ) {
+        fun count(e: Edge): Int = counts[e] ?: 1
+    }
 
     /** A ball drawn around a system of [level] (1 the lowest), or, of level 0, around a node, as big as its room; [sun]: a node that is the sun of one of the lowest. */
     data class Shell(val at: Vector3, val radius: Double, val level: Int, val sun: Boolean = false)
@@ -101,7 +117,7 @@ object Multilevel {
         val systems = sunOf.entries.groupBy({ it.value }, { it.key })
         val upper = Graph()
         val stand = systems.mapValues { (sun, members) ->
-            val mass = (if (depth) PACKING_IN_SPACE else PACKING) * held.getValue(sun)
+            val mass = PACKING * held.getValue(sun)
             // its springs keep others as far as its room reaches: the reach that, times the collision spring's, is that
             val reach = radiusOf(mass, depth) / (LayoutOptimizer.impl.collisionReach() * sparser(depth))
             val weights = members.map { level.mass.getValue(it) }
@@ -113,10 +129,18 @@ object Multilevel {
             } to mass
         }
         stand.values.forEach { upper.add(it.first) }
-        val joined = mutableSetOf<Pair<Node, Node>>()
+        // one edge between two systems, standing for all the nodes' edges between them
+        val joined = mutableMapOf<Pair<Node, Node>, Edge>()
+        val count = mutableMapOf<Edge, Int>()
         level.g.edges.filter { it.src in among && it.dst in among }.forEach { e ->
             val (a, b) = stand.getValue(sunOf.getValue(e.src)).first to stand.getValue(sunOf.getValue(e.dst)).first
-            if (a != b && joined.add(a to b) && joined.add(b to a)) upper.add(Edge(a, b))
+            if (a != b) {
+                val edge = joined[a to b] ?: joined[b to a] ?: Edge(a, b).also {
+                    upper.add(it)
+                    joined[a to b] = it
+                }
+                count[edge] = (count[edge] ?: 0) + level.count(e)
+            }
         }
         return Level(
             upper,
@@ -124,6 +148,7 @@ object Multilevel {
             stand.values.associate { it },
             stand.entries.associate { (sun, it) -> it.first to systems.getValue(sun) },
             stand.entries.associate { (sun, it) -> it.first to sun },
+            count,
         )
     }
 
@@ -193,7 +218,10 @@ object Multilevel {
             }
             else level.mass.let { m ->
                 val edges = { n: Node -> level.g.edgeMap[n].orEmpty().size.toDouble() }
-                Settling.Run(level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false, balanced = true, adaptive = true)
+                Settling.Run(
+                    level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false,
+                    balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, unrelated = UNRELATED,
+                )
             }
             return run.also { it.stir(among, past) }
         }
