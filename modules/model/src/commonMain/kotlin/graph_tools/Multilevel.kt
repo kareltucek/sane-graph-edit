@@ -14,8 +14,8 @@ import kotlin.math.sqrt
  * systems, those into systems of theirs, until few are left; the springs settle all levels at once, every move of a
  * system carried to all it holds, so that a node goes its own way plus that of each system it is in.
  *
- * A node's mass is the room it wants: the furthest its springs keep others, from its middle, to the power of the
- * dimensions. A system weighs [PACKING] times its members together and stands as one round node that wants as much.
+ * A node's mass is the room it wants: the disc (in 3D the ball) as far as its springs keep others from its middle,
+ * by area (volume). A system weighs [PACKING] times its members together and stands as one round node that wants as much.
  */
 object Multilevel {
     /** A system wants this many times the room of its members together. */
@@ -44,11 +44,12 @@ object Multilevel {
     /** How far a ball (in 3D) or a disc reaches that has the room [mass]. */
     private fun radiusOf(mass: Double, depth: Boolean) = if (depth) (3 * mass / (4 * PI)).pow(1.0 / 3) else sqrt(mass / PI)
 
-    private fun dimensions(depth: Boolean) = if (depth) 3 else 2
+    /** The room of a ball (in 3D) or a disc that reaches [radius]. */
+    private fun roomOf(radius: Double, depth: Boolean) = if (depth) 4 * PI / 3 * radius.pow(3) else PI * radius * radius
 
     private fun sparser(depth: Boolean) = if (depth) Settling.Space.SPARSER else 1.0
 
-    /** The room [n] wants: its reach (as a square, in 3D a card, of its area) times the furthest of its springs. */
+    /** The room [n] wants: the disc (in 3D the ball) as far as its reach (as a square, in 3D a card, of its area) times the furthest of its springs. */
     private fun mass(g: Graph, n: Node, depth: Boolean): Double {
         val half = n.cache.shapeBounds / 2.0
         val deep = minOf(half.x, half.y) * Settling.Space.THICKNESS
@@ -56,7 +57,7 @@ object Multilevel {
         val degree = g.edgeMap[n].orEmpty().size.toDouble()
         val spring = maxOf(LayoutOptimizer.impl.collisionReach(), LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(degree))
         // a node not measured yet has no size: it still weighs something
-        return (reach * spring * sparser(depth)).pow(dimensions(depth)).coerceAtLeast(1.0)
+        return roomOf(reach * spring * sparser(depth), depth).coerceAtLeast(1.0)
     }
 
     private fun neighbours(level: Level, among: Set<Node>): Map<Node, List<Node>> =
@@ -103,8 +104,8 @@ object Multilevel {
         val upper = Graph()
         val stand = systems.mapValues { (sun, members) ->
             val mass = PACKING * held.getValue(sun)
-            // its springs keep others as far as its room: the reach that, times the collision spring's, is that
-            val reach = mass.pow(1.0 / dimensions(depth)) / (LayoutOptimizer.impl.collisionReach() * sparser(depth))
+            // its springs keep others as far as its room reaches: the reach that, times the collision spring's, is that
+            val reach = radiusOf(mass, depth) / (LayoutOptimizer.impl.collisionReach() * sparser(depth))
             val weights = members.map { level.mass.getValue(it) }
             Node(Vector2.Zero).apply {
                 attributes.other[CLUSTER] = ""

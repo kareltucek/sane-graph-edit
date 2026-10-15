@@ -142,8 +142,11 @@ part of a decomposed graph is unclear).
 
 ### Mass (mass first, springs from the masses; Karel's revision)
 
-- **Mass = the room a node wants:** (its reach × its furthest spring,
-  × 3 in 3D mode)^d, d = 2 or 3; a node's reach averaged over the ways
+- **Mass = the room a node wants:** the disc (3D mode: ball) of radius
+  its reach × its furthest spring (× 3 in 3D mode), by area (volume);
+  it was that radius^d until 2026-10-15 (Karel: fixed, as the shells,
+  drawn by area, were √π, in 3D 1.61, times smaller than what the
+  springs keep; a system's reach is now the radius of its room); a node's reach averaged over the ways
   (its outline as a square of the same area; in 3D its depth too); its
   furthest spring is the collision's, or the edges' with the degree
   factor of its own degree (Karel: as the springs count children).
