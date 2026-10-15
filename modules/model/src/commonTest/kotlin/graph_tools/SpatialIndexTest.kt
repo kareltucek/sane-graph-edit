@@ -45,6 +45,21 @@ class SpatialIndexTest {
     }
 
     @Test
+    fun `the nearest few within a radius - all of those within it are among them`() {
+        listOf(10.0, 150.0, 2500.0).forEach { cell ->
+            val index = SpatialIndex(points, cell) { it }
+            listOf(1, 5, 37).forEach { count ->
+                listOf(0.0, 35.0, 400.0).forEach { radius ->
+                    asked.forEach { p ->
+                        val near = index.nearest(p, count, radius = radius).map { (it - p).length() }.filter { it <= radius }
+                        assertEquals(points.map { (it - p).length() }.filter { it <= radius }.sorted().take(count), near, "cell $cell, $count within $radius from $p")
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     fun `the one asked from is left out, nothing is found among nothing`() {
         val index = SpatialIndex(points, 150.0) { it }
         val from = points[7]
