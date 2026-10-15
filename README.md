@@ -197,7 +197,7 @@ Flags:
 | `D`       | Delete selected nodes but reconnect predecessors to successors  |
 | `o`       | Layout optimiser while held: the selected nodes (all, with none selected) move a spring pass a picture until the key is let go; one undo step |
 | `O`       | The same, around one selected node: it stays where it is and its children are laid out around it (several selected: as `o`) |
-| `:suns` / `:nosuns` | Show (made anew now and whenever `o` is let go) / stop showing the systems the whole graph is settled by: a ring (3D: a wire icosahedron) around each, as big as the room it wants, coloured by level |
+| `:set suns` / `:set nosuns` | Show (made anew now and whenever `o` is let go) / stop showing the systems the whole graph is settled by: a ring (3D: a wire icosahedron) around each, as big as the room it wants, coloured by level; `:set suns=<level>` only those of one level (0 the suns), also while `o` runs |
 | `g`       | Toggle "grab" mode — move the selection without holding a button |
 
 ### Keyboard — selection & navigation
@@ -419,6 +419,8 @@ while on:
   child in a column right of its parents, a parent left of its
   children, stacked vertically without overlapping anything visible.
   A real move: one undo step per batch, saved with the file.
+- `suns`, `suns=<level>` — the systems `o` settles the whole graph by
+  are drawn (see `o`); with a level, only those of it.
 - `wall-scale=<n>` — with `walls`, how many millimetres of a wall a
   unit of the graph is: 1 (a node 150 units wide is 15 cm) unless set;
   0.5 shows everything half as big.

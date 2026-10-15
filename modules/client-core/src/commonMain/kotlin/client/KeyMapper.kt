@@ -917,8 +917,6 @@ class KeyMapper(
                 val motion = args?.trim().orEmpty()
                 ZCommands.fold(gv, how, defaults[motion]?.takeIf { ZCommands.isMotion(it) } ?: motion, cmd)
             }
-            "suns" -> gv.gestures.showSuns()
-            "nosuns" -> gv.gestures.hideSuns()
             "browse" -> {
                 // :browse [dir] — file-tree tab; no arg = working directory
                 val dir = args?.let { resolvePath(it) } ?: Workspace.dir
@@ -947,6 +945,7 @@ class KeyMapper(
             "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
             "picker" -> FilePicker.command = value.ifBlank { FilePicker.DEFAULT_COMMAND }
             "wall-scale" -> value.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }?.let { graph_tools.ViewModes.wallScale = it.coerceIn(0.05, 20.0) }
+            "suns" -> value.toIntOrNull()?.takeIf { it >= 0 }?.let { activeView?.gestures?.showSuns(it) }
             else -> applicationSettings[name]?.invoke(value) ?: utils.Platform.warn("sane-graph-edit: unknown setting '$name'")
         }
     }
@@ -975,6 +974,7 @@ class KeyMapper(
             // of the graph shown, not of all of them
             "explore" -> activeView?.let { Explore.set(it, change(Explore.isOn(it))) }
             "3d" -> activeView?.let { it.viewTransform.threeD = change(it.viewTransform.threeD) }
+            "suns" -> activeView?.gestures?.let { if (change(it.sunsShown)) it.showSuns(null) else it.hideSuns() }
             else -> applicationFlags[name]?.let { flag ->
                 flag.on = change(flag.on)
                 flag.set(flag.on)
@@ -1183,6 +1183,14 @@ class KeyMapper(
         sb.appendLine("                    is (walls). 1: a node 150 units wide is 15 cm.")
         sb.appendLine("                    Current: ${graph_tools.ViewModes.wallScale}.")
         sb.appendLine()
+        sb.appendLine("  suns              Show the systems `o` settles the whole graph by: a")
+        sb.appendLine("                    ring (3D: a wire icosahedron) around each, as big")
+        sb.appendLine("                    as the room it wants, coloured by level; made anew")
+        sb.appendLine("                    now and whenever `o` is let go.")
+        sb.appendLine("  suns=<level>      Only those of one level, also while `o` runs:")
+        sb.appendLine("                    0 the suns, 1 their systems, 2 theirs, ...")
+        sb.appendLine("                    Current: ${if (activeView?.gestures?.sunsShown == true) "on" else "off"}.")
+        sb.appendLine()
         sb.appendLine("  discard           Never ask about unsaved changes: opening,")
         sb.appendLine("                    following links, reloading, jumping, closing")
         sb.appendLine("                    tabs and quitting discard them silently.")
@@ -1223,8 +1231,6 @@ class KeyMapper(
             "remap <lhs> <rhs>       — add recursive key mapping",
             "set <opt>=<val>         — change a setting (e.g. timeoutlen)",
             "source <path>           — load commands from a file",
-            "suns                    — show the systems `o` settles the graph by (made anew now and when `o` is let go)",
-            "nosuns                  — stop showing them",
             "unmap <lhs>             — remove a user mapping",
             "w [<path>]              — save (to <path> if given)",
             "wq                      — save then close tab (quit if last)",
@@ -1377,7 +1383,7 @@ class KeyMapper(
         val BUILTIN_COMMANDS = listOf(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
             "w", "wa", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
-            "fold", "unfold", "toggle-fold", "content-type", "z", "suns", "nosuns",
+            "fold", "unfold", "toggle-fold", "content-type", "z",
         )
 
         /** Commands that take a motion: run from a key they wait for the next command and take it as theirs (`zf` then `t`). */
@@ -1401,7 +1407,7 @@ class KeyMapper(
         val MOUSE_GESTURES = setOf("grab", "scale", "rotate")
 
         /** `:set <name>=<value>` settings ([applySetting]). */
-        val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker", "wall-scale")
+        val VALUE_SETTINGS = listOf("timeoutlen", "spring-scale", "spring-scale-step", "picker", "wall-scale", "suns")
 
         /** The names of the settings that are the application's own ([applicationSettings]), for completion: it adds them. */
         val APPLICATION_SETTINGS = mutableSetOf<String>()
@@ -1410,7 +1416,7 @@ class KeyMapper(
         val APPLICATION_FLAGS = mutableSetOf<String>()
 
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
-        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "walls", "discard", "3d", "explore")
+        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "walls", "discard", "3d", "explore", "suns")
 
         /** A button of the mouse on a node, as a key that can be mapped (`:map <RightMouse> zO`): the left one clicked, the right one pressed. */
         const val LEFT_MOUSE = "<LeftMouse>"

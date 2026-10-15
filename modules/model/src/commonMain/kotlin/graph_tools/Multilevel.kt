@@ -11,8 +11,8 @@ import kotlin.math.sqrt
 
 /**
  * The settling of a whole graph by levels ([docs/developer/springs.md] §7): the nodes are contracted into solar
- * systems, those into systems of theirs, until few are left; the springs settle the top level, every move of a system
- * carried to all it holds, then the level below, down to the nodes.
+ * systems, those into systems of theirs, until few are left; the springs settle all levels at once, every move of a
+ * system carried to all it holds, so that a node goes its own way plus that of each system it is in.
  *
  * A node's mass is the room it wants: the furthest its springs keep others, from its middle, to the power of the
  * dimensions. A system weighs [PACKING] times its members together and stands as one round node that wants as much.
@@ -159,7 +159,7 @@ object Multilevel {
     }
 
     /**
-     * `o` on the whole graph: [shown] of [g] by levels, from the top down, a step at a time; the nodes' own level with
+     * `o` on the whole graph: [shown] of [g] by levels, all of them at each step, until all rest; the nodes' own level with
      * [weight] and [rank], the levels above by their masses. As [Settling.Run] for [budget], [clock], [depth] and [past].
      * How long each level took goes to [LayoutTimes].
      */
@@ -181,8 +181,7 @@ object Multilevel {
         }
         private val levels = systems.levels
 
-        private var at = levels.size - 1
-        private var run = runAt(at, past)
+        private val runs = levels.indices.map { runAt(it, past) }
 
         private fun runAt(i: Int, past: Double): Settling.Run {
             val level = levels[i]
@@ -203,21 +202,34 @@ object Multilevel {
             }
         }
 
+        /** Each stand-in back in the middle of what it holds, as the levels below moved that: the lowest first. */
+        private fun recentre() {
+            (1 until levels.size).forEach { i ->
+                levels[i].nodes.forEach { n ->
+                    val held = levels[i].members.getValue(n)
+                    val weights = held.map { levels[i - 1].mass.getValue(it) }
+                    n.point = held.zip(weights).fold(Vector3.Zero) { at, (m, w) -> at + m.point * w } / weights.sum()
+                }
+            }
+        }
+
+        /** A step of every level that does not rest yet, the top first: a node goes its own way plus that of each system it is in. */
         override fun step(): Boolean {
-            LayoutTimes.level = at
-            val level = levels[at]
-            val before = if (at > 0) level.nodes.associateWith { it.point } else emptyMap()
-            val more = run.step()
-            if (at > 0) {
-                LayoutTimes.time(Part.Carry) { level.nodes.forEach { n -> (n.point - before.getValue(n)).takeIf { it != Vector3.Zero }?.let { carry(at, n, it) } } }
-                if (g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
+            LayoutTimes.level = 0
+            LayoutTimes.time(Part.Recentre) { recentre() }
+            val more = levels.indices.reversed().map { i ->
+                LayoutTimes.level = i
+                val level = levels[i]
+                val before = if (i > 0) level.nodes.associateWith { it.point } else emptyMap()
+                runs[i].step().also {
+                    if (i > 0) {
+                        LayoutTimes.time(Part.Carry) { level.nodes.forEach { n -> (n.point - before.getValue(n)).takeIf { it != Vector3.Zero }?.let { carry(i, n, it) } } }
+                    }
+                    // what the systems carried, before the nodes' own step
+                    if (i == 1 && g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
+                }
             }
-            val down = !more && at > 0
-            if (down) {
-                at -= 1
-                run = runAt(at, LayoutOptimizer.WINDOW_MS)
-            }
-            return more || down
+            return more.any { it }
         }
     }
 }

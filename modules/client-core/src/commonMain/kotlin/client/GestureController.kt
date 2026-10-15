@@ -678,23 +678,35 @@ class GestureController(
     /** `o` / `O` held: the nodes it lays out, a step for each picture ([frame]); null while neither is held. */
     private var laying: Stepping? = null
 
-    /** The systems shown when `o` does not run (`:suns`): made anew when `o` is let go; null when they are not shown (`:nosuns`). */
+    /** The systems shown when `o` does not run (`:set suns`): made anew when `o` is let go; null when they are not shown (`:set nosuns`). */
     private var suns: Multilevel.Systems? = null
 
-    /** `:suns`: the systems of the nodes shown are made anew and shown. */
-    fun showSuns() {
+    /** The one level of the systems drawn (`:set suns=<level>`), also while `o` runs; null: all. */
+    private var sunsLevel: Int? = null
+
+    val sunsShown: Boolean get() = suns != null
+
+    private fun makeSuns() {
         suns = Multilevel.Systems(graphView.g, graphView.g.visibleNodes(), graphView.viewTransform.threeD)
+    }
+
+    /** `:set suns` / `:set suns=<level>`: the systems of the nodes shown are made anew and shown, those of [level] only or all. */
+    fun showSuns(level: Int?) {
+        sunsLevel = level
+        makeSuns()
         graphView.repaint()
     }
 
-    /** `:nosuns`. */
+    /** `:set nosuns`. */
     fun hideSuns() {
         suns = null
+        sunsLevel = null
         graphView.repaint()
     }
 
-    /** The systems to be drawn ([Multilevel.Systems.shells]): while `o` lays out the whole graph by levels, those; else those of `:suns`. */
-    val shells: List<Multilevel.Shell> get() = ((laying as? Multilevel.Run)?.systems ?: suns)?.shells().orEmpty()
+    /** The systems to be drawn ([Multilevel.Systems.shells]): while `o` lays out the whole graph by levels, those; else those of `:set suns`. */
+    val shells: List<Multilevel.Shell>
+        get() = ((laying as? Multilevel.Run)?.systems ?: suns)?.shells().orEmpty().filter { sunsLevel == null || it.level == sunsLevel }
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null
@@ -750,7 +762,10 @@ class GestureController(
         laying = null
         layingFrom = null
         if (before != null) commitPoints(before)
-        if (suns != null) showSuns()
+        if (suns != null) {
+            makeSuns()
+            graphView.repaint()
+        }
     }
 
     /** The nodes of [before] that moved since, as one undo step: their positions and their depths. */

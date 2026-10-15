@@ -17,6 +17,8 @@ object LayoutTimes {
         Apply("apply"),
         Reglue("reglue"),
         Carry("carry down"),
+        /** The stand-ins back in the middle of what they hold ([Multilevel.Run]); counted to the nodes' level, which rests last. */
+        Recentre("recentre"),
     }
 
     /** The level the steps are of now ([Multilevel.Run]); 0 for a run of one level. */

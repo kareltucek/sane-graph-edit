@@ -133,8 +133,7 @@ flowchart TD
   g0["level 0: the nodes"] -->|solar systems| g1["level 1: systems"]
   g1 -->|solar systems| g2["level 2 ..."]
   g2 --> top["top: small enough"]
-  top -->|"steps until rest; each move carried down to all members"| down["next level below moves"]
-  down -->|"... until level 0 rests"| done["done"]
+  top -->|"every step: each level moves, each move carried down to all members"| done["all levels rest"]
 ```
 
 Only for `o` on the whole graph (Karel: how collisions would work on a
@@ -175,10 +174,14 @@ part of a decomposed graph is unclear).
 
 ### Settling the levels
 
-- The top level runs the settling (§3) on contracted nodes; a contracted
-  node's move is applied to every node it holds, all the way down.
-- At rest, the level below becomes the moving one, starting from where the
-  level above left it; down to level 0.
+- Each level runs the settling (§3) on its nodes; a contracted node's move
+  is applied to every node it holds, all the way down.
+- ~~At rest, the level below becomes the moving one~~ (2026-10-15, Karel:
+  all at once): every step moves every level not yet at rest, the top
+  first, so a node goes its own way plus that of each system it is in.
+  Before a step each stand-in is put back in the middle of what it holds.
+  On main.dot (JVM, 16 ms frames) 2D rests in 238 frames instead of 881,
+  3D in 399 instead of 1010; the CPU time to rest is about the same.
 
 ### Seen (Karel, 2026-10-15)
 
