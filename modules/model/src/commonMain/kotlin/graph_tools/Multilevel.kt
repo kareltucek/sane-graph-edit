@@ -19,7 +19,7 @@ import kotlin.math.sqrt
  */
 object Multilevel {
     /** A system wants this many times the room of its members together. */
-    private const val PACKING = 1.0
+    private const val PACKING = 1.5
 
     /** Levels are made until one has no more nodes than this. */
     private const val SMALL = 50

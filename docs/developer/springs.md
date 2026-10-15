@@ -40,7 +40,7 @@ changes.
 | Spring | What it does | Parameters (now) |
 |---|---|---|
 | **collision** | two nodes nearer than a distance push apart | distance = touching × reach; reach 2 × `spring-scale` (optimizer, explore), 1.15 (Shift-drag: "only off each other") |
-| **edge** | the two ends of an edge to a length | length = both reaches toward each other × `spring-scale` × degree factor (1 + 0.2 × smaller degree, +1 above 2; in 3D mode 0.0 instead of 0.2, Karel 2026-10-15, a test: big nodes wanted too much room in space; it is in the mass too) |
+| **edge** | the two ends of an edge to a length | length = both reaches toward each other × `spring-scale` × degree factor (1 + 0.2 × smaller degree, +1 above 2; its own constant in 3D mode, also 0.2: 0.0 was tried, Karel 2026-10-15, and put back; it is in the mass too) |
 | **equal siblings** | the edges out of one parent to the same length | half the difference |
 | **antigravity** (Karel's original "gravity") | a child pushed on along the way its parent came, kept at its distance | 10 units / window; only for parents with < 3 children (optimizer); settling: 3D mode only |
 | **gravity** | a child pulled to lie from its parent the way the graph's edges go on average | 0.1 of the way / window *(guess)*; settling only |
@@ -157,7 +157,7 @@ part of a decomposed graph is unclear).
   (its outline as a square of the same area; in 3D its depth too); its
   furthest spring is the collision's, or the edges' with the degree
   factor of its own degree (Karel: as the springs count children).
-- **System:** k × the sum of its members' masses; k = 1 (Karel, 2026-10-15; was 1.5, a guess).
+- **System:** k × the sum of its members' masses; k = 1.5 (a guess; 1 was tried, Karel 2026-10-15, and put back).
 - **Springs from the masses of both ends, one rule on every level:** edge
   length = (reach of one + reach of the other) × spring-scale × degree
   factor of the smaller degree (kept, Karel) (× 3 in 3D); collision the

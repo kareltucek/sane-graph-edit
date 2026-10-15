@@ -252,7 +252,7 @@ object LayoutOptimizer {
 
         /** How much longer an edge is for each edge of its end with fewer: in the plane, and in space (3D mode). */
         const val PER_DEGREE = 0.2
-        const val PER_DEGREE_IN_SPACE = 0.0
+        const val PER_DEGREE_IN_SPACE = 0.2
 
         /** [degFactor] of an edge whose smaller degree is [d]; in space with [depth]. */
         fun degFactor(d: Double, depth: Boolean = false): Double = 1.0 + (if (depth) PER_DEGREE_IN_SPACE else PER_DEGREE) * (if (d > 2) d + 1 else d)
