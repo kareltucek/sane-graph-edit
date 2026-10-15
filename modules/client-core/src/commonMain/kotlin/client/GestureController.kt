@@ -677,6 +677,9 @@ class GestureController(
     /** `o` / `O` held: the nodes it lays out, a step for each picture ([frame]); null while neither is held. */
     private var laying: Stepping? = null
 
+    /** While `o` lays out the whole graph by levels: its systems, to be drawn ([Multilevel.Run.shells]). */
+    val shells: List<Multilevel.Shell> get() = (laying as? Multilevel.Run)?.shells().orEmpty()
+
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null
 

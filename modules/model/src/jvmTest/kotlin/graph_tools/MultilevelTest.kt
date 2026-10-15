@@ -42,4 +42,21 @@ class MultilevelTest {
         // on one level (Settling.Run alone) this pile keeps 8 pairs on each other
         assertTrue(left < 3, "$left overlapping pairs")
     }
+
+    @Test
+    fun `the shells - a ball for each system, one around each sun of the lowest, around what they hold`() {
+        val g = pile(90)
+        val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
+        val run = Multilevel.Run(g, g.nodes, importance, importance, null, { 0L }, true, LayoutOptimizer.WINDOW_MS)
+        val shells = run.shells()
+        val (suns, systems) = shells.partition { it.sun }
+        // the lowest systems are as many as their suns, and there may be more levels above them
+        assertTrue(suns.isNotEmpty() && systems.size >= suns.size, "${suns.size} suns, ${systems.size} systems")
+        assertTrue(suns.all { s -> g.nodes.any { it.point == s.at && s.radius > it.cache.shapeBounds.length() / 2 } }, "a sun's ball is around its node")
+        // a system holds at least its sun: as much room as a node's ball at least
+        assertTrue(systems.all { it.radius > 1.0 }, "systems have room")
+        // the whole graph moved, the shells move with it
+        g.nodes.forEach { it.point = it.point + utils.Vector3(100.0, 0.0, 0.0) }
+        run.shells().zip(shells).forEach { (now, before) -> assertTrue(abs(now.at.x - before.at.x - 100.0) < 1e-6, "follows the nodes") }
+    }
 }

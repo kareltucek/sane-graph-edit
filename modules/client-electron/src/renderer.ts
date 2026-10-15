@@ -4,7 +4,7 @@ import { Canvas2D, Cells, GridEditor, PaintedCell, Painting, StatusPiece } from 
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 import { TerminalNode } from "./terminalNode";
-import { NodePicture, SpaceRenderer, SpaceScene } from "./space";
+import { NodePicture, Shell, SpaceRenderer, SpaceScene } from "./space";
 import { mockRoom, outlines, wallsOf } from "./room";
 import { startVr, VrLive, VrScene, VrSurface } from "./vrServer";
 
@@ -56,7 +56,12 @@ interface Scene {
     edges: SceneEdge[];
     /** The selection rectangle being dragged: two opposite corners. */
     selectionBox: SceneEdge | null;
+    /** While `o` settles the whole graph: its systems, as they appear (z unused). */
+    shells: Shell[];
 }
+
+/** How strong the circles of the shells are: they are seen through, not looked at. */
+const SHELL_ALPHA = 0.35;
 
 const FONT = "monospace";
 const LINE_HEIGHT = 1.2;
@@ -573,7 +578,7 @@ function pictureOfNode(n: SpaceSceneNode, grid: client.GridMetrics, pixelsPerUni
         const offsetX = (n.width / 2 + PICTURE_MARGIN) * pixelsPerUnit;
         const offsetY = (n.height / 2 + PICTURE_MARGIN) * pixelsPerUnit;
         // as if not selected: a selected node is drawn brighter instead ([SpaceRenderer]), and selecting remakes no picture
-        drawNode({ ...n, x: 0, y: 0, depthScale: 1, selected: false }, grid, { scale: pixelsPerUnit, offsetX, offsetY, nodes: [], edges: [], selectionBox: null }, 1, true);
+        drawNode({ ...n, x: 0, y: 0, depthScale: 1, selected: false }, grid, { scale: pixelsPerUnit, offsetX, offsetY, nodes: [], edges: [], selectionBox: null, shells: [] }, 1, true);
     } finally {
         ctx = was;
     }
@@ -1150,6 +1155,19 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         .forEach((n) => drawNode(n, grid, scene, dpr));
     // each node set its own
     ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
+    if (!threeD && scene.shells.length > 0) {
+        ctx.strokeStyle = colours().foreground;
+        ctx.globalAlpha = SHELL_ALPHA;
+        ctx.lineWidth = 1 / scene.scale;
+        scene.shells
+            .filter((s) => inView(scene, width, height, s.x - s.radius, s.y - s.radius, s.x + s.radius, s.y + s.radius, 1))
+            .forEach((s) => {
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.radius, 0, 2 * Math.PI);
+                ctx.stroke();
+            });
+        ctx.globalAlpha = 1;
+    }
     lastScene = scene;
     const edited = scene.nodes.find((n) => n.id === editing?.id);
     const editor = editing?.editor;

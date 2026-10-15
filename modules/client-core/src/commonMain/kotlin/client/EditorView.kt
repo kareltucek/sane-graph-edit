@@ -155,11 +155,12 @@ class EditorView(
      * seems to have. Null for a node that is not shown, being
      * behind the viewer or too near.
      */
-    fun apparent(n: Node): Apparent? {
-        val at = viewPoint(n)
-        return if (at.z == viewTransform.depth) Apparent(at.xy, 1.0)
+    fun apparent(n: Node): Apparent? = apparentAt(viewPoint(n))
+
+    /** How what the view sees at [at] (across, down and away) appears, as [apparent] tells of a node there. */
+    fun apparentAt(at: Point3): Apparent? =
+        if (at.z == viewTransform.depth) Apparent(at.xy, 1.0)
         else viewTransform.perspective(at.z)?.let { p -> viewTransform.apparent(at.xy, at.z, size / 2)?.let { Apparent(it, p) } }
-    }
 
     /** Where [n] is as this view sees the graph: across, down and away, whichever way the view is turned. */
     fun viewPoint(n: Node): Point3 = viewTransform.toView(Point3(n.position, Depth.of(n)))

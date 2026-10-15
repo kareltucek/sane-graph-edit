@@ -3,6 +3,7 @@ package graph_tools
 import Graph
 import utils.Vector2
 import utils.Vector3
+import kotlin.math.PI
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -29,8 +30,17 @@ object Multilevel {
 
     fun isCluster(n: Node): Boolean = n.attributes.other.containsKey(CLUSTER)
 
-    /** One level: its [nodes] in [g], what each weighs, and, above the nodes, what each holds of the level below. */
-    private class Level(val g: Graph, val nodes: List<Node>, val mass: Map<Node, Double>, val members: Map<Node, List<Node>>)
+    /** One level: its [nodes] in [g], what each weighs, and, above the nodes, what each holds of the level below and which of those is its sun. */
+    private class Level(val g: Graph, val nodes: List<Node>, val mass: Map<Node, Double>, val members: Map<Node, List<Node>>, val sun: Map<Node, Node>)
+
+    /** A ball drawn around a system while it settles, or a small one around a node that is the sun of one of the lowest ([sun]). */
+    data class Shell(val at: Vector3, val radius: Double, val sun: Boolean)
+
+    /** A sun's ball is this many times as far as the corners of the node. */
+    private const val AROUND_SUN = 1.15
+
+    /** How far a ball (in 3D) or a disc reaches that has the room [mass]. */
+    private fun radiusOf(mass: Double, depth: Boolean) = if (depth) (3 * mass / (4 * PI)).pow(1.0 / 3) else sqrt(mass / PI)
 
     private fun dimensions(depth: Boolean) = if (depth) 3 else 2
 
@@ -112,6 +122,7 @@ object Multilevel {
             stand.values.map { it.first },
             stand.values.associate { it },
             stand.entries.associate { (sun, it) -> it.first to systems.getValue(sun) },
+            stand.entries.associate { (sun, it) -> it.first to sun },
         )
     }
 
@@ -130,7 +141,7 @@ object Multilevel {
         past: Double,
     ) : Stepping {
         private val levels: List<Level> = run {
-            val nodes = Level(g, shown.toList(), shown.associateWith { mass(g, it, depth) }, emptyMap())
+            val nodes = Level(g, shown.toList(), shown.associateWith { mass(g, it, depth) }, emptyMap(), emptyMap())
             generateSequence(nodes) { below -> if (below.nodes.size <= SMALL) null else contract(below, depth) }
                 .zipWithNext()
                 .takeWhile { (below, above) -> above.nodes.size <= below.nodes.size * SHRINKS }
@@ -149,6 +160,25 @@ object Multilevel {
                 Settling.Run(level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) })
             }
             return run.also { it.stir(among, past) }
+        }
+
+        /**
+         * For seeing the systems while they settle: each of every level as a ball with its room, around the middle of what it
+         * holds as that is now; each sun of the lowest in a small one just around that node.
+         */
+        fun shells(): List<Shell> {
+            val middles = (1 until levels.size).runningFold(levels[0].nodes.associateWith { it.point }) { below, i ->
+                levels[i].nodes.associateWith { n ->
+                    val held = levels[i].members.getValue(n)
+                    val weights = held.map { levels[i - 1].mass.getValue(it) }
+                    held.zip(weights).fold(Vector3.Zero) { at, (m, w) -> at + below.getValue(m) * w } / weights.sum()
+                }
+            }
+            val systems = (1 until levels.size).flatMap { i ->
+                levels[i].nodes.map { n -> Shell(middles[i].getValue(n), radiusOf(levels[i].mass.getValue(n), depth), sun = false) }
+            }
+            val suns = levels.getOrNull(1)?.sun?.values.orEmpty().map { s -> Shell(s.point, s.cache.shapeBounds.length() / 2 * AROUND_SUN, sun = true) }
+            return systems + suns
         }
 
         /** [n] of level [i] moved [by]: so does all it holds, down to the nodes. */

@@ -204,7 +204,7 @@ class JsView internal constructor(
      * `{scale, offsetX, offsetY, nodes: [{id, x, y, width, height, textWidth, textHeight, lines, shape, bg, fg, palette, fontSize, selected}],
      * edges: [{x1, y1, x2, y2}], selectionBox: {x1, y1, x2, y2} or null}`. Node, edge and box coordinates are in workspace units, `screen = workspace * scale + offset`;
      * a node's x, y is its centre; colours are `#rrggbb` or null, as to be shown ([dark]); `palette` says they are from the picker's palette;
-     * every node also has `type` (`plain`, `code` or `markdown`) and, for code that names one, `language`.
+     * every node also has `type` (`plain`, `code` or `markdown`) and, for code that names one, `language`; `shells` as [shellsOf].
      */
     fun scene(): dynamic {
         place()
@@ -235,8 +235,20 @@ class JsView internal constructor(
             j.headScale = e.headScale
             j
         }.toTypedArray()
+        o.shells = shellsOf(scene.shells)
         return o
     }
+
+    /** The systems `o` settles the whole graph by, while it does: `[{x, y, z, radius, sun}]`, as [SceneShell] has them. */
+    private fun shellsOf(shells: List<SceneShell>): dynamic = shells.map { s ->
+        val j: dynamic = js("({})")
+        j.x = s.position.x
+        j.y = s.position.y
+        j.z = s.depth
+        j.radius = s.radius
+        j.sun = s.sun
+        j
+    }.toTypedArray()
 
     /** A node as [scene] and [space] tell of it. */
     private fun node(n: SceneNode): dynamic {
@@ -345,6 +357,7 @@ class JsView internal constructor(
         o.depth = scene.depth
         o.distance = scene.distance
         o.scale = scene.scale
+        o.shells = shellsOf(scene.shells)
         return o
     }
 

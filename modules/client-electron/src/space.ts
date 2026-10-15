@@ -15,8 +15,19 @@ export interface SpaceNode {
     shape: string;
 }
 
+/** A system of nodes while `o` settles the whole graph by levels: a ball [radius] around its middle; a sun's just around that node. */
+export interface Shell {
+    x: number;
+    y: number;
+    z: number;
+    radius: number;
+    sun: boolean;
+}
+
 export interface SpaceScene<N extends SpaceNode> {
     nodes: N[];
+    /** None but while `o` settles the whole graph. */
+    shells?: Shell[];
     /** Indices into [nodes]. */
     edges: { from: number; to: number }[];
     /** The viewer is [distance] in front of the plane at [depth], before its point [middleX], [middleY]; a unit of that plane is [scale] pixels. */
@@ -431,6 +442,51 @@ class Rings {
     }
 }
 
+/** How strong the lines of the shells are: they are seen through, not looked at. */
+const SHELL_OPACITY = 0.35;
+
+/**
+ * The shells ([Shell]) as wire icosahedra, all in one set of lines,
+ * filled anew for every frame; a node in front of one hides it.
+ */
+class Shells {
+    /** The edges of an icosahedron whose corners are a unit from its middle: two ends of each, x, y and z after each other. */
+    private static readonly UNIT = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1, 0)).getAttribute("position").array as Float32Array;
+    readonly lines = new THREE.LineSegments(
+        new THREE.BufferGeometry(),
+        new THREE.LineBasicMaterial({ transparent: true, opacity: SHELL_OPACITY, depthWrite: false }),
+    );
+
+    constructor() {
+        this.lines.frustumCulled = false;
+        this.lines.renderOrder = 1e9 + 2;
+    }
+
+    /** Kept between frames; given anew to the graphics card only when it grows. */
+    private positions = new Float32Array(0);
+
+    draw(shells: Shell[], ink: string) {
+        this.lines.visible = shells.length > 0;
+        this.lines.material.color.set(ink);
+        const unit = Shells.UNIT;
+        const geometry = this.lines.geometry;
+        if (shells.length * unit.length > this.positions.length) {
+            this.positions = new Float32Array(2 * shells.length * unit.length);
+            geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
+        } else if (shells.length > 0) geometry.getAttribute("position").needsUpdate = true;
+        const positions = this.positions;
+        shells.forEach((s, i) => {
+            for (let k = 0; k < unit.length; k += 3) {
+                // here y is up and z towards the viewer
+                positions[i * unit.length + k] = s.x + unit[k] * s.radius;
+                positions[i * unit.length + k + 1] = -(s.y + unit[k + 1] * s.radius);
+                positions[i * unit.length + k + 2] = -(s.z + unit[k + 2] * s.radius);
+            }
+        });
+        geometry.setDrawRange(0, shells.length * unit.length / 3);
+    }
+}
+
 export class SpaceRenderer<N extends SpaceNode> {
     private readonly renderer: THREE.WebGLRenderer;
     private readonly scene = new THREE.Scene();
@@ -447,6 +503,7 @@ export class SpaceRenderer<N extends SpaceNode> {
     private readonly walls = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: ROOM_COLOUR }));
     /** Rings around the selected nodes, drawn after them ([Rings]). */
     private readonly rings = new Rings();
+    private readonly shells = new Shells();
     /** For trying how fast it is without them (`SGE_NO_EDGES`): whether edges are drawn. */
     edgesShown = true;
     /** For tests: how many milliseconds the parts of the last drawing took, how many pictures it made and how many draw calls. */
@@ -471,6 +528,7 @@ export class SpaceRenderer<N extends SpaceNode> {
             line.renderOrder = 1e9 + 1;
             this.scene.add(line);
         });
+        this.scene.add(this.shells.lines);
     }
 
     /** The lines to show of the room at the next drawing, as the view sees them: the two ends of each, x, y and z after each other. Null: none. */
@@ -747,6 +805,7 @@ export class SpaceRenderer<N extends SpaceNode> {
         const t1 = performance.now();
         this.edges.mesh.visible = this.edgesShown;
         if (this.edgesShown) this.strips(space, width, height, ink, radius, fade);
+        this.shells.draw(space.shells ?? [], ink);
         const t2 = performance.now();
         this.renderer.render(this.scene, this.camera);
         const t3 = performance.now();

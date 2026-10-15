@@ -180,6 +180,13 @@ part of a decomposed graph is unclear).
 - At rest, the level below becomes the moving one, starting from where the
   level above left it; down to level 0.
 
+### Seen (Karel, 2026-10-15)
+
+- While `o` runs by levels, every system of every level is drawn as a wire
+  icosahedron (2D: a circle) around the mass-weighted middle of what it holds
+  now, as big as a ball (disc) of its mass; each sun of the lowest systems
+  in a small one just around that node. Gone when `o` is let go.
+
 ### Open
 
 1. ~~Leaves weigh like their parent~~ (gone with mass first: a node's mass
