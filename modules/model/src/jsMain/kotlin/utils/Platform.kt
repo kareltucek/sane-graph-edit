@@ -12,12 +12,16 @@ actual object Platform {
 
     actual fun nowMillis(): Long = Date.now().toLong()
 
+    actual fun clockMillis(): Double = js("performance.now()") as Double
+
     actual fun fixed(d: Double, digits: Int): String = d.asDynamic().toFixed(digits) as String
 
     actual fun nextCount(): Long = counter++
 
+    // where there is Node (Electron's page has it too) the terminal that started the process; else the console
     actual fun warn(text: String) {
-        console.error(text)
+        val stderr: dynamic = js("typeof process !== 'undefined' ? process.stderr : undefined")
+        if (stderr != null && stderr != undefined) stderr.write(text + "\n") else console.error(text)
     }
 
     actual fun readText(path: String): String = fs.readFileSync(path, "utf8") as String

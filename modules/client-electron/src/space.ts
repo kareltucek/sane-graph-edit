@@ -15,13 +15,13 @@ export interface SpaceNode {
     shape: string;
 }
 
-/** A system of nodes while `o` settles the whole graph by levels: a ball [radius] around its middle; a sun's just around that node. */
+/** A system of nodes of [level] (`o` on the whole graph, `:suns`): a ball [radius] around its middle; of level 0 a sun's, just around that node. */
 export interface Shell {
     x: number;
     y: number;
     z: number;
     radius: number;
-    sun: boolean;
+    level: number;
 }
 
 export interface SpaceScene<N extends SpaceNode> {
@@ -445,6 +445,19 @@ class Rings {
 /** How strong the lines of the shells are: they are seen through, not looked at. */
 const SHELL_OPACITY = 0.35;
 
+/** The colours of the shells, from the suns (level 0) to the top level: orange-white to bluish white; on a light background deeper ones. */
+const SHELL_RAMP = { dark: [[1, 0.85, 0.69], [0.78, 0.86, 1]], light: [[0.78, 0.39, 0.08], [0.16, 0.31, 0.78]] } as const;
+
+/** On [background], the colour of a shell of a level among levels up to a top one: red, green and blue, 0 to 1. */
+export function shellColours(background: string): (level: number, top: number) => [number, number, number] {
+    const bg = new THREE.Color(background);
+    const [from, to] = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? SHELL_RAMP.light : SHELL_RAMP.dark;
+    return (level, top) => {
+        const t = top > 0 ? level / top : 0;
+        return [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t, from[2] + (to[2] - from[2]) * t];
+    };
+}
+
 /**
  * The shells ([Shell]) as wire icosahedra, all in one set of lines,
  * filled anew for every frame; a node in front of one hides it.
@@ -454,7 +467,7 @@ class Shells {
     private static readonly UNIT = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1, 0)).getAttribute("position").array as Float32Array;
     readonly lines = new THREE.LineSegments(
         new THREE.BufferGeometry(),
-        new THREE.LineBasicMaterial({ transparent: true, opacity: SHELL_OPACITY, depthWrite: false }),
+        new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: SHELL_OPACITY, depthWrite: false }),
     );
 
     constructor() {
@@ -462,25 +475,37 @@ class Shells {
         this.lines.renderOrder = 1e9 + 2;
     }
 
-    /** Kept between frames; given anew to the graphics card only when it grows. */
+    /** Kept between frames; given anew to the graphics card only when they grow. */
     private positions = new Float32Array(0);
+    private colours = new Float32Array(0);
 
-    draw(shells: Shell[], ink: string) {
+    draw(shells: Shell[], background: string) {
         this.lines.visible = shells.length > 0;
-        this.lines.material.color.set(ink);
         const unit = Shells.UNIT;
         const geometry = this.lines.geometry;
         if (shells.length * unit.length > this.positions.length) {
             this.positions = new Float32Array(2 * shells.length * unit.length);
+            this.colours = new Float32Array(2 * shells.length * unit.length);
             geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
-        } else if (shells.length > 0) geometry.getAttribute("position").needsUpdate = true;
+            geometry.setAttribute("color", new THREE.BufferAttribute(this.colours, 3).setUsage(THREE.DynamicDrawUsage));
+        } else if (shells.length > 0) {
+            geometry.getAttribute("position").needsUpdate = true;
+            geometry.getAttribute("color").needsUpdate = true;
+        }
         const positions = this.positions;
+        const colours = this.colours;
+        const top = shells.reduce((most, s) => Math.max(most, s.level), 0);
+        const colourOf = shellColours(background);
         shells.forEach((s, i) => {
+            const [r, g, b] = colourOf(s.level, top);
             for (let k = 0; k < unit.length; k += 3) {
                 // here y is up and z towards the viewer
                 positions[i * unit.length + k] = s.x + unit[k] * s.radius;
                 positions[i * unit.length + k + 1] = -(s.y + unit[k + 1] * s.radius);
                 positions[i * unit.length + k + 2] = -(s.z + unit[k + 2] * s.radius);
+                colours[i * unit.length + k] = r;
+                colours[i * unit.length + k + 1] = g;
+                colours[i * unit.length + k + 2] = b;
             }
         });
         geometry.setDrawRange(0, shells.length * unit.length / 3);
@@ -805,7 +830,7 @@ export class SpaceRenderer<N extends SpaceNode> {
         const t1 = performance.now();
         this.edges.mesh.visible = this.edgesShown;
         if (this.edgesShown) this.strips(space, width, height, ink, radius, fade);
-        this.shells.draw(space.shells ?? [], ink);
+        this.shells.draw(space.shells ?? [], background);
         const t2 = performance.now();
         this.renderer.render(this.scene, this.camera);
         const t3 = performance.now();

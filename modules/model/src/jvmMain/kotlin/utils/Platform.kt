@@ -8,6 +8,8 @@ actual object Platform {
 
     actual fun nowMillis(): Long = System.currentTimeMillis()
 
+    actual fun clockMillis(): Double = System.nanoTime() / 1e6
+
     actual fun fixed(d: Double, digits: Int): String = "%.${digits}f".format(d)
 
     actual fun nextCount(): Long = counter.getAndIncrement()

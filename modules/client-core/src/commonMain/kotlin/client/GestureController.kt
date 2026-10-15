@@ -5,6 +5,7 @@ import graph_tools.Depth
 import graph_tools.ViewModes
 import graph_tools.GraphTools
 import graph_tools.LayoutOptimizer
+import graph_tools.LayoutTimes
 import graph_tools.MoveNodesCommand
 import graph_tools.Settling
 import graph_tools.Stepping
@@ -677,8 +678,23 @@ class GestureController(
     /** `o` / `O` held: the nodes it lays out, a step for each picture ([frame]); null while neither is held. */
     private var laying: Stepping? = null
 
-    /** While `o` lays out the whole graph by levels: its systems, to be drawn ([Multilevel.Run.shells]). */
-    val shells: List<Multilevel.Shell> get() = (laying as? Multilevel.Run)?.shells().orEmpty()
+    /** The systems shown when `o` does not run (`:suns`): made anew when `o` is let go; null when they are not shown (`:nosuns`). */
+    private var suns: Multilevel.Systems? = null
+
+    /** `:suns`: the systems of the nodes shown are made anew and shown. */
+    fun showSuns() {
+        suns = Multilevel.Systems(graphView.g, graphView.g.visibleNodes(), graphView.viewTransform.threeD)
+        graphView.repaint()
+    }
+
+    /** `:nosuns`. */
+    fun hideSuns() {
+        suns = null
+        graphView.repaint()
+    }
+
+    /** The systems to be drawn ([Multilevel.Systems.shells]): while `o` lays out the whole graph by levels, those; else those of `:suns`. */
+    val shells: List<Multilevel.Shell> get() = ((laying as? Multilevel.Run)?.systems ?: suns)?.shells().orEmpty()
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null
@@ -720,6 +736,7 @@ class GestureController(
     fun startOptimizing(restrict: Boolean) {
         if (laying == null) {
             finishSettling()
+            LayoutTimes.reset()
             layingFrom = graphView.g.nodes.associateWith { it.point }
             laying = layout(restrict, Actions.TAPPED_MS).also { it.step() }
             graphView.repaint()
@@ -729,9 +746,11 @@ class GestureController(
     /** A key was let go: the nodes stop, and all they moved since `o` / `O` was pressed is one undo step. */
     fun stopOptimizing() {
         val before = layingFrom
+        if (laying != null) utils.Platform.warn(LayoutTimes.report())
         laying = null
         layingFrom = null
         if (before != null) commitPoints(before)
+        if (suns != null) showSuns()
     }
 
     /** The nodes of [before] that moved since, as one undo step: their positions and their depths. */

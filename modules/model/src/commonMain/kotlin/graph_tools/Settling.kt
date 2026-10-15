@@ -1,6 +1,7 @@
 package graph_tools
 
 import Graph
+import graph_tools.LayoutTimes.Part
 import utils.Vector2
 import utils.Vector3
 import kotlin.math.exp
@@ -161,6 +162,7 @@ object Settling {
          */
         override fun step(): Boolean {
             if (!resting) {
+                val start = utils.Platform.clockMillis()
                 val now = clock?.invoke() ?: 0L
                 val previous = lastStep ?: now
                 lastStep = now
@@ -169,7 +171,7 @@ object Settling {
                 // after a step cut short, those still waiting first; when all have had their turn, all again by chance
                 // with a [rank], the most important first every time, so that a step cut short has moved them
                 val fresh = { rank?.let { r -> moving.sortedByDescending(r) } ?: if (cut) moving.shuffled(chance) else moving.toList() }
-                val order = if (cut) waiting.filter { it in moving }.ifEmpty { fresh() } else fresh()
+                val order = LayoutTimes.time(Part.Order) { if (cut) waiting.filter { it in moving }.ifEmpty { fresh() } else fresh() }
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
                 val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, down(g, depth), deadline)
@@ -181,6 +183,7 @@ object Settling {
                 moving = done.moving
                 if (clock != null && pulling) damping *= COOLING.pow(share)
                 if (covered >= moving.size) endRound()
+                LayoutTimes.step(among.size, utils.Platform.clockMillis() - start)
             }
             return !resting
         }
@@ -290,11 +293,11 @@ object Settling {
         down: Vector3,
         deadline: Long?,
     ): Step {
-        EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet())
+        LayoutTimes.time(Part.EdgePoints) { EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet()) }
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
         val strength = if (pulling && !close) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
         // which are near is looked up anew at each step: the nodes are elsewhere
-        val nearOf = near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0))
+        val nearOf = LayoutTimes.time(Part.Index) { near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0)) }
         // of two on each other each takes the other's part of their weights: all of it from a fixed one, half from one as heavy
         val share = { n: Node, o: Node -> weight(o).let { w -> if (w.isInfinite()) 1.0 else w / (weight(n) + w) } }
         val mean = { vs: List<Vector3> -> if (vs.isEmpty()) null else vs.reduce(Vector3::plus) / vs.size }
@@ -304,6 +307,7 @@ object Settling {
         val moves = mutableMapOf<Node, Vector3>()
         val woken = mutableSetOf<Node>()
         var taken = 0
+        val springs = utils.Platform.clockMillis()
         while (taken < order.size && (deadline == null || taken == 0 || utils.Platform.nowMillis() < deadline)) {
             val n = order[taken]
             taken += 1
@@ -340,18 +344,21 @@ object Settling {
             val by = loose?.let { it * damping + (tug ?: Vector3.Zero) } ?: tug
             if (by != null) moves[n] = by
         }
+        LayoutTimes.add(Part.Springs, utils.Platform.clockMillis() - springs)
         // cut short, those taken move for those that were not, as many times further as they are fewer (no matter that
         // it may swing): the nodes go as fast however many there are
         val windows = passed * (if (taken < order.size) order.size.toDouble() / taken else 1.0)
-        moves.forEach { (n, by) ->
-            near.moving(n)
-            // moving for others that were not taken, no node goes further than its own size in a step (or than it would
-            // for itself): none is flung across the graph
-            val far = maxOf(n.cache.shapeBounds.length(), by.length() * passed)
-            val go = (if (depth) by * windows else Vector3(by.xy * windows, 0.0)).let { if (it.length() > far) it.toScale(far) else it }
-            n.point = n.point + go
+        LayoutTimes.time(Part.Apply) {
+            moves.forEach { (n, by) ->
+                near.moving(n)
+                // moving for others that were not taken, no node goes further than its own size in a step (or than it would
+                // for itself): none is flung across the graph
+                val far = maxOf(n.cache.shapeBounds.length(), by.length() * passed)
+                val go = (if (depth) by * windows else Vector3(by.xy * windows, 0.0)).let { if (it.length() > far) it.toScale(far) else it }
+                n.point = n.point + go
+            }
         }
-        if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
+        if (g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
         return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken)
     }
 

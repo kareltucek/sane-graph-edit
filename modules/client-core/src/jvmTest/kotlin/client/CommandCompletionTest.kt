@@ -23,7 +23,7 @@ class CommandCompletionTest {
     @Test
     fun `command names`() {
         assertEquals(listOf("tabclose", "tabedit", "tabnew"), candidates("tab"))
-        assertEquals(listOf("se", "set", "source"), candidates("s").filter { it != "save" })
+        assertEquals(listOf("se", "set", "source", "suns"), candidates("s").filter { it != "save" })
     }
 
     @Test

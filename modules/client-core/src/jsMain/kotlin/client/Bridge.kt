@@ -239,14 +239,14 @@ class JsView internal constructor(
         return o
     }
 
-    /** The systems `o` settles the whole graph by, while it does: `[{x, y, z, radius, sun}]`, as [SceneShell] has them. */
+    /** The systems `o` settles the whole graph by, while it does, and those of `:suns`: `[{x, y, z, radius, level}]`, as [SceneShell] has them. */
     private fun shellsOf(shells: List<SceneShell>): dynamic = shells.map { s ->
         val j: dynamic = js("({})")
         j.x = s.position.x
         j.y = s.position.y
         j.z = s.depth
         j.radius = s.radius
-        j.sun = s.sun
+        j.level = s.level
         j
     }.toTypedArray()
 

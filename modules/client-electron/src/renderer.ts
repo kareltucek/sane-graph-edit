@@ -4,7 +4,7 @@ import { Canvas2D, Cells, GridEditor, PaintedCell, Painting, StatusPiece } from 
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
 import { TerminalNode } from "./terminalNode";
-import { NodePicture, Shell, SpaceRenderer, SpaceScene } from "./space";
+import { NodePicture, Shell, shellColours, SpaceRenderer, SpaceScene } from "./space";
 import { mockRoom, outlines, wallsOf } from "./room";
 import { startVr, VrLive, VrScene, VrSurface } from "./vrServer";
 
@@ -1156,12 +1156,15 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     // each node set its own
     ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     if (!threeD && scene.shells.length > 0) {
-        ctx.strokeStyle = colours().foreground;
         ctx.globalAlpha = SHELL_ALPHA;
         ctx.lineWidth = 1 / scene.scale;
+        const top = scene.shells.reduce((most, s) => Math.max(most, s.level), 0);
+        const colourOf = shellColours(canvasColour(colours().background));
         scene.shells
             .filter((s) => inView(scene, width, height, s.x - s.radius, s.y - s.radius, s.x + s.radius, s.y + s.radius, 1))
             .forEach((s) => {
+                const [r, g, b] = colourOf(s.level, top);
+                ctx.strokeStyle = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
                 ctx.beginPath();
                 ctx.arc(s.x, s.y, s.radius, 0, 2 * Math.PI);
                 ctx.stroke();
@@ -1417,7 +1420,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
 /** A user's action for a test to replay (`--play <json file>`): a pointer event at x, y from the middle of the window, or a key. */
 interface Played {
     /** `type`: [key] goes to the node's editor as typed text. `wait`: nothing for [ms] milliseconds. */
-    type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown" | "type" | "wait" | "click";
+    type: "pointerdown" | "pointermove" | "pointerup" | "wheel" | "keydown" | "keyup" | "type" | "wait" | "click";
     /** `click`: the element of the page to click, as a CSS selector. */
     selector?: string;
     ms?: number;
@@ -1462,6 +1465,7 @@ async function replay(events: Played[], grid: client.GridMetrics) {
         else if (p.type === "keydown") {
             (lineOpen() ? lineInput : window).dispatchEvent(new KeyboardEvent("keydown", { key: p.key, ctrlKey: p.ctrl, shiftKey: p.shift, metaKey: p.meta, bubbles: true }));
         }
+        else if (p.type === "keyup") window.dispatchEvent(new KeyboardEvent("keyup", { key: p.key, bubbles: true }));
         else if (p.type === "wheel") canvas.dispatchEvent(new WheelEvent("wheel", { ...common, deltaY: p.deltaY, cancelable: true }));
         else canvas.dispatchEvent(new PointerEvent(p.type, common));
     }

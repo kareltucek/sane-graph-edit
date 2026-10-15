@@ -5,6 +5,9 @@ expect object Platform {
     /** Milliseconds since the epoch. */
     fun nowMillis(): Long
 
+    /** Milliseconds, finer than whole ones, from no time in particular: for how long something takes, cheap to ask often. */
+    fun clockMillis(): Double
+
     /** [d] with exactly [digits] digits after the decimal point. */
     fun fixed(d: Double, digits: Int): String
 

@@ -194,3 +194,15 @@ part of a decomposed graph is unclear).
 2. ~~Which features~~ (`o` on the whole graph). ~~The cap~~ (none).
 3. ~~Hubs' room~~ (a node's mass counts its own degree).
 4. Edges between two systems are one edge, not yet pulling × their count.
+5. Time still to save (2026-10-15, left for now): the nearest-colliders look is about
+   a third of a step. Keeping each node's candidates between steps (a Verlet list:
+   all within reach + a margin, looked up again once the nodes drifted) was weighed;
+   Karel doubts it: early on, while everything moves, the margin would have to hold
+   most of the graph.
+
+### Timings
+
+`o` writes, when let go, how long a step of each level took on average, whole and
+by phase (order, edge points, index, springs, apply, carry down, reglue), to the
+process's standard error (Electron: the developer console). A phase is timed once a
+step, not once a node.

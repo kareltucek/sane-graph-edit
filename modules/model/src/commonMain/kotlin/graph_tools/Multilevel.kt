@@ -1,6 +1,8 @@
 package graph_tools
 
 import Graph
+import graph_tools.LayoutTimes.Part
+import utils.Platform
 import utils.Vector2
 import utils.Vector3
 import kotlin.math.PI
@@ -31,10 +33,10 @@ object Multilevel {
     fun isCluster(n: Node): Boolean = n.attributes.other.containsKey(CLUSTER)
 
     /** One level: its [nodes] in [g], what each weighs, and, above the nodes, what each holds of the level below and which of those is its sun. */
-    private class Level(val g: Graph, val nodes: List<Node>, val mass: Map<Node, Double>, val members: Map<Node, List<Node>>, val sun: Map<Node, Node>)
+    internal class Level(val g: Graph, val nodes: List<Node>, val mass: Map<Node, Double>, val members: Map<Node, List<Node>>, val sun: Map<Node, Node>)
 
-    /** A ball drawn around a system while it settles, or a small one around a node that is the sun of one of the lowest ([sun]). */
-    data class Shell(val at: Vector3, val radius: Double, val sun: Boolean)
+    /** A ball drawn around a system of [level] (1 the lowest), or, of level 0, a small one around a node that is the sun of one of the lowest. */
+    data class Shell(val at: Vector3, val radius: Double, val level: Int)
 
     /** A sun's ball is this many times as far as the corners of the node. */
     private const val AROUND_SUN = 1.15
@@ -126,9 +128,40 @@ object Multilevel {
         )
     }
 
+    /** The systems of [shown] of [g], level above level, as they are made when it is made; [depth]: for 3D mode. */
+    class Systems(g: Graph, shown: Set<Node>, private val depth: Boolean) {
+        internal val levels: List<Level> = run {
+            val nodes = Level(g, shown.toList(), shown.associateWith { mass(g, it, depth) }, emptyMap(), emptyMap())
+            generateSequence(nodes) { below -> if (below.nodes.size <= SMALL) null else contract(below, depth) }
+                .zipWithNext()
+                .takeWhile { (below, above) -> above.nodes.size <= below.nodes.size * SHRINKS }
+                .fold(listOf(nodes)) { made, (_, above) -> made + above }
+        }
+
+        /**
+         * For seeing them: each of every level as a ball with its room, around the middle of what it holds as that is now;
+         * each sun of the lowest in a small one just around that node.
+         */
+        fun shells(): List<Shell> {
+            val middles = (1 until levels.size).runningFold(levels[0].nodes.associateWith { it.point }) { below, i ->
+                levels[i].nodes.associateWith { n ->
+                    val held = levels[i].members.getValue(n)
+                    val weights = held.map { levels[i - 1].mass.getValue(it) }
+                    held.zip(weights).fold(Vector3.Zero) { at, (m, w) -> at + below.getValue(m) * w } / weights.sum()
+                }
+            }
+            val systems = (1 until levels.size).flatMap { i ->
+                levels[i].nodes.map { n -> Shell(middles[i].getValue(n), radiusOf(levels[i].mass.getValue(n), depth), i) }
+            }
+            val suns = levels.getOrNull(1)?.sun?.values.orEmpty().map { s -> Shell(s.point, s.cache.shapeBounds.length() / 2 * AROUND_SUN, 0) }
+            return systems + suns
+        }
+    }
+
     /**
      * `o` on the whole graph: [shown] of [g] by levels, from the top down, a step at a time; the nodes' own level with
      * [weight] and [rank], the levels above by their masses. As [Settling.Run] for [budget], [clock], [depth] and [past].
+     * How long each level took goes to [LayoutTimes].
      */
     class Run(
         private val g: Graph,
@@ -140,13 +173,13 @@ object Multilevel {
         private val depth: Boolean,
         past: Double,
     ) : Stepping {
-        private val levels: List<Level> = run {
-            val nodes = Level(g, shown.toList(), shown.associateWith { mass(g, it, depth) }, emptyMap(), emptyMap())
-            generateSequence(nodes) { below -> if (below.nodes.size <= SMALL) null else contract(below, depth) }
-                .zipWithNext()
-                .takeWhile { (below, above) -> above.nodes.size <= below.nodes.size * SHRINKS }
-                .fold(listOf(nodes)) { made, (_, above) -> made + above }
+        val systems = Platform.clockMillis().let { start ->
+            Systems(g, shown, depth).also {
+                LayoutTimes.built = Platform.clockMillis() - start
+                LayoutTimes.made = it.levels.size
+            }
         }
+        private val levels = systems.levels
 
         private var at = levels.size - 1
         private var run = runAt(at, past)
@@ -162,25 +195,6 @@ object Multilevel {
             return run.also { it.stir(among, past) }
         }
 
-        /**
-         * For seeing the systems while they settle: each of every level as a ball with its room, around the middle of what it
-         * holds as that is now; each sun of the lowest in a small one just around that node.
-         */
-        fun shells(): List<Shell> {
-            val middles = (1 until levels.size).runningFold(levels[0].nodes.associateWith { it.point }) { below, i ->
-                levels[i].nodes.associateWith { n ->
-                    val held = levels[i].members.getValue(n)
-                    val weights = held.map { levels[i - 1].mass.getValue(it) }
-                    held.zip(weights).fold(Vector3.Zero) { at, (m, w) -> at + below.getValue(m) * w } / weights.sum()
-                }
-            }
-            val systems = (1 until levels.size).flatMap { i ->
-                levels[i].nodes.map { n -> Shell(middles[i].getValue(n), radiusOf(levels[i].mass.getValue(n), depth), sun = false) }
-            }
-            val suns = levels.getOrNull(1)?.sun?.values.orEmpty().map { s -> Shell(s.point, s.cache.shapeBounds.length() / 2 * AROUND_SUN, sun = true) }
-            return systems + suns
-        }
-
         /** [n] of level [i] moved [by]: so does all it holds, down to the nodes. */
         private fun carry(i: Int, n: Node, by: Vector3) {
             levels[i].members[n].orEmpty().forEach { m ->
@@ -190,12 +204,13 @@ object Multilevel {
         }
 
         override fun step(): Boolean {
+            LayoutTimes.level = at
             val level = levels[at]
             val before = if (at > 0) level.nodes.associateWith { it.point } else emptyMap()
             val more = run.step()
             if (at > 0) {
-                level.nodes.forEach { n -> (n.point - before.getValue(n)).takeIf { it != Vector3.Zero }?.let { carry(at, n, it) } }
-                if (g.attachmentOwners.isNotEmpty()) Attachments.reglue(g)
+                LayoutTimes.time(Part.Carry) { level.nodes.forEach { n -> (n.point - before.getValue(n)).takeIf { it != Vector3.Zero }?.let { carry(at, n, it) } } }
+                if (g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
             }
             val down = !more && at > 0
             if (down) {

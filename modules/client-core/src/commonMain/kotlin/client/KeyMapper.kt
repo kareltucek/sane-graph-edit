@@ -917,6 +917,8 @@ class KeyMapper(
                 val motion = args?.trim().orEmpty()
                 ZCommands.fold(gv, how, defaults[motion]?.takeIf { ZCommands.isMotion(it) } ?: motion, cmd)
             }
+            "suns" -> gv.gestures.showSuns()
+            "nosuns" -> gv.gestures.hideSuns()
             "browse" -> {
                 // :browse [dir] — file-tree tab; no arg = working directory
                 val dir = args?.let { resolvePath(it) } ?: Workspace.dir
@@ -1221,6 +1223,8 @@ class KeyMapper(
             "remap <lhs> <rhs>       — add recursive key mapping",
             "set <opt>=<val>         — change a setting (e.g. timeoutlen)",
             "source <path>           — load commands from a file",
+            "suns                    — show the systems `o` settles the graph by (made anew now and when `o` is let go)",
+            "nosuns                  — stop showing them",
             "unmap <lhs>             — remove a user mapping",
             "w [<path>]              — save (to <path> if given)",
             "wq                      — save then close tab (quit if last)",
@@ -1373,7 +1377,7 @@ class KeyMapper(
         val BUILTIN_COMMANDS = listOf(
             "map", "noremap", "remap", "unmap", "set", "se", "source",
             "w", "wa", "q", "q!", "qa", "qa!", "wq", "help", "export", "export-selection", "e", "e!", "browse", "cd",
-            "fold", "unfold", "toggle-fold", "content-type", "z",
+            "fold", "unfold", "toggle-fold", "content-type", "z", "suns", "nosuns",
         )
 
         /** Commands that take a motion: run from a key they wait for the next command and take it as theirs (`zf` then `t`). */
