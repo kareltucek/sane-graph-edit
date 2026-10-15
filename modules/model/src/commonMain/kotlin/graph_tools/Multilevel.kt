@@ -63,14 +63,14 @@ object Multilevel {
         }
 
     /**
-     * The level above [level]: its solar systems. Suns by importance (edges times mass, the first of equals first), no
+     * The level above [level]: its solar systems. Suns by degree (of equals the heavier, then the first), no
      * two within 2 edges of each other; each other node joins the lightest system next to it (of equals the nearest
      * sun), first those next to a sun, then those next to one of these.
      */
     private fun contract(level: Level, depth: Boolean): Level {
         val among = level.nodes.toSet()
         val near = neighbours(level, among)
-        val order = level.nodes.sortedByDescending { near.getValue(it).size * level.mass.getValue(it) }
+        val order = level.nodes.sortedWith(compareByDescending<Node> { near.getValue(it).size }.thenByDescending { level.mass.getValue(it) })
         val blocked = mutableSetOf<Node>()
         val sunOf = linkedMapOf<Node, Node>()
         order.forEach { n ->

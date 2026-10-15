@@ -172,8 +172,10 @@ part of a decomposed graph is unclear).
 
 ### Clusters: solar systems (after FM3, Hachul 2004, deterministic)
 
-1. **Suns:** walk the nodes by importance, edges × mass, highest first
-   (ties: document order); a node not within 2 edges of a sun becomes one.
+1. **Suns:** walk the nodes by degree, highest first (ties: the heavier,
+   then document order; Karel 2026-10-15, for the structure: the hubs are
+   the suns; it was edges × mass); a node not within 2 edges of a sun
+   becomes one.
    Suns end up at least 3 edges apart; every node within 2 of a sun.
 2. **Planets:** neighbours of suns; one next to several suns joins the
    system with the least mass so far (ties: the shorter edge).
