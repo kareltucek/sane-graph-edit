@@ -157,7 +157,7 @@ part of a decomposed graph is unclear).
   (its outline as a square of the same area; in 3D its depth too); its
   furthest spring is the collision's, or the edges' with the degree
   factor of its own degree (Karel: as the springs count children).
-- **System:** k × the sum of its members' masses; k = 1.5 (a guess; 1 was tried, Karel 2026-10-15, and put back).
+- **System:** k × the sum of its members' masses; k = 1.3 in 2D, 1.5 in 3D mode (guesses; Karel 2026-10-15: one for each; 1 was tried and put back).
 - **Springs from the masses of both ends, one rule on every level:** edge
   length = (reach of one + reach of the other) × spring-scale × degree
   factor of the smaller degree (kept, Karel) (× 3 in 3D); collision the

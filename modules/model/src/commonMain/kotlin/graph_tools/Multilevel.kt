@@ -15,11 +15,12 @@ import kotlin.math.sqrt
  * system carried to all it holds, so that a node goes its own way plus that of each system it is in.
  *
  * A node's mass is the room it wants: the disc (in 3D the ball) as far as its springs keep others from its middle,
- * by area (volume). A system weighs [PACKING] times its members together and stands as one round node that wants as much.
+ * by area (volume). A system weighs [PACKING] (in space [PACKING_IN_SPACE]) times its members together and stands as one round node that wants as much.
  */
 object Multilevel {
-    /** A system wants this many times the room of its members together. */
-    private const val PACKING = 1.5
+    /** A system wants this many times the room of its members together: in the plane, and in space (3D mode). */
+    private const val PACKING = 1.3
+    private const val PACKING_IN_SPACE = 1.5
 
     /** Levels are made until one has no more nodes than this. */
     private const val SMALL = 50
@@ -100,7 +101,7 @@ object Multilevel {
         val systems = sunOf.entries.groupBy({ it.value }, { it.key })
         val upper = Graph()
         val stand = systems.mapValues { (sun, members) ->
-            val mass = PACKING * held.getValue(sun)
+            val mass = (if (depth) PACKING_IN_SPACE else PACKING) * held.getValue(sun)
             // its springs keep others as far as its room reaches: the reach that, times the collision spring's, is that
             val reach = radiusOf(mass, depth) / (LayoutOptimizer.impl.collisionReach() * sparser(depth))
             val weights = members.map { level.mass.getValue(it) }
