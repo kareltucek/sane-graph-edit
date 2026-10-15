@@ -681,8 +681,8 @@ class GestureController(
     /** The systems shown when `o` does not run (`:set suns`): made anew when `o` is let go; null when they are not shown (`:set nosuns`). */
     private var suns: Multilevel.Systems? = null
 
-    /** The one level of the systems drawn (`:set suns=<level>`), also while `o` runs, and the one `o` on the whole graph moves; null: all. */
-    private var sunsLevel: Int? = null
+    /** The levels of the systems drawn (`:set suns=<levels>`), also while `o` runs, and those `o` on the whole graph moves; null: all. */
+    private var sunsLevels: Set<Int>? = null
 
     val sunsShown: Boolean get() = suns != null
 
@@ -690,9 +690,9 @@ class GestureController(
         suns = Multilevel.Systems(graphView.g, graphView.g.visibleNodes(), graphView.viewTransform.threeD)
     }
 
-    /** `:set suns` / `:set suns=<level>`: the systems of the nodes shown are made anew and shown, those of [level] only or all. */
-    fun showSuns(level: Int?) {
-        sunsLevel = level
+    /** `:set suns` / `:set suns=<levels>`: the systems of the nodes shown are made anew and shown, those of [levels] only or all. */
+    fun showSuns(levels: Set<Int>?) {
+        sunsLevels = levels
         makeSuns()
         graphView.repaint()
     }
@@ -700,13 +700,13 @@ class GestureController(
     /** `:set nosuns`. */
     fun hideSuns() {
         suns = null
-        sunsLevel = null
+        sunsLevels = null
         graphView.repaint()
     }
 
     /** The systems to be drawn ([Multilevel.Systems.shells]): while `o` lays out the whole graph by levels, those; else those of `:set suns`. */
     val shells: List<Multilevel.Shell>
-        get() = ((laying as? Multilevel.Run)?.systems ?: suns)?.shells().orEmpty().filter { sunsLevel == null || it.level == sunsLevel }
+        get() = ((laying as? Multilevel.Run)?.systems ?: suns)?.shells().orEmpty().filter { sunsLevels?.contains(it.level) ?: true }
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null
@@ -734,8 +734,8 @@ class GestureController(
         val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
         val weight = { n: Node -> if (n in moving) importance(n) else Settling.FIXED }
         val depth = graphView.viewTransform.threeD
-        // the whole graph by levels, all at once, or the one of `:set suns=<level>` alone
-        return if (selected.isEmpty()) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevel)
+        // the whole graph by levels, all at once, or those of `:set suns=<levels>` alone
+        return if (selected.isEmpty()) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevels)
         else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, gravity = false, adaptive = true).also { it.stir(moving, past) }
     }
 

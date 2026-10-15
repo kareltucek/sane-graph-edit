@@ -35,11 +35,8 @@ object Multilevel {
     /** One level: its [nodes] in [g], what each weighs, and, above the nodes, what each holds of the level below and which of those is its sun. */
     internal class Level(val g: Graph, val nodes: List<Node>, val mass: Map<Node, Double>, val members: Map<Node, List<Node>>, val sun: Map<Node, Node>)
 
-    /** A ball drawn around a system of [level] (1 the lowest), or, of level 0, a small one around a node that is the sun of one of the lowest. */
+    /** A ball drawn around a system of [level] (1 the lowest), or, of level 0, around a node, as big as its room. */
     data class Shell(val at: Vector3, val radius: Double, val level: Int)
-
-    /** A sun's ball is this many times as far as the corners of the node. */
-    private const val AROUND_SUN = 1.15
 
     /** How far a ball (in 3D) or a disc reaches that has the room [mass]. */
     private fun radiusOf(mass: Double, depth: Boolean) = if (depth) (3 * mass / (4 * PI)).pow(1.0 / 3) else sqrt(mass / PI)
@@ -141,7 +138,7 @@ object Multilevel {
 
         /**
          * For seeing them: each of every level as a ball with its room, around the middle of what it holds as that is now;
-         * each sun of the lowest in a small one just around that node.
+         * each node (level 0) as one with its own room.
          */
         fun shells(): List<Shell> {
             val middles = (1 until levels.size).runningFold(levels[0].nodes.associateWith { it.point }) { below, i ->
@@ -154,14 +151,14 @@ object Multilevel {
             val systems = (1 until levels.size).flatMap { i ->
                 levels[i].nodes.map { n -> Shell(middles[i].getValue(n), radiusOf(levels[i].mass.getValue(n), depth), i) }
             }
-            val suns = levels.getOrNull(1)?.sun?.values.orEmpty().map { s -> Shell(s.point, s.cache.shapeBounds.length() / 2 * AROUND_SUN, 0) }
-            return systems + suns
+            val nodes = levels[0].nodes.map { n -> Shell(n.point, radiusOf(levels[0].mass.getValue(n), depth), 0) }
+            return systems + nodes
         }
     }
 
     /**
      * `o` on the whole graph: [shown] of [g] by levels, all of them at each step, until all rest; the nodes' own level with
-     * [weight] and [rank], the levels above by their masses; with [only] that level alone. As [Settling.Run] for [budget],
+     * [weight] and [rank], the levels above by their masses; with [only] those levels alone. As [Settling.Run] for [budget],
      * [clock], [depth] and [past].
      * How long each level took goes to [LayoutTimes].
      */
@@ -174,7 +171,7 @@ object Multilevel {
         private val clock: (() -> Long)?,
         private val depth: Boolean,
         private val past: Double,
-        private val only: Int? = null,
+        private val only: Set<Int>? = null,
     ) : Stepping {
         val systems = Platform.clockMillis().let { start ->
             Systems(g, shown, depth).also {
@@ -218,8 +215,8 @@ object Multilevel {
             }
         }
 
-        /** The levels that move: [only] (`:set suns=<level>`; the top one, if there are fewer), or all, the top first. */
-        private val moving = only?.let { listOf(it.coerceIn(0, levels.size - 1)) } ?: levels.indices.reversed().toList()
+        /** The levels that move, the top first: [only] (`:set suns=<levels>`; for one higher than there are, the top one), or all. */
+        private val moving = (only?.map { it.coerceIn(0, levels.size - 1) }?.toSet() ?: levels.indices.toSet()).sortedDescending()
 
         private val runs = moving.associateWith { runAt(it, past) }
 

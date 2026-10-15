@@ -49,7 +49,7 @@ class MultilevelTest {
         val g = pile(90)
         var now = 0L
         val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
-        val run = Multilevel.Run(g, g.nodes, importance, importance, null, { now }, false, LayoutOptimizer.WINDOW_MS, only = 1)
+        val run = Multilevel.Run(g, g.nodes, importance, importance, null, { now }, false, LayoutOptimizer.WINDOW_MS, only = setOf(1))
         val systems = run.systems.levels[1].members.values
         val offsets = { systems.map { held -> held.map { it.point - held.first().point } } }
         val before = offsets()
@@ -60,15 +60,15 @@ class MultilevelTest {
     }
 
     @Test
-    fun `the shells -a ball for each system, one around each sun of the lowest, around what they hold`() {
+    fun `the shells -a ball for each system and one for each node, around what they hold`() {
         val g = pile(90)
         val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
         val run = Multilevel.Run(g, g.nodes, importance, importance, null, { 0L }, true, LayoutOptimizer.WINDOW_MS)
         val shells = run.systems.shells()
-        val (suns, systems) = shells.partition { it.level == 0 }
-        // the lowest systems are as many as their suns, and there may be more levels above them
-        assertTrue(suns.isNotEmpty() && systems.size >= suns.size, "${suns.size} suns, ${systems.size} systems")
-        assertTrue(suns.all { s -> g.nodes.any { it.point == s.at && s.radius > it.cache.shapeBounds.length() / 2 } }, "a sun's ball is around its node")
+        val (nodes, systems) = shells.partition { it.level == 0 }
+        assertTrue(nodes.size == g.nodes.size && systems.isNotEmpty(), "${nodes.size} nodes, ${systems.size} systems")
+        // a node's room reaches further than its corners: the springs keep others off it
+        assertTrue(nodes.all { s -> g.nodes.any { it.point == s.at && s.radius > it.cache.shapeBounds.length() / 2 } }, "a node's ball is around it")
         // a system holds at least its sun: as much room as a node's ball at least
         assertTrue(systems.all { it.radius > 1.0 }, "systems have room")
         // the whole graph moved, the shells move with it

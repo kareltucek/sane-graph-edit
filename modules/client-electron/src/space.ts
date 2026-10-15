@@ -445,7 +445,7 @@ class Rings {
 /** How strong the lines of the shells are: they are seen through, not looked at. */
 const SHELL_OPACITY = 0.6;
 
-/** The hues of the shells, from the suns (level 0) to the top level: orange, through yellow, green and cyan, to blue; full saturation. */
+/** The hues of the shells of systems, from the lowest (level 1) to the top level: orange, through yellow, green and cyan, to blue; full saturation. Those of the nodes (level 0) are black. */
 const SHELL_HUES = [30 / 360, 225 / 360] as const;
 
 /** Their lightness on a dark background, and on a light one. */
@@ -462,8 +462,8 @@ export function shellColours(background: string): (level: number, top: number) =
         return lightness - spread * Math.max(-1, Math.min(k - 3, 9 - k, 1));
     };
     return (level, top) => {
-        const hue = SHELL_HUES[0] + (SHELL_HUES[1] - SHELL_HUES[0]) * (top > 0 ? level / top : 0);
-        return [channel(hue, 0), channel(hue, 8), channel(hue, 4)];
+        const hue = SHELL_HUES[0] + (SHELL_HUES[1] - SHELL_HUES[0]) * (top > 1 ? (level - 1) / (top - 1) : 0);
+        return level === 0 ? [0, 0, 0] : [channel(hue, 0), channel(hue, 8), channel(hue, 4)];
     };
 }
 

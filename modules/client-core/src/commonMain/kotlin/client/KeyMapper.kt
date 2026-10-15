@@ -945,7 +945,9 @@ class KeyMapper(
             "spring-scale-step" -> value.toDoubleOrNull()?.let { graph_tools.LayoutOptimizer.springScaleStep = it }
             "picker" -> FilePicker.command = value.ifBlank { FilePicker.DEFAULT_COMMAND }
             "wall-scale" -> value.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }?.let { graph_tools.ViewModes.wallScale = it.coerceIn(0.05, 20.0) }
-            "suns" -> value.toIntOrNull()?.takeIf { it >= 0 }?.let { activeView?.gestures?.showSuns(it) }
+            // a level or several, comma-separated
+            "suns" -> value.split(',').map { it.trim().toIntOrNull()?.takeIf { l -> l >= 0 } }.takeIf { it.isNotEmpty() && null !in it }
+                ?.let { levels -> activeView?.gestures?.showSuns(levels.filterNotNull().toSet()) }
             else -> applicationSettings[name]?.invoke(value) ?: utils.Platform.warn("sane-graph-edit: unknown setting '$name'")
         }
     }
@@ -1187,10 +1189,10 @@ class KeyMapper(
         sb.appendLine("                    ring (3D: a wire icosahedron) around each, as big")
         sb.appendLine("                    as the room it wants, coloured by level; made anew")
         sb.appendLine("                    now and whenever `o` is let go.")
-        sb.appendLine("  suns=<level>      Only those of one level, also while `o` runs:")
-        sb.appendLine("                    0 the suns, 1 their systems, 2 theirs, ...;")
-        sb.appendLine("                    `o` on the whole graph then moves that level only")
-        sb.appendLine("                    (0: the nodes themselves).")
+        sb.appendLine("  suns=<levels>     Only those of these levels (e.g. 0,1,2), also while")
+        sb.appendLine("                    `o` runs: 0 the nodes (black), 1 their systems,")
+        sb.appendLine("                    2 theirs, ...; `o` on the whole graph then moves")
+        sb.appendLine("                    those levels only.")
         sb.appendLine("                    Current: ${if (activeView?.gestures?.sunsShown == true) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("  discard           Never ask about unsaved changes: opening,")
