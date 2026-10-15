@@ -195,7 +195,7 @@ Flags:
 | `c`       | Clear edges (within selection, or incident to selection)        |
 | `d`       | Delete selected nodes                                           |
 | `D`       | Delete selected nodes but reconnect predecessors to successors  |
-| `o`       | Layout optimiser while held: the selected nodes (all, with none selected) move a spring pass a picture until the key is let go; one undo step |
+| `o`       | Layout optimiser while held: the selected nodes (all seen, with one or none selected) move a spring pass a picture until the key is let go; one undo step |
 | `O`       | The same, around one selected node: it stays where it is and its children are laid out around it (several selected: as `o`) |
 | `:set suns` / `:set nosuns` | Show (made anew now and whenever `o` is let go) / stop showing the systems the whole graph is settled by: a ring (3D: a wire icosahedron) around each, as big as the room it wants, coloured by level, and each node's own room (level 0), the suns in the first colour, the planets black; `:set suns=<levels>` (e.g. `0,1,2`) only those of these levels, also while `o` runs, and `o` on the whole graph moves those levels only |
 | `g`       | Toggle "grab" mode — move the selection without holding a button |
@@ -389,9 +389,8 @@ while on:
   shown, at first the selected ones (with nothing selected: of each
   connected part of the graph the nodes that fewest edges come into,
   so the root of a tree and all of a cycle), and their parents and
-  children faint. A click pins: a
-  faint node, or the children of a node that is pinned already
-  (`:explore-show`). A right click folds: everything pinned below the
+  children faint. A click pins the
+  node and its children, one generation (`:explore-show`). A right click folds: everything pinned below the
   node, but for what is also below another pinned node; with nothing
   to fold, the node itself (`:explore-hide`). A right click on a
   faint node does nothing. The pinned nodes are the mark `!`: `m!`

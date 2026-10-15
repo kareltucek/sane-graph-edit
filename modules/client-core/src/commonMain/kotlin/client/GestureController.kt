@@ -716,16 +716,18 @@ class GestureController(
 
     /**
      * `o` / `O`: the settling springs on the nodes it lays out, every other node fixed, in space in 3D mode
-     * ([docs/developer/springs.md]). `o`: the selected nodes, all seen ones when none is selected; `O` on one node: its
-     * children that hang from it alone, the node itself staying ([LayoutOptimizer.SpringTarget.MoveChildsOnly]). The run
-     * begins as if [past] milliseconds ago, so that its first step moves at once.
+     * ([docs/developer/springs.md]). `o`: the selected nodes, all seen ones when one or none is selected; `O` on one
+     * node: its children that hang from it alone, the node itself staying ([LayoutOptimizer.SpringTarget.MoveChildsOnly]).
+     * The run begins as if [past] milliseconds ago, so that its first step moves at once.
      */
     fun layout(restrict: Boolean, past: Double): Stepping {
         val g = graphView.g
         val shown = g.visibleNodes()
         val selected = g.movable(g.selectedNodes).filter { it in shown }.toSet()
+        // one node alone has nothing to settle against: `o` then lays out all that is seen
+        val whole = selected.isEmpty() || (selected.size == 1 && !restrict)
         val moving = when {
-            selected.isEmpty() -> shown
+            whole -> shown
             restrict && selected.size == 1 ->
                 LayoutOptimizer.impl.computeNodeSet(g, LayoutOptimizer.SpringTarget.MoveChildsOnly).filter { it in shown && it !in selected }.toSet()
             else -> selected
@@ -735,7 +737,7 @@ class GestureController(
         val weight = { n: Node -> if (n in moving) importance(n) else Settling.FIXED }
         val depth = graphView.viewTransform.threeD
         // the whole graph by levels, all at once, or those of `:set suns=<levels>` alone
-        return if (selected.isEmpty()) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevels)
+        return if (whole) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevels)
         else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, gravity = false, adaptive = true).also { it.stir(moving, past) }
     }
 

@@ -52,12 +52,20 @@ class OptimizeHoldTest {
 
     @Test
     fun `only the selection moves - a node it runs into stays where it is`() {
-        view.g.cleanSelect(setOf(b))
+        view.g.cleanSelect(setOf(b, c))
         view.byHeldKey = false
         Actions.optimizeWhileHeld(view, restrict = false)
         assertEquals(before.getValue(a), a.position, "not selected, on b: stays")
-        assertEquals(before.getValue(c), c.position)
         assertTrue(b.position != before.getValue(b), "selected: moves")
+    }
+
+    @Test
+    fun `one node selected - all that is seen moves`() {
+        view.g.cleanSelect(setOf(b))
+        view.byHeldKey = false
+        Actions.optimizeWhileHeld(view, restrict = false)
+        assertTrue(a.position != before.getValue(a), "not selected, on b: moves too")
+        assertTrue(b.position != before.getValue(b))
     }
 
     @Test

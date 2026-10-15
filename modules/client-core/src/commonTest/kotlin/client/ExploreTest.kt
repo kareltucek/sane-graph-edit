@@ -147,15 +147,15 @@ class ExploreTest {
     }
 
     @Test
-    fun `showing pins a faint node, and the children of a pinned one`() {
+    fun `showing pins the node and its children, one generation`() {
         select(a)
         Explore.set(view, true)
         select(b)
         Explore.show(view)
-        assertEquals(setOf(a, b), g.pinned)
+        assertEquals(setOf(a, b, c), g.pinned)
         select(a)
         Explore.show(view)
-        assertEquals(setOf(a, b, side), g.pinned)
+        assertEquals(setOf(a, b, c, side), g.pinned)
     }
 
     @Test

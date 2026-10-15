@@ -31,16 +31,14 @@ object Explore {
 
     /**
      * `:explore-show`, what a click of the left button does in the
-     * mode: of the selected nodes those that are not pinned (a faint
-     * node that was clicked) are; with all of them pinned, their
-     * children are.
+     * mode: the selected nodes (the one clicked) and their children,
+     * one generation, are pinned.
      */
     fun show(view: EditorView) {
         val g = view.g
         g.pinned?.let { pins ->
             val from = g.selectedNodes.toSet()
-            val faint = from - pins
-            g.pinned = pins + faint.ifEmpty { GraphTools.computeGeneration(g, from, true, intoHidden = true) }
+            g.pinned = pins + from + GraphTools.computeGeneration(g, from, true, intoHidden = true)
         }
         view.repaint()
     }
