@@ -18,8 +18,8 @@ import kotlin.math.sqrt
  * dimensions. A system weighs [PACKING] times its members together and stands as one round node that wants as much.
  */
 object Multilevel {
-    /** A system wants this many times the room of its members together: they do not fill all the room between them. */
-    private const val PACKING = 1.5
+    /** A system wants this many times the room of its members together. */
+    private const val PACKING = 1.0
 
     /** Levels are made until one has no more nodes than this. */
     private const val SMALL = 50

@@ -443,18 +443,27 @@ class Rings {
 }
 
 /** How strong the lines of the shells are: they are seen through, not looked at. */
-const SHELL_OPACITY = 0.35;
+const SHELL_OPACITY = 0.6;
 
-/** The colours of the shells, from the suns (level 0) to the top level: orange-white to bluish white; on a light background deeper ones. */
-const SHELL_RAMP = { dark: [[1, 0.85, 0.69], [0.78, 0.86, 1]], light: [[0.78, 0.39, 0.08], [0.16, 0.31, 0.78]] } as const;
+/** The hues of the shells, from the suns (level 0) to the top level: orange, through yellow, green and cyan, to blue; full saturation. */
+const SHELL_HUES = [30 / 360, 225 / 360] as const;
+
+/** Their lightness on a dark background, and on a light one. */
+const SHELL_LIGHTNESS = { dark: 0.6, light: 0.4 } as const;
 
 /** On [background], the colour of a shell of a level among levels up to a top one: red, green and blue, 0 to 1. */
 export function shellColours(background: string): (level: number, top: number) => [number, number, number] {
     const bg = new THREE.Color(background);
-    const [from, to] = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? SHELL_RAMP.light : SHELL_RAMP.dark;
+    const lightness = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? SHELL_LIGHTNESS.light : SHELL_LIGHTNESS.dark;
+    // full saturation: of the hue's three channels, as far below and above the lightness as it allows
+    const spread = Math.min(lightness, 1 - lightness);
+    const channel = (hue: number, n: number) => {
+        const k = (n + hue * 12) % 12;
+        return lightness - spread * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+    };
     return (level, top) => {
-        const t = top > 0 ? level / top : 0;
-        return [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t, from[2] + (to[2] - from[2]) * t];
+        const hue = SHELL_HUES[0] + (SHELL_HUES[1] - SHELL_HUES[0]) * (top > 0 ? level / top : 0);
+        return [channel(hue, 0), channel(hue, 8), channel(hue, 4)];
     };
 }
 

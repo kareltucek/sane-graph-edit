@@ -61,7 +61,7 @@ interface Scene {
 }
 
 /** How strong the circles of the shells are: they are seen through, not looked at. */
-const SHELL_ALPHA = 0.35;
+const SHELL_ALPHA = 0.6;
 
 const FONT = "monospace";
 const LINE_HEIGHT = 1.2;
