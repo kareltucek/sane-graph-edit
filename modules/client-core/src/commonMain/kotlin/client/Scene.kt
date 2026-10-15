@@ -61,10 +61,10 @@ data class Scene(
 )
 
 /**
- * A system of nodes of [level] ([graph_tools.Multilevel.Shell]; 0: a sun of the lowest, just around that node): a ball,
- * flat a circle, [radius] around [position] and [depth] away (for [SpaceScene]; in [Scene] as it appears).
+ * A system of nodes of [level] ([graph_tools.Multilevel.Shell]; 0: a node, [sun] if it is the sun of one of the lowest):
+ * a ball, flat a circle, [radius] around [position] and [depth] away (for [SpaceScene]; in [Scene] as it appears).
  */
-data class SceneShell(val position: Vector2, val radius: Double, val level: Int, val depth: Double = 0.0)
+data class SceneShell(val position: Vector2, val radius: Double, val level: Int, val depth: Double = 0.0, val sun: Boolean = false)
 
 /**
  * What a view shows, not projected: for a renderer that has
@@ -106,7 +106,7 @@ fun EditorView.spaceScene(measurer: TextMeasurer, asSeen: Boolean = true): Space
         depth = viewTransform.depth,
         distance = viewTransform.distance,
         scale = viewTransform.scale,
-        shells = gestures.shells.map { s -> (if (asSeen) viewTransform.toView(s.at) else s.at).let { SceneShell(it.xy, s.radius, s.level, it.z) } },
+        shells = gestures.shells.map { s -> (if (asSeen) viewTransform.toView(s.at) else s.at).let { SceneShell(it.xy, s.radius, s.level, it.z, s.sun) } },
     )
 }
 
@@ -142,7 +142,7 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
             }
         },
         selectionBox = gestures.selectionBoxFrom?.let { Vector2.computeCorners(gestures.lastPosition, it) },
-        shells = gestures.shells.mapNotNull { s -> apparentAt(viewTransform.toView(s.at))?.let { SceneShell(it.position, s.radius * it.scale, s.level) } },
+        shells = gestures.shells.mapNotNull { s -> apparentAt(viewTransform.toView(s.at))?.let { SceneShell(it.position, s.radius * it.scale, s.level, sun = s.sun) } },
     )
 }
 

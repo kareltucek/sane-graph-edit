@@ -15,13 +15,14 @@ export interface SpaceNode {
     shape: string;
 }
 
-/** A system of nodes of [level] (`o` on the whole graph, `:suns`): a ball [radius] around its middle; of level 0 a sun's, just around that node. */
+/** A system of nodes of [level] (`o` on the whole graph, `:suns`): a ball [radius] around its middle; of level 0 a node's, [sun] if it is the sun of one of the lowest. */
 export interface Shell {
     x: number;
     y: number;
     z: number;
     radius: number;
     level: number;
+    sun: boolean;
 }
 
 export interface SpaceScene<N extends SpaceNode> {
@@ -445,14 +446,14 @@ class Rings {
 /** How strong the lines of the shells are: they are seen through, not looked at. */
 const SHELL_OPACITY = 0.6;
 
-/** The hues of the shells of systems, from the lowest (level 1) to the top level: orange, through yellow, green and cyan, to blue; full saturation. Those of the nodes (level 0) are black. */
+/** The hues of the shells, from the suns (level 0) to the top level: orange, through yellow, green and cyan, to blue; full saturation. The other nodes' (planets) are black. */
 const SHELL_HUES = [30 / 360, 225 / 360] as const;
 
 /** Their lightness on a dark background, and on a light one. */
 const SHELL_LIGHTNESS = { dark: 0.6, light: 0.4 } as const;
 
-/** On [background], the colour of a shell of a level among levels up to a top one: red, green and blue, 0 to 1. */
-export function shellColours(background: string): (level: number, top: number) => [number, number, number] {
+/** On [background], the colour of a shell ([Shell]) among levels up to a top one: red, green and blue, 0 to 1. */
+export function shellColours(background: string): (shell: Shell, top: number) => [number, number, number] {
     const bg = new THREE.Color(background);
     const lightness = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? SHELL_LIGHTNESS.light : SHELL_LIGHTNESS.dark;
     // full saturation: of the hue's three channels, as far below and above the lightness as it allows
@@ -461,9 +462,9 @@ export function shellColours(background: string): (level: number, top: number) =
         const k = (n + hue * 12) % 12;
         return lightness - spread * Math.max(-1, Math.min(k - 3, 9 - k, 1));
     };
-    return (level, top) => {
-        const hue = SHELL_HUES[0] + (SHELL_HUES[1] - SHELL_HUES[0]) * (top > 1 ? (level - 1) / (top - 1) : 0);
-        return level === 0 ? [0, 0, 0] : [channel(hue, 0), channel(hue, 8), channel(hue, 4)];
+    return (shell, top) => {
+        const hue = SHELL_HUES[0] + (SHELL_HUES[1] - SHELL_HUES[0]) * (top > 0 ? shell.level / top : 0);
+        return shell.level === 0 && !shell.sun ? [0, 0, 0] : [channel(hue, 0), channel(hue, 8), channel(hue, 4)];
     };
 }
 
@@ -506,7 +507,7 @@ class Shells {
         const top = shells.reduce((most, s) => Math.max(most, s.level), 0);
         const colourOf = shellColours(background);
         shells.forEach((s, i) => {
-            const [r, g, b] = colourOf(s.level, top);
+            const [r, g, b] = colourOf(s, top);
             for (let k = 0; k < unit.length; k += 3) {
                 // here y is up and z towards the viewer
                 positions[i * unit.length + k] = s.x + unit[k] * s.radius;

@@ -35,8 +35,8 @@ object Multilevel {
     /** One level: its [nodes] in [g], what each weighs, and, above the nodes, what each holds of the level below and which of those is its sun. */
     internal class Level(val g: Graph, val nodes: List<Node>, val mass: Map<Node, Double>, val members: Map<Node, List<Node>>, val sun: Map<Node, Node>)
 
-    /** A ball drawn around a system of [level] (1 the lowest), or, of level 0, around a node, as big as its room. */
-    data class Shell(val at: Vector3, val radius: Double, val level: Int)
+    /** A ball drawn around a system of [level] (1 the lowest), or, of level 0, around a node, as big as its room; [sun]: a node that is the sun of one of the lowest. */
+    data class Shell(val at: Vector3, val radius: Double, val level: Int, val sun: Boolean = false)
 
     /** How far a ball (in 3D) or a disc reaches that has the room [mass]. */
     private fun radiusOf(mass: Double, depth: Boolean) = if (depth) (3 * mass / (4 * PI)).pow(1.0 / 3) else sqrt(mass / PI)
@@ -52,7 +52,7 @@ object Multilevel {
         val deep = minOf(half.x, half.y) * Settling.Space.THICKNESS
         val reach = if (depth) (half.x * half.y * deep).pow(1.0 / 3) else sqrt(half.x * half.y)
         val degree = g.edgeMap[n].orEmpty().size.toDouble()
-        val spring = maxOf(LayoutOptimizer.impl.collisionReach(), LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(degree))
+        val spring = maxOf(LayoutOptimizer.impl.collisionReach(), LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(degree, depth))
         // a node not measured yet has no size: it still weighs something
         return roomOf(reach * spring * sparser(depth), depth).coerceAtLeast(1.0)
     }
@@ -138,7 +138,7 @@ object Multilevel {
 
         /**
          * For seeing them: each of every level as a ball with its room, around the middle of what it holds as that is now;
-         * each node (level 0) as one with its own room.
+         * each node (level 0) as one with its own room, telling the suns of the lowest from the rest.
          */
         fun shells(): List<Shell> {
             val middles = (1 until levels.size).runningFold(levels[0].nodes.associateWith { it.point }) { below, i ->
@@ -151,7 +151,8 @@ object Multilevel {
             val systems = (1 until levels.size).flatMap { i ->
                 levels[i].nodes.map { n -> Shell(middles[i].getValue(n), radiusOf(levels[i].mass.getValue(n), depth), i) }
             }
-            val nodes = levels[0].nodes.map { n -> Shell(n.point, radiusOf(levels[0].mass.getValue(n), depth), 0) }
+            val suns = levels.getOrNull(1)?.sun?.values.orEmpty().toSet()
+            val nodes = levels[0].nodes.map { n -> Shell(n.point, radiusOf(levels[0].mass.getValue(n), depth), 0, n in suns) }
             return systems + nodes
         }
     }

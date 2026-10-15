@@ -1163,7 +1163,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
         scene.shells
             .filter((s) => inView(scene, width, height, s.x - s.radius, s.y - s.radius, s.x + s.radius, s.y + s.radius, 1))
             .forEach((s) => {
-                const [r, g, b] = colourOf(s.level, top);
+                const [r, g, b] = colourOf(s, top);
                 ctx.strokeStyle = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
                 ctx.beginPath();
                 ctx.arc(s.x, s.y, s.radius, 0, 2 * Math.PI);

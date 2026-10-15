@@ -243,15 +243,19 @@ object LayoutOptimizer {
     }
 
     object impl {
-        fun degFactor(g: Graph, node: Node, other: Node): Double {
+        fun degFactor(g: Graph, node: Node, other: Node, depth: Boolean = false): Double {
             val d1 = g.edgeMap[node]?.size.orElse(0).toDouble()
             val d2 = g.edgeMap[other]?.size.orElse(0).toDouble()
 
-            return degFactor(kotlin.math.min(d1, d2))
+            return degFactor(kotlin.math.min(d1, d2), depth)
         }
 
-        /** [degFactor] of an edge whose smaller degree is [d]. */
-        fun degFactor(d: Double): Double = 1.0 + 0.2 * (if (d > 2) d + 1 else d)
+        /** How much longer an edge is for each edge of its end with fewer: in the plane, and in space (3D mode). */
+        const val PER_DEGREE = 0.2
+        const val PER_DEGREE_IN_SPACE = 0.0
+
+        /** [degFactor] of an edge whose smaller degree is [d]; in space with [depth]. */
+        fun degFactor(d: Double, depth: Boolean = false): Double = 1.0 + (if (depth) PER_DEGREE_IN_SPACE else PER_DEGREE) * (if (d > 2) d + 1 else d)
 
         fun computeBBSpring(g: Graph, node: Node, othr: Node, e: Edge, strength: Double = 1.0): Spring {
             val cn = (e.src == node).fold(e.cache.dstPt, e.cache.srcPt).let { +it - node.position }
