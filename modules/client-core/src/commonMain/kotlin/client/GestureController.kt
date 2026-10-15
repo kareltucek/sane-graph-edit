@@ -704,9 +704,9 @@ class GestureController(
         graphView.repaint()
     }
 
-    /** The systems to be drawn ([Multilevel.Systems.shells]): while `o` lays out the whole graph by levels, those; else those of `:set suns`. */
+    /** The systems to be drawn ([Multilevel.Systems.shells]), only with `:set suns`: while `o` lays out the whole graph by levels, those; else those made last. */
     val shells: List<Multilevel.Shell>
-        get() = ((laying as? Multilevel.Run)?.systems ?: suns)?.shells().orEmpty().filter { sunsLevels?.contains(it.level) ?: true }
+        get() = suns?.let { made -> ((laying as? Multilevel.Run)?.systems ?: made).shells().filter { sunsLevels?.contains(it.level) ?: true } }.orEmpty()
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null

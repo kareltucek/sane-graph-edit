@@ -223,6 +223,8 @@ part of a decomposed graph is unclear).
   icosahedron (2D: a circle) around the mass-weighted middle of what it holds
   now, as big as a ball (disc) of its mass; each sun of the lowest systems
   in a small one just around that node. Gone when `o` is let go.
+- Since: only with `:set suns` (`=<levels>`), while `o` runs and after
+  (Karel); level 0 every node's room, the suns coloured, the planets black.
 
 ### Open
 
