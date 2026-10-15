@@ -60,6 +60,13 @@ changes.
   other's share of their weights: fixed (∞) > heavy 4 > usual 2 > light 1.
 - **Damping** (settling): a step moves 0.6 of what is asked, less over
   time (× 0.985 per window); the follow spring does not cool.
+  `o` (2026-10-15, Karel) does not cool with time: the part is adaptive
+  (Hu 2005): × 1/0.9 (at most 1) after 5 rounds in a row in which the
+  springs asked for less (sum of squares), × 0.9 after one in which they
+  asked for more; no limit of rounds while pulling. It froze before:
+  half the part was gone in some 0.75 s, edges between systems were left
+  at 1.65 × the collision distance (now 1.17-1.32), and the upper levels
+  stopped at the 200-round limit instead of at rest.
 - **Joining**: a node pushed by one that moves joins the moving ones,
   unless fixed.
 - **Collisions with the 16 nearest** only (found in a grid as fine as the

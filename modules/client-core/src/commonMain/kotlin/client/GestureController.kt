@@ -736,7 +736,7 @@ class GestureController(
         val depth = graphView.viewTransform.threeD
         // the whole graph by levels, all at once, or the one of `:set suns=<level>` alone
         return if (selected.isEmpty()) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevel)
-        else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, gravity = false).also { it.stir(moving, past) }
+        else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, gravity = false, adaptive = true).also { it.stir(moving, past) }
     }
 
     /**

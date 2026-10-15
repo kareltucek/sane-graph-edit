@@ -66,8 +66,19 @@ object Settling {
     /** What the springs ask of a node in a balanced step ([Run]): of its pairs, each with the other; of its own. */
     private class Paired(val pushes: List<Pair<Vector3, Node>>, val edges: List<Pair<Vector3, Node>>, val nudges: List<Vector3>, val pulls: List<Vector3>)
 
-    /** What a step did: who moves now, the furthest one went, and how many it took ([step]'s deadline). */
-    private data class Step(val moving: Set<Node>, val furthest: Double, val taken: Int)
+    /**
+     * Adaptive ([Run]): after this many rounds in a row in which the springs asked for less than in the one before, the
+     * part moved grows by 1 / [ADAPT]; after one in which they asked for more (the nodes swing), it shrinks by [ADAPT]
+     * (after Hu, 2005).
+     */
+    private const val ADAPT = 0.9
+    private const val ADAPT_AFTER = 5
+
+    /** Adaptive, a step moves at most all of what the springs ask. */
+    private const val MOST = 1.0
+
+    /** What a step did: who moves now, the furthest one went, how many it took ([step]'s deadline), and the sum of the squares of what the springs asked. */
+    private data class Step(val moving: Set<Node>, val furthest: Double, val taken: Int, val asked: Double)
 
     /**
      * How readily a node gives way ([Run]'s weight): of two nodes on
@@ -116,6 +127,11 @@ object Settling {
      * what its edges ask instead of averaging it, each counting as one
      * of as many as the busier of its two ends has; its pushes are
      * averaged, which leaves a little drift.
+     *
+     * [adaptive] (`o`): instead of cooling with time, the part of what
+     * the springs ask that a step moves grows while they ask for less
+     * and less, and shrinks when they ask for more ([ADAPT]); the nodes
+     * pull until they rest, with no limit of rounds.
      */
     class Run(
         private val g: Graph,
@@ -129,6 +145,7 @@ object Settling {
         private val rank: ((Node) -> Double)? = null,
         private val gravity: Boolean = true,
         private val balanced: Boolean = false,
+        private val adaptive: Boolean = false,
         private val origin: (Node) -> Vector3? = { null },
     ) : Stepping {
         var moving: Set<Node> = emptySet()
@@ -150,6 +167,11 @@ object Settling {
         private var furthest = 0.0
         private var grew = false
 
+        /** Adaptive: what the springs asked in the round in progress and in the one before, and how many rounds in a row asked for less. */
+        private var asked = 0.0
+        private var askedBefore = Double.POSITIVE_INFINITY
+        private var better = 0
+
         /**
          * [nodes] join those that move, and all start anew: where they
          * are going changed. A run stirred first goes by the [clock] as
@@ -165,6 +187,9 @@ object Settling {
             covered = 0
             furthest = 0.0
             grew = false
+            asked = 0.0
+            askedBefore = Double.POSITIVE_INFINITY
+            better = 0
             // the first step moves for the time since the run began
             if (lastStep == null) lastStep = clock?.invoke()?.minus(past.toLong())
         }
@@ -195,8 +220,9 @@ object Settling {
                 covered += done.taken
                 furthest = maxOf(furthest, done.furthest)
                 grew = grew || done.moving.size != moving.size
+                asked += done.asked
                 moving = done.moving
-                if (clock != null && pulling) damping *= COOLING.pow(share)
+                if (clock != null && pulling && !adaptive) damping *= COOLING.pow(share)
                 if (covered >= moving.size) endRound()
                 LayoutTimes.step(among.size, utils.Platform.clockMillis() - start)
             }
@@ -216,11 +242,20 @@ object Settling {
             // the tug on a firm node is small when it is near: it is there only when it is there
             val arrived = !pulling || firm.all { n -> origin(n)?.let { ((if (depth) it else Vector3(it.xy, n.point.z)) - n.point).length() < ARRIVED } ?: true }
             val rests = furthest < SETTLED && !grew && arrived
+            val calmer = asked < askedBefore
+            better = if (calmer) better + 1 else 0
+            askedBefore = asked
             covered = 0
             furthest = 0.0
             grew = false
+            asked = 0.0
             left -= 1
             when {
+                !rests && adaptive && pulling -> damping = when {
+                    !calmer -> damping * ADAPT
+                    better >= ADAPT_AFTER -> minOf(damping / ADAPT, MOST).also { better = 0 }
+                    else -> damping
+                }
                 // against the clock it cools with time ([step]), else a round at a time
                 !rests && left > 0 -> damping *= if (pulling && clock == null) COOLING else 1.0
                 pulling -> {
@@ -395,7 +430,7 @@ object Settling {
             }
         }
         if (g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
-        return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken)
+        return Step(moving + woken, moves.values.maxOfOrNull { it.length() } ?: 0.0, taken, moves.values.sumOf { (it / damping).lengthSquared() })
     }
 
     /**

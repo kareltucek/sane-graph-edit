@@ -190,11 +190,11 @@ object Multilevel {
             // on every level a node gives way by its mass, so that what the levels carry down leaves the middle of the masses
             val run = if (i == 0) level.mass.let { m ->
                 val mass = { n: Node -> if (weight(n).isFinite()) m.getValue(n) else Settling.FIXED }
-                Settling.Run(g, among, mass, budget = budget, clock = clock, depth = depth, rank = rank, gravity = false, balanced = true)
+                Settling.Run(g, among, mass, budget = budget, clock = clock, depth = depth, rank = rank, gravity = false, balanced = true, adaptive = true)
             }
             else level.mass.let { m ->
                 val edges = { n: Node -> level.g.edgeMap[n].orEmpty().size.toDouble() }
-                Settling.Run(level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false, balanced = true)
+                Settling.Run(level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false, balanced = true, adaptive = true)
             }
             return run.also { it.stir(among, past) }
         }
