@@ -54,12 +54,6 @@ object Settling {
     /** By how much that part shrinks with each step. */
     private const val COOLING = 0.985
 
-    /** Nothing moved further than this in a step: the nodes rest. */
-    private const val SETTLED = 0.5
-
-    /** How much of what pulls a node counts while something pushes it. */
-    private const val PULL_WHEN_PUSHED = 0.3
-
     /** The origin spring asks for no more than this in a step, however far the node is from where it was. */
     const val ORIGIN_CAP = 40.0
 
@@ -71,17 +65,6 @@ object Settling {
         val nudges: List<Vector3>,
         val pulls: List<Vector3>,
     )
-
-    /**
-     * Adaptive ([Run]): after this many rounds in a row in which the springs asked for less than in the one before, the
-     * part moved grows by 1 / [ADAPT]; after one in which they asked for more (the nodes swing), it shrinks by [ADAPT]
-     * (after Hu, 2005).
-     */
-    private const val ADAPT = 0.9
-    private const val ADAPT_AFTER = 5
-
-    /** Adaptive, a step moves at most all of what the springs ask. */
-    private const val MOST = 1.0
 
     /** What a step did: who moves now, the furthest one went, how many it took ([step]'s deadline), and the sum of the squares of what the springs asked. */
     private data class Step(val moving: Set<Node>, val furthest: Double, val taken: Int, val asked: Double)
@@ -136,7 +119,7 @@ object Settling {
      *
      * [adaptive] (`o`): instead of cooling with time, the part of what
      * the springs ask that a step moves grows while they ask for less
-     * and less, and shrinks when they ask for more ([ADAPT]); the nodes
+     * and less, and shrinks when they ask for more ([Factors.ADAPT]); the nodes
      * pull until they rest, with no limit of rounds.
      *
      * Balanced, an edge pulls [pulls] times ([Multilevel]: as many as the
@@ -258,7 +241,7 @@ object Settling {
         private fun endRound() {
             // the tug on a firm node is small when it is near: it is there only when it is there
             val arrived = !pulling || firm.all { n -> origin(n)?.let { ((if (depth) it else Vector3(it.xy, n.point.z)) - n.point).length() < ARRIVED } ?: true }
-            val rests = furthest < SETTLED && !grew && arrived
+            val rests = furthest < Factors.SETTLED && !grew && arrived
             val calmer = asked < askedBefore
             better = if (calmer) better + 1 else 0
             askedBefore = asked
@@ -269,8 +252,8 @@ object Settling {
             left -= 1
             when {
                 !rests && adaptive && pulling -> damping = when {
-                    !calmer -> damping * ADAPT
-                    better >= ADAPT_AFTER -> minOf(damping / ADAPT, MOST).also { better = 0 }
+                    !calmer -> damping * Factors.ADAPT
+                    better >= Factors.ADAPT_AFTER -> minOf(damping / Factors.ADAPT, Factors.MOST).also { better = 0 }
                     else -> damping
                 }
                 // against the clock it cools with time ([step]), else a round at a time
@@ -368,7 +351,7 @@ object Settling {
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
         val strength = if (pulling && !close) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
         // which are near is looked up anew at each step: the nodes are elsewhere
-        val nearOf = LayoutTimes.time(Part.Index) { near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0) * (sparsity ?: 1.0)) }
+        val nearOf = LayoutTimes.time(Part.Index) { near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Factors.SPARSER else 1.0) * (sparsity ?: 1.0)) }
         // of two on each other each takes the other's part of their weights: all of it from a fixed one, half from one as heavy
         val share = { n: Node, o: Node -> weight(o).let { w -> if (w.isInfinite()) 1.0 else w / (weight(n) + w) } }
         val mean = { vs: List<Vector3> -> if (vs.isEmpty()) null else vs.reduce(Vector3::plus) / vs.size }
@@ -420,11 +403,11 @@ object Settling {
             // what pushes a node off others counts for more than what pulls it somewhere: or many nodes pulled to one place stay on each other
             val off = mean(pushes.map { it.first } + nudges)
             val to = mean(edges.map { it.first } + pulls)
-            val loose = off?.let { it + (to ?: Vector3.Zero) * PULL_WHEN_PUSHED } ?: to
+            val loose = off?.let { it + (to ?: Vector3.Zero) * Factors.PULL_WHEN_PUSHED } ?: to
             // a firm one is tugged to its origin on top of the rest, however far, and not less as the others cool: a share of
             // the way each window, so that it is there in [FOLLOW_MS]; less while something pushes it, or it stays on what
             // is in its place
-            val tug = home?.takeIf { n in firm }?.let { it * FOLLOW_PER_WINDOW * (if (off == null) 1.0 else PULL_WHEN_PUSHED) }
+            val tug = home?.takeIf { n in firm }?.let { it * FOLLOW_PER_WINDOW * (if (off == null) 1.0 else Factors.PULL_WHEN_PUSHED) }
             val by = loose?.let { it * damping + (tug ?: Vector3.Zero) } ?: tug
             if (by != null) moves[n] = by
         }
@@ -435,9 +418,9 @@ object Settling {
         paired.forEach { (n, p) ->
             val off = mean(p.pushes.map { it.first }) ?: Vector3.Zero
             val to = p.edges.fold(Vector3.Zero) { sum, (v, o) ->
-                sum + v * (if (pushed(n) || pushed(o)) PULL_WHEN_PUSHED else 1.0) / maxOf(p.load, paired[o]?.load ?: 0.0)
+                sum + v * (if (pushed(n) || pushed(o)) Factors.PULL_WHEN_PUSHED else 1.0) / maxOf(p.load, paired[o]?.load ?: 0.0)
             }
-            val own = (mean(p.nudges) ?: Vector3.Zero) + (mean(p.pulls) ?: Vector3.Zero) * (if (pushed(n)) PULL_WHEN_PUSHED else 1.0)
+            val own = (mean(p.nudges) ?: Vector3.Zero) + (mean(p.pulls) ?: Vector3.Zero) * (if (pushed(n)) Factors.PULL_WHEN_PUSHED else 1.0)
             moves[n] = (off + to + own) * damping
         }
         LayoutTimes.add(Part.Springs, utils.Platform.clockMillis() - springs)
@@ -540,9 +523,6 @@ object Settling {
         /** How deep a node is reckoned, in parts of its smaller side. */
         const val THICKNESS = 0.5
 
-        /** In space nodes in front hide those behind: they are kept this many times further apart, by collisions and by edges. */
-        const val SPARSER = 3.0
-
         /** How far from its middle [n] reaches the way [way] goes. */
         fun reach(n: Node, way: Vector3): Double {
             val length = way.length()
@@ -557,14 +537,14 @@ object Settling {
         /** [LayoutOptimizer.impl.computeCollisionSpring] in space: [n] off [o] to as far as they touch, times the scale and [strength]. */
         fun collision(n: Node, o: Node, strength: Double): Vector3? {
             val way = o.point - n.point
-            val wanted = (reach(n, way) + reach(o, -way)) * LayoutOptimizer.impl.collisionReach(strength) * SPARSER
+            val wanted = (reach(n, way) + reach(o, -way)) * LayoutOptimizer.impl.collisionReach(strength) * Factors.SPARSER
             return if (way.length() < wanted) o.point - way.toUnit() * wanted - n.point else null
         }
 
         /** [LayoutOptimizer.impl.computeBBSpring] in space: [n] to as far from [other] as the edge between them wants. */
         fun edge(g: Graph, n: Node, other: Node): Vector3 {
             val way = other.point - n.point
-            val wanted = (reach(n, way) + reach(other, -way)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(g, n, other, depth = true) * SPARSER
+            val wanted = (reach(n, way) + reach(other, -way)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(g, n, other, depth = true) * Factors.SPARSER
             return (way - way.toUnit() * wanted) / 2.0
         }
 

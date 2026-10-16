@@ -2,7 +2,8 @@
 
 Status: **specification for review** (2026-10-14). "Now" says what the code
 does today; "To be" is the proposal. Numbers marked *(guess)* were chosen
-by me and not tuned with Karel.
+by me and not tuned with Karel. The factors to tune by hand are in
+`modules/model/src/commonMain/kotlin/graph_tools/Factors.kt`.
 
 ## 1. Today: two spring systems
 

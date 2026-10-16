@@ -105,9 +105,10 @@ object LayoutOptimizer {
     /**
      * Session-wide scale for the BB spring target distance.
      *
-     * 1.0 is the baseline density. `-` / `=` keybindings shrink
-     * / grow this by a small multiplicative step. `:set
-     * spring-scale=<n>` sets it directly.
+     * 1.0 is the baseline density. `:spring-shorter` /
+     * `:spring-longer` shrink / grow this by a small
+     * multiplicative step. `:set spring-scale=<n>` sets it
+     * directly. Its factors are in [Factors].
      *
      * Not persisted to DOT — it's a workflow preference, not a
      * property of the graph. Survives tab switches within a
@@ -116,10 +117,10 @@ object LayoutOptimizer {
     var springScale: Double = 1.0
 
     /**
-     * Per-second multiplier for the `-` / `=` keys (and a
-     * matching `1/step` in the other direction). Default 0.8
+     * Per-second multiplier for `:spring-shorter` (and a
+     * matching `1/step` for `:spring-longer`). Default 0.8
      * = "spring-scale shrinks by 20% over one second of
-     * holding the `-` key". Larger values toward 1.0 are
+     * holding a key bound to `:spring-shorter`". Larger values toward 1.0 are
      * gentler; smaller values are more aggressive.
      *
      * Tuneable via `:set spring-scale-step=<n>`. Session-only
@@ -250,12 +251,9 @@ object LayoutOptimizer {
             return degFactor(kotlin.math.min(d1, d2), depth)
         }
 
-        /** How much longer an edge is for each edge of its end with fewer: in the plane, and in space (3D mode). */
-        const val PER_DEGREE = 0.2
-        const val PER_DEGREE_IN_SPACE = 0.2
-
         /** [degFactor] of an edge whose smaller degree is [d]; in space with [depth]. */
-        fun degFactor(d: Double, depth: Boolean = false): Double = 1.0 + (if (depth) PER_DEGREE_IN_SPACE else PER_DEGREE) * (if (d > 2) d + 1 else d)
+        fun degFactor(d: Double, depth: Boolean = false): Double =
+            1.0 + (if (depth) Factors.PER_DEGREE_IN_SPACE else Factors.PER_DEGREE) * (if (d > 2) d + 1 else d)
 
         fun computeBBSpring(g: Graph, node: Node, othr: Node, e: Edge, strength: Double = 1.0): Spring {
             val cn = (e.src == node).fold(e.cache.dstPt, e.cache.srcPt).let { +it - node.position }
@@ -414,14 +412,10 @@ object LayoutOptimizer {
             val c1 = node.cache.shape.connectionPoint(dir, node)
             val c2 = othr.cache.shape.connectionPoint(dir, othr)
 
-            // Baseline 2.0 = "nodes want a gap equal to their own
-            // size between them". Scales with springScale so the
-            // whole graph breathes together — edge attraction and
-            // unconnected-node repulsion both change by the same
-            // factor. Floor at 1.0 so the collision distance never
-            // drops below "just touching" — otherwise very small
-            // scale values would permit visual overlap.
-            val distanceCf = (2.0 * springScale).coerceAtLeast(1.0)
+            // Scales with springScale so the whole graph breathes
+            // together — edge attraction and unconnected-node
+            // repulsion both change by the same factor.
+            val distanceCf = collisionReach()
             val desiredDistance = (c1 + c2).length() * distanceCf * strengthModulator
 
             return if ((n - o).length() < desiredDistance) {
@@ -436,7 +430,7 @@ object LayoutOptimizer {
 
 
         /** How far apart, in times the distance at which they touch, two nodes may be and still push each other ([computeCollisionSpring]). */
-        fun collisionReach(strengthModulator: Double = 1.0): Double = (2.0 * springScale).coerceAtLeast(1.0) * strengthModulator
+        fun collisionReach(strengthModulator: Double = 1.0): Double = (Factors.COLLISION * springScale).coerceAtLeast(1.0) * strengthModulator
 
         /**
          * The nodes that may be near enough to a node to push it

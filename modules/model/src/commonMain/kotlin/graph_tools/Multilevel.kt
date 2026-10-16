@@ -15,25 +15,13 @@ import kotlin.math.sqrt
  * system carried to all it holds, so that a node goes its own way plus that of each system it is in.
  *
  * A node's mass is the room it wants: the disc (in 3D the ball) as far as its springs keep others from its middle,
- * by area (volume). A system weighs [PACKING] times its members together and stands as one round node that wants as much.
+ * by area (volume). A system weighs [Factors.PACKING] times its members together and stands as one round node that wants as much.
  * An edge from a system to another pulls as many times as there are edges that way between the nodes they hold
  * ([Level.count]). Nodes are kept apart by the collision spring; systems by the sparsity spring, which pushes only two
- * that no path of at most two edges leads between ([Level.related]), until they are [SPARSITY] times as far apart as
+ * that no path of at most two edges leads between ([Level.related]), until they are [Factors.SPARSITY] times as far apart as
  * their rooms reach.
  */
 object Multilevel {
-    /** A system wants this many times the room of its members together; on each level again. */
-    private const val PACKING = 1.5
-
-    /** Two systems no path of two edges leads between keep this many times as far apart as their rooms reach. */
-    private const val SPARSITY = 3.0
-
-    /** Levels are made until one has no more nodes than this. */
-    private const val SMALL = 50
-
-    /** A level that keeps more than this part of the nodes of the one below is not made: the graph does not contract. */
-    private const val SHRINKS = 0.8
-
     /** The attribute that tells a system's stand-in from a node. */
     private const val CLUSTER = "sge-cluster"
 
@@ -71,7 +59,7 @@ object Multilevel {
     /** The room of a ball (in 3D) or a disc that reaches [radius]. */
     private fun roomOf(radius: Double, depth: Boolean) = if (depth) 4 * PI / 3 * radius.pow(3) else PI * radius * radius
 
-    private fun sparser(depth: Boolean) = if (depth) Settling.Space.SPARSER else 1.0
+    private fun sparser(depth: Boolean) = if (depth) Factors.SPARSER else 1.0
 
     /** The room [n] wants: the disc (in 3D the ball) as far as its reach (as a square, in 3D a card, of its area) times the furthest of its springs. */
     private fun mass(g: Graph, n: Node, depth: Boolean): Double {
@@ -127,7 +115,7 @@ object Multilevel {
         val systems = sunOf.entries.groupBy({ it.value }, { it.key })
         val upper = Graph()
         val stand = systems.mapValues { (sun, members) ->
-            val mass = PACKING * held.getValue(sun)
+            val mass = Factors.PACKING * held.getValue(sun)
             // its springs keep others as far as its room reaches: the reach that, times the collision spring's, is that
             val reach = radiusOf(mass, depth) / (LayoutOptimizer.impl.collisionReach() * sparser(depth))
             val weights = members.map { level.mass.getValue(it) }
@@ -166,9 +154,9 @@ object Multilevel {
     class Systems(g: Graph, shown: Set<Node>, private val depth: Boolean) {
         internal val levels: List<Level> = run {
             val nodes = Level(g, shown.toList(), shown.associateWith { mass(g, it, depth) }, emptyMap(), emptyMap())
-            generateSequence(nodes) { below -> if (below.nodes.size <= SMALL) null else contract(below, depth) }
+            generateSequence(nodes) { below -> if (below.nodes.size <= Factors.SMALL) null else contract(below, depth) }
                 .zipWithNext()
-                .takeWhile { (below, above) -> above.nodes.size <= below.nodes.size * SHRINKS }
+                .takeWhile { (below, above) -> above.nodes.size <= below.nodes.size * Factors.SHRINKS }
                 .fold(listOf(nodes)) { made, (_, above) -> made + above }
         }
 
@@ -230,7 +218,7 @@ object Multilevel {
                 val edges = { n: Node -> level.g.edgeMap[n].orEmpty().size.toDouble() }
                 Settling.Run(
                     level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false,
-                    balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, sparsity = SPARSITY, related = level::related,
+                    balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, sparsity = Factors.SPARSITY, related = level::related,
                 )
             }
             return run.also { it.stir(among, past) }

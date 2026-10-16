@@ -494,7 +494,7 @@ Triggered by:
 
 - `o` / `O` keybinding — one-shot layout pass (same result
   for both after the anchor fix).
-- `-` / `=` — adjust `springScale`, then one pass.
+- `:spring-shorter` / `:spring-longer` — adjust `springScale`, then one pass.
 - `optimizeOnDrag` flag — layout every mouse-move event while
   dragging.
 
