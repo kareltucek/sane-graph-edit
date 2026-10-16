@@ -143,9 +143,9 @@ object Settling {
      * edges it stands for).
      *
      * With [sparsity] ([Multilevel], the levels of systems) the collision
-     * spring gives way to the sparsity spring: only two with no edge
-     * between them are pushed, until they are [sparsity] times as far
-     * apart; those with one keep apart by its spring alone.
+     * spring gives way to the sparsity spring: only two not [related]
+     * are pushed, until they are [sparsity] times as far apart; those
+     * with an edge between them keep apart by its spring alone.
      */
     class Run(
         private val g: Graph,
@@ -162,6 +162,7 @@ object Settling {
         private val adaptive: Boolean = false,
         private val pulls: (Edge) -> Double = { 1.0 },
         private val sparsity: Double? = null,
+        private val related: (Node, Node) -> Boolean = { _, _ -> false },
         private val origin: (Node) -> Vector3? = { null },
     ) : Stepping {
         var moving: Set<Node> = emptySet()
@@ -230,7 +231,7 @@ object Settling {
                 val order = LayoutTimes.time(Part.Order) { if (cut) waiting.filter { it in moving }.ifEmpty { fresh() } else fresh() }
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, if (gravity) down(g, depth) else Vector3.Zero, deadline, balanced, pulls, sparsity)
+                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, if (gravity) down(g, depth) else Vector3.Zero, deadline, balanced, pulls, sparsity, related)
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
                 covered += done.taken
@@ -361,6 +362,7 @@ object Settling {
         balanced: Boolean,
         edgePull: (Edge) -> Double,
         sparsity: Double?,
+        related: (Node, Node) -> Boolean,
     ): Step {
         LayoutTimes.time(Part.EdgePoints) { EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet()) }
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
@@ -381,8 +383,8 @@ object Settling {
         while (taken < order.size && (deadline == null || taken == 0 || utils.Platform.nowMillis() < deadline)) {
             val n = order[taken]
             taken += 1
-            // the collision spring pushes all that are near; the sparsity spring only those with no edge between them
-            val against = nearOf(n).filter { o -> sparsity == null || g.edgeMap[n].orEmpty().none { it.src == o || it.dst == o } }
+            // the collision spring pushes all that are near; the sparsity spring only those not related
+            val against = nearOf(n).filter { o -> sparsity == null || !related(n, o) }
             val pushes = against.mapNotNull { o ->
                 val apart = strength * (sparsity ?: 1.0)
                 val push = if (depth) Space.collision(n, o, apart) else LayoutOptimizer.impl.computeCollisionSpring(g, n, o, apart)?.v?.let(flat)

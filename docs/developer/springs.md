@@ -179,6 +179,10 @@ part of a decomposed graph is unclear).
   collision spring acts on level 0 only; on levels ≥ 1 the sparsity spring
   pushes only two systems near each other with no edge between them (to
   1.5 × as above); two with an edge keep apart by its spring alone.
+- Then (Karel 2026-10-16): edges between systems keep their direction
+  (a→b and b→a are two edges, each with its own count); the sparsity
+  spring skips two systems a directed path of 1 or 2 edges leads between,
+  either way, and pushes the others to 3 × their reach.
 
 ### Clusters: solar systems (after FM3, Hachul 2004, deterministic)
 

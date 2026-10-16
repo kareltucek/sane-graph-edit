@@ -16,16 +16,17 @@ import kotlin.math.sqrt
  *
  * A node's mass is the room it wants: the disc (in 3D the ball) as far as its springs keep others from its middle,
  * by area (volume). A system weighs [PACKING] times its members together and stands as one round node that wants as much.
- * An edge between two systems pulls as many times as there are edges between the nodes they hold ([Level.count]). Nodes
- * are kept apart by the collision spring; systems by the sparsity spring, which pushes only two with no edge between
- * them, until they are [SPARSITY] times as far apart as their rooms reach.
+ * An edge from a system to another pulls as many times as there are edges that way between the nodes they hold
+ * ([Level.count]). Nodes are kept apart by the collision spring; systems by the sparsity spring, which pushes only two
+ * that no path of at most two edges leads between ([Level.related]), until they are [SPARSITY] times as far apart as
+ * their rooms reach.
  */
 object Multilevel {
     /** A system wants this many times the room of its members together; on each level again. */
     private const val PACKING = 1.5
 
-    /** Two systems with no edge between them keep this many times as far apart as their rooms reach. */
-    private const val SPARSITY = 1.5
+    /** Two systems no path of two edges leads between keep this many times as far apart as their rooms reach. */
+    private const val SPARSITY = 3.0
 
     /** Levels are made until one has no more nodes than this. */
     private const val SMALL = 50
@@ -51,6 +52,14 @@ object Multilevel {
         private val counts: Map<Edge, Int> = emptyMap(),
     ) {
         fun count(e: Edge): Int = counts[e] ?: 1
+
+        private val within: Map<Node, Set<Node>> by lazy {
+            val out = { n: Node -> g.findOutEdges(n).map { it.dst } }
+            nodes.associateWith { n -> out(n).flatMap { listOf(it) + out(it) }.toSet() - n }
+        }
+
+        /** A path of at most two edges leads from one of [a] and [b] to the other. */
+        fun related(a: Node, b: Node) = b in within[a].orEmpty() || a in within[b].orEmpty()
     }
 
     /** A ball drawn around a system of [level] (1 the lowest), or, of level 0, around a node, as big as its room; [sun]: a node that is the sun of one of the lowest. */
@@ -130,13 +139,13 @@ object Multilevel {
             } to mass
         }
         stand.values.forEach { upper.add(it.first) }
-        // one edge between two systems, standing for all the nodes' edges between them
+        // one edge from a system to another, standing for all the nodes' edges that way
         val joined = mutableMapOf<Pair<Node, Node>, Edge>()
         val count = mutableMapOf<Edge, Int>()
         level.g.edges.filter { it.src in among && it.dst in among }.forEach { e ->
             val (a, b) = stand.getValue(sunOf.getValue(e.src)).first to stand.getValue(sunOf.getValue(e.dst)).first
             if (a != b) {
-                val edge = joined[a to b] ?: joined[b to a] ?: Edge(a, b).also {
+                val edge = joined[a to b] ?: Edge(a, b).also {
                     upper.add(it)
                     joined[a to b] = it
                 }
@@ -221,7 +230,7 @@ object Multilevel {
                 val edges = { n: Node -> level.g.edgeMap[n].orEmpty().size.toDouble() }
                 Settling.Run(
                     level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false,
-                    balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, sparsity = SPARSITY,
+                    balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, sparsity = SPARSITY, related = level::related,
                 )
             }
             return run.also { it.stir(among, past) }
