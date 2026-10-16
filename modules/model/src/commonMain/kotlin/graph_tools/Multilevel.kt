@@ -16,15 +16,16 @@ import kotlin.math.sqrt
  *
  * A node's mass is the room it wants: the disc (in 3D the ball) as far as its springs keep others from its middle,
  * by area (volume). A system weighs [PACKING] times its members together and stands as one round node that wants as much.
- * An edge between two systems pulls as many times as there are edges between the nodes they hold ([Level.count]); two
- * systems with none between them keep [UNRELATED] times further apart.
+ * An edge between two systems pulls as many times as there are edges between the nodes they hold ([Level.count]). Nodes
+ * are kept apart by the collision spring; systems by the sparsity spring, which pushes only two with no edge between
+ * them, until they are [SPARSITY] times as far apart as their rooms reach.
  */
 object Multilevel {
     /** A system wants this many times the room of its members together; on each level again. */
     private const val PACKING = 1.5
 
     /** Two systems with no edge between them keep this many times as far apart as their rooms reach. */
-    private const val UNRELATED = 1.5
+    private const val SPARSITY = 1.5
 
     /** Levels are made until one has no more nodes than this. */
     private const val SMALL = 50
@@ -220,7 +221,7 @@ object Multilevel {
                 val edges = { n: Node -> level.g.edgeMap[n].orEmpty().size.toDouble() }
                 Settling.Run(
                     level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { edges(it) * m.getValue(it) }, gravity = false,
-                    balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, unrelated = UNRELATED,
+                    balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, sparsity = SPARSITY,
                 )
             }
             return run.also { it.stir(among, past) }

@@ -175,6 +175,10 @@ part of a decomposed graph is unclear).
   rooms reach (Karel 2026-10-15; 1.5 a guess). On main.dot (2D): edges
   between systems end at 1.0-1.24 × the collision distance (were
   1.17-1.48), the nearest unrelated ones further apart.
+- The sparsity spring is not the collision spring (Karel 2026-10-16): the
+  collision spring acts on level 0 only; on levels ≥ 1 the sparsity spring
+  pushes only two systems near each other with no edge between them (to
+  1.5 × as above); two with an edge keep apart by its spring alone.
 
 ### Clusters: solar systems (after FM3, Hachul 2004, deterministic)
 

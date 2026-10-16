@@ -140,8 +140,12 @@ object Settling {
      * pull until they rest, with no limit of rounds.
      *
      * Balanced, an edge pulls [pulls] times ([Multilevel]: as many as the
-     * edges it stands for), and two nodes with no edge between them keep
-     * [unrelated] times as far apart.
+     * edges it stands for).
+     *
+     * With [sparsity] ([Multilevel], the levels of systems) the collision
+     * spring gives way to the sparsity spring: only two with no edge
+     * between them are pushed, until they are [sparsity] times as far
+     * apart; those with one keep apart by its spring alone.
      */
     class Run(
         private val g: Graph,
@@ -157,7 +161,7 @@ object Settling {
         private val balanced: Boolean = false,
         private val adaptive: Boolean = false,
         private val pulls: (Edge) -> Double = { 1.0 },
-        private val unrelated: Double = 1.0,
+        private val sparsity: Double? = null,
         private val origin: (Node) -> Vector3? = { null },
     ) : Stepping {
         var moving: Set<Node> = emptySet()
@@ -226,7 +230,7 @@ object Settling {
                 val order = LayoutTimes.time(Part.Order) { if (cut) waiting.filter { it in moving }.ifEmpty { fresh() } else fresh() }
                 // how long the work may take is real time, whatever [clock] says
                 val deadline = budget?.let { utils.Platform.nowMillis() + it }
-                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, if (gravity) down(g, depth) else Vector3.Zero, deadline, balanced, pulls, unrelated)
+                val done = step(g, moving, order, among, near, weight, origin, firm, damping, share, pulling, close, depth, if (gravity) down(g, depth) else Vector3.Zero, deadline, balanced, pulls, sparsity)
                 waiting = order.drop(done.taken)
                 cut = cut || waiting.isNotEmpty()
                 covered += done.taken
@@ -356,13 +360,13 @@ object Settling {
         deadline: Long?,
         balanced: Boolean,
         edgePull: (Edge) -> Double,
-        unrelated: Double,
+        sparsity: Double?,
     ): Step {
         LayoutTimes.time(Part.EdgePoints) { EdgeGeometry.recompute(moving.flatMap { g.edgeMap[it].orEmpty() }.toSet()) }
         // the collision spring keeps nodes twice (times the scale) as far apart as they touch; asked for less, it does less
         val strength = if (pulling && !close) 1.0 else APART / LayoutOptimizer.impl.collisionReach()
         // which are near is looked up anew at each step: the nodes are elsewhere
-        val nearOf = LayoutTimes.time(Part.Index) { near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0) * unrelated) }
+        val nearOf = LayoutTimes.time(Part.Index) { near.forStep(LayoutOptimizer.impl.collisionReach(strength) * (if (depth) Space.SPARSER else 1.0) * (sparsity ?: 1.0)) }
         // of two on each other each takes the other's part of their weights: all of it from a fixed one, half from one as heavy
         val share = { n: Node, o: Node -> weight(o).let { w -> if (w.isInfinite()) 1.0 else w / (weight(n) + w) } }
         val mean = { vs: List<Vector3> -> if (vs.isEmpty()) null else vs.reduce(Vector3::plus) / vs.size }
@@ -377,10 +381,11 @@ object Settling {
         while (taken < order.size && (deadline == null || taken == 0 || utils.Platform.nowMillis() < deadline)) {
             val n = order[taken]
             taken += 1
-            val pushes = nearOf(n).mapNotNull { o ->
-                // those with no edge between them keep further apart, when asked to
-                val apart = if (unrelated == 1.0 || g.edgeMap[n].orEmpty().any { it.src == o || it.dst == o }) 1.0 else unrelated
-                val push = if (depth) Space.collision(n, o, strength * apart) else LayoutOptimizer.impl.computeCollisionSpring(g, n, o, strength * apart)?.v?.let(flat)
+            // the collision spring pushes all that are near; the sparsity spring only those with no edge between them
+            val against = nearOf(n).filter { o -> sparsity == null || g.edgeMap[n].orEmpty().none { it.src == o || it.dst == o } }
+            val pushes = against.mapNotNull { o ->
+                val apart = strength * (sparsity ?: 1.0)
+                val push = if (depth) Space.collision(n, o, apart) else LayoutOptimizer.impl.computeCollisionSpring(g, n, o, apart)?.v?.let(flat)
                 push?.let { it * share(n, o) to o }
             }
             woken += pushes.map { it.second }.filter { it !in moving && weight(it).isFinite() }
