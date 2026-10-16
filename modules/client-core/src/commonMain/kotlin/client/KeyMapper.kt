@@ -976,6 +976,7 @@ class KeyMapper(
             // of the graph shown, not of all of them
             "explore" -> activeView?.let { Explore.set(it, change(Explore.isOn(it))) }
             "3d" -> activeView?.let { it.viewTransform.threeD = change(it.viewTransform.threeD) }
+            "2d" -> activeView?.let { it.viewTransform.threeD = !change(!it.viewTransform.threeD) }
             "suns" -> activeView?.gestures?.let { if (change(it.sunsShown)) it.showSuns(null) else it.hideSuns() }
             else -> applicationFlags[name]?.let { flag ->
                 flag.on = change(flag.on)
@@ -992,7 +993,7 @@ class KeyMapper(
     val applicationFlags: MutableMap<String, ApplicationFlag> = mutableMapOf()
 
     /** [FLAG_SETTINGS] and the application's, plus aliases (not offered by completion). */
-    private val flagNames: Set<String> get() = FLAG_SETTINGS.toSet() + applicationFlags.keys + "show-childs"
+    private val flagNames: Set<String> get() = FLAG_SETTINGS.toSet() + applicationFlags.keys + "show-childs" + "2d"
 
     /**
      * Load an init file. Each line is a command-bar command

@@ -64,6 +64,20 @@ class CommandLineTest {
     }
 
     @Test
+    fun `2d is the other way round of 3d`() {
+        val set = { what: String ->
+            line.open(":")
+            type("set $what")
+            line.execute()
+            view.viewTransform.threeD
+        }
+        assertTrue(set("3d"))
+        assertFalse(set("2d"))
+        assertTrue(set("no2d"))
+        assertFalse(set("2d!"))
+    }
+
+    @Test
     fun `Escape closes the line and runs nothing`() {
         line.open(":")
         type("set unhide")

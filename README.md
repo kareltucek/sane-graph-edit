@@ -334,7 +334,7 @@ them at a negative depth, and
 the plane you look at.
 
 `:set 3d` turns 3D mode on for the graph shown, not for the other
-tabs (`:set no3d` off, `:set 3d!` toggles; the status line shows
+tabs (`:set no3d` or `:set 2d` off, `:set 3d!` toggles; the status line shows
 `[3d]`). In the Electron client a graph in 3D mode is drawn by the
 graphics card (WebGL), each node a picture in space. In 3D mode the middle button turns the
 view around the same thing: the node it is pressed on, or the one
