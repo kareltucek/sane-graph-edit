@@ -23,6 +23,8 @@ export interface Shell {
     radius: number;
     level: number;
     sun: boolean;
+    /** How far it reaches at most, laid straight: a ring around it. */
+    reach?: number | null;
 }
 
 export interface SpaceScene<N extends SpaceNode> {
@@ -468,13 +470,20 @@ export function shellColours(background: string): (shell: Shell, top: number) =>
     };
 }
 
+/** How many pieces a ring is drawn of. */
+const RING_PIECES = 32;
+
 /**
- * The shells ([Shell]) as wire icosahedra, all in one set of lines,
- * filled anew for every frame; a node in front of one hides it.
+ * The shells ([Shell]), all in one set of lines, filled anew for every
+ * frame; a node in front of one hides it: wire dodecahedra, and rings
+ * of their reaches across the plane.
  */
 class Shells {
-    /** The edges of an icosahedron whose corners are a unit from its middle: two ends of each, x, y and z after each other. */
-    private static readonly UNIT = new THREE.EdgesGeometry(new THREE.IcosahedronGeometry(1, 0)).getAttribute("position").array as Float32Array;
+    /** The edges of a dodecahedron whose corners are a unit from its middle: two ends of each, x, y and z after each other. */
+    private static readonly SYSTEM = new THREE.EdgesGeometry(new THREE.DodecahedronGeometry(1, 0)).getAttribute("position").array as Float32Array;
+    /** A ring of a unit's radius across the plane, as [SYSTEM]. */
+    private static readonly RING = Float32Array.from(Array.from({ length: RING_PIECES }, (_, k) => [k, k + 1]
+        .flatMap(j => [Math.cos(2 * Math.PI * j / RING_PIECES), Math.sin(2 * Math.PI * j / RING_PIECES), 0])).flat());
     readonly lines = new THREE.LineSegments(
         new THREE.BufferGeometry(),
         new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: SHELL_OPACITY, depthWrite: false }),
@@ -491,11 +500,14 @@ class Shells {
 
     draw(shells: Shell[], background: string) {
         this.lines.visible = shells.length > 0;
-        const unit = Shells.UNIT;
+        // each a dodecahedron of its room and, if it has one, a ring of its reach
+        const pieces = shells.flatMap(s => [{ s, unit: Shells.SYSTEM, radius: s.radius }]
+            .concat(s.reach != null ? [{ s, unit: Shells.RING, radius: s.reach }] : []));
+        const length = pieces.reduce((sum, p) => sum + p.unit.length, 0);
         const geometry = this.lines.geometry;
-        if (shells.length * unit.length > this.positions.length) {
-            this.positions = new Float32Array(2 * shells.length * unit.length);
-            this.colours = new Float32Array(2 * shells.length * unit.length);
+        if (length > this.positions.length) {
+            this.positions = new Float32Array(2 * length);
+            this.colours = new Float32Array(2 * length);
             geometry.setAttribute("position", new THREE.BufferAttribute(this.positions, 3).setUsage(THREE.DynamicDrawUsage));
             geometry.setAttribute("color", new THREE.BufferAttribute(this.colours, 3).setUsage(THREE.DynamicDrawUsage));
         } else if (shells.length > 0) {
@@ -506,19 +518,20 @@ class Shells {
         const colours = this.colours;
         const top = shells.reduce((most, s) => Math.max(most, s.level), 0);
         const colourOf = shellColours(background);
-        shells.forEach((s, i) => {
+        pieces.reduce((at, { s, unit, radius }) => {
             const [r, g, b] = colourOf(s, top);
             for (let k = 0; k < unit.length; k += 3) {
                 // here y is up and z towards the viewer
-                positions[i * unit.length + k] = s.x + unit[k] * s.radius;
-                positions[i * unit.length + k + 1] = -(s.y + unit[k + 1] * s.radius);
-                positions[i * unit.length + k + 2] = -(s.z + unit[k + 2] * s.radius);
-                colours[i * unit.length + k] = r;
-                colours[i * unit.length + k + 1] = g;
-                colours[i * unit.length + k + 2] = b;
+                positions[at + k] = s.x + unit[k] * radius;
+                positions[at + k + 1] = -(s.y + unit[k + 1] * radius);
+                positions[at + k + 2] = -(s.z + unit[k + 2] * radius);
+                colours[at + k] = r;
+                colours[at + k + 1] = g;
+                colours[at + k + 2] = b;
             }
-        });
-        geometry.setDrawRange(0, shells.length * unit.length / 3);
+            return at + unit.length;
+        }, 0);
+        geometry.setDrawRange(0, length / 3);
     }
 }
 

@@ -197,7 +197,7 @@ Flags:
 | `D`       | Delete selected nodes but reconnect predecessors to successors  |
 | `o`       | Layout optimiser while held: the selected nodes (all seen, with one or none selected) move a spring pass a picture until the key is let go; one undo step |
 | `O`       | The same, around one selected node: it stays where it is and its children are laid out around it (several selected: as `o`) |
-| `:set suns` / `:set nosuns` | Show (made anew now and whenever `o` is let go) / stop showing the systems the whole graph is settled by: a ring (3D: a wire icosahedron) around each, as big as the room it wants, coloured by level, and each node's own room (level 0), the suns in the first colour, the planets black; `:set suns=<levels>` (e.g. `0,1,2`) only those of these levels, also while `o` runs, and `o` on the whole graph moves those levels only |
+| `:set suns` / `:set nosuns` | Show (made anew now and whenever `o` is let go) / stop showing the systems the whole graph is settled by: a ring (3D: a wire dodecahedron, and a ring as far as it reaches laid straight) around each, as big as the room it wants, coloured by level, and the own room of each sun of the lowest systems (level 0); `:set suns=<levels>` (e.g. `0,1,2`) only those of these levels, also while `o` runs, and `o` on the whole graph moves those levels only |
 | `g`       | Toggle "grab" mode — move the selection without holding a button |
 
 ### Keyboard — selection & navigation

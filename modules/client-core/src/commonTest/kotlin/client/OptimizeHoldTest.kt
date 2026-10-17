@@ -65,7 +65,8 @@ class OptimizeHoldTest {
         view.byHeldKey = false
         Actions.optimizeWhileHeld(view, restrict = false)
         assertTrue(a.position != before.getValue(a), "not selected, on b: moves too")
-        assertTrue(b.position != before.getValue(b))
+        // the graph is one level, and b, of the most edges, holds it in place
+        assertEquals(before.getValue(b), b.position)
     }
 
     @Test

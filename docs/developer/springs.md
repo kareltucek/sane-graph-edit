@@ -41,10 +41,12 @@ changes.
 | Spring | What it does | Parameters (now) |
 |---|---|---|
 | **collision** | two nodes nearer than a distance push apart | distance = touching × reach; reach 2 × `spring-scale` (optimizer, explore), 1.15 (Shift-drag: "only off each other") |
-| **edge** | the two ends of an edge to a length | length = both reaches toward each other × `spring-scale` × degree factor (1 + 0.2 × smaller degree, +1 above 2; its own constant in 3D mode, also 0.2: 0.0 was tried, Karel 2026-10-15, and put back; it is in the mass too) |
+| **edge** | the two ends of an edge to a length | length = both reaches toward each other × `spring-scale` × degree factor (1 + 0.2 × larger degree, +1 above 2; the smaller one until Karel 2026-10-16: a hub's leaves crowded it; its own constant in 3D mode, also 0.2: 0.0 was tried, Karel 2026-10-15, and put back; it is in the mass too) |
 | **equal siblings** | the edges out of one parent to the same length | half the difference |
-| **antigravity** (Karel's original "gravity") | a child pushed on along the way its parent came, kept at its distance | 10 units / window; only for parents with < 3 children (optimizer); settling: 3D mode only |
-| **gravity** | a child pulled to lie from its parent the way the graph's edges go on average | 0.1 of the way / window *(guess)*; settling only |
+| **root** (Karel 2026-10-17) | a root (≥ 3 children, no parent, among those shown; on every level) is to be in its children's middle: v = shortest child edge × mean of the unit ways to the children; the root moves v × 0.1 / window × M / (m_root + M), each child −v × 0.1 × m_root / (m_root + M), M the children's masses (balanced; until Karel 2026-10-17: the root stayed, the children took all, and the pin made the root move instead) | `Factors.ROOT`, `ROOT_LEVELS` |
+| **rope** (systems) | an edge's two suns back to no further apart than the path between them laid straight; never pushes | §7 |
+| **antigravity** (Karel's original "gravity") | a child pushed on along the way its parent came, kept at its distance | 10 units / window; only for parents with < 3 children; settling: both modes |
+| **gravity** | a child pulled to lie from its parent the way the graph's edges go on average | 0.1 of the way / window *(guess)*; Shift-drag only (Karel 2026-10-16: elsewhere it laid all children out one way, in fans) |
 | **origin** | back to where it was / where the document has it | at most 40 units / window; counts 0.3 while pushed |
 | **follow** (firm origin) | a descendant of dragged nodes to its old place relative to them | 95 % of the way in 2 s; on top of the rest; 0.3 while pushed |
 | **across** (3D) | two nodes on each other also go apart across the plane, along (way between them) × (way from parent); siblings to opposite sides | 0.3 of the push *(guess)*; 3D mode only |
@@ -92,8 +94,8 @@ changes.
 | **o not held** (macro, mapping, `:optimize`) | as held | as held | as held | as held | after 20 ms of time | one step |
 | **O** on one node | its leaf children | the node, its parents, the rest | as `o` | as `o` | as `o` | one step |
 | **O** on several | as `o` | as `o` | as `o` | as `o` | as `o` | one step |
-| **Shift-drag** | dragged: exactly with the pointer; followers (descendants with no parent outside): heavy; nodes on them: usual; ghosts: light | — | collision (1.15), edge, equal siblings, origin (back), follow, gravity; 3D: across, antigravity | 3D mode | rest, or another gesture/command (they stop) | one step at rest |
-| **explore: nodes coming into view** | them: usual; ghosts in the way: light | pinned nodes | collision (2), edge, equal siblings, origin (where the document has them relative to their neighbours), gravity | never | rest, at once (not animated) | none (explore) |
+| **Shift-drag** | dragged: exactly with the pointer; followers (descendants with no parent outside): heavy; nodes on them: usual; ghosts: light | — | collision (1.15), edge, equal siblings, origin (back), follow, gravity, antigravity; 3D: across | 3D mode | rest, or another gesture/command (they stop) | one step at rest |
+| **explore: nodes coming into view** | them: usual; ghosts in the way: light | pinned nodes | collision (2), edge, equal siblings, origin (where the document has them relative to their neighbours), antigravity | never | rest, at once (not animated) | none (explore) |
 
 Not springs: explore's arrangement of roots in columns, `:set dynamic`'s
 columns, the fold onto room walls.
@@ -106,9 +108,10 @@ columns, the fold onto room walls.
   and does not join.
 - **`O` on one node:** the run moves its leaf children; the node and the
   rest are fixed.
-- **Springs for `o`:** collision (2), edge, equal siblings, ~~gravity~~,
+- **Springs for `o`:** collision (2), edge, equal siblings,
   antigravity; in 3D mode in space, with across. No origin. (Gravity off
-  for `o`, Karel 2026-10-15: it pulls one way only and the graph slid.)
+  for `o`, Karel 2026-10-15: it pulls one way only and the graph slid;
+  off but for Shift-drag, Karel 2026-10-16: it laid children out in fans.)
 - **Antigravity in both modes** for `o` and Shift-drag.
 - **3D mode is sparser:** collision and edge distances × 3 (Karel, after 1.5), every feature.
 - **Explore in 3D mode settles in space** (with a strong gravity later).
@@ -161,7 +164,7 @@ part of a decomposed graph is unclear).
 - **System:** k × the sum of its members' masses; k = 1.5, a guess, the same in both modes (Karel 2026-10-15: it compounds level by level; 1, and 1.3 for 2D, were tried and put back).
 - **Springs from the masses of both ends, one rule on every level:** edge
   length = (reach of one + reach of the other) × spring-scale × degree
-  factor of the smaller degree (kept, Karel) (× 3 in 3D); collision the
+  factor of the smaller degree (kept, Karel; the larger since 2026-10-16) (× 3 in 3D); collision the
   same with its touching factor.
   - A real node's reach stays its outline the way the other lies (as
     now): a wide node packs wide. **Nothing changes for real nodes.**
@@ -184,6 +187,8 @@ part of a decomposed graph is unclear).
   (a→b and b→a are two edges, each with its own count); the sparsity
   spring skips two systems a directed path of 1 or 2 edges leads between,
   either way, and pushes the others to 3 × their reach.
+- Renamed (Karel 2026-10-16): the sparsity spring is the separation
+  spring, its factor `Factors.SEPARATION_FACTOR`.
 
 ### Clusters: solar systems (after FM3, Hachul 2004, deterministic)
 
@@ -207,7 +212,42 @@ part of a decomposed graph is unclear).
 - ~~At rest, the level below becomes the moving one~~ (2026-10-15, Karel:
   all at once): every step moves every level not yet at rest, the top
   first, so a node goes its own way plus that of each system it is in.
-  Before a step each stand-in is put back in the middle of what it holds.
+  Before a step each stand-in is put back in the middle of what it holds
+  (on its sun since Karel 2026-10-16: members torn off into another system
+  dragged their own after them, and with `:set suns=1` the graph flew apart).
+  On the highest level that moves, each part that hangs together has an
+  anchor (most edges, then the heaviest): after each step the anchor's move
+  is taken back from the whole part, so a part does not drift, only its
+  shape changes (Karel 2026-10-16).
+- Which springs act on which level is a table in `Factors.kt` (`EDGE_LEVELS`
+  and the rest; Karel 2026-10-16). The edge and equal siblings springs act
+  on nodes only: on systems a path of them does not grow with its weight,
+  and the graph shrank into one heap.
+- **Carried down**, a level at a time: a node of level i gets what the
+  systems of level i + 1 moved whose suns are at most 2 edges from it, each
+  by 1 / its distance in space; a sun only its own system's. By 1 / the
+  edges between them was tried (Karel 2026-10-17) and taken back (Karel
+  preferred the distance): main.dot 2D jitter median 2.81 → 2.22, 99 %
+  14.9 → 13.6, overlapping pairs 29 → 18; 3D jitter median 5.98 → 6.51,
+  99 % 36.3 → 48.9.
+- **Level pace** (Karel 2026-10-17): a level's steps, all its springs
+  together, times `Factors.LEVEL_PACE(level)` = 1 / (level + 1): upper
+  levels settle slower, the lower ones under them. At rest the levels'
+  moves add up to none (a system pushed on by its springs each step, its
+  sun pushed back by its own), so a level's pace is also its say in the
+  shape. main.dot, 600 frames, all levels: 2D jitter 90 % 9.0 → 7.6, 99 %
+  22.7 → 14.9, overlapping pairs 44 → 29, edges / wanted median 2.32 → 2.03;
+  3D jitter median 7.6 → 6.0, 99 % 51.6 → 36.3.
+- **Rope** (Karel 2026-10-16): on systems an edge only pulls, from further
+  than its rope. A room's radius is the least space a system needs; the
+  most is its path laid straight. Rope of A–B = the shortest of
+  d_A(sun, x) + length(x–y) + d_B(y, sun) over the edges x–y between them
+  on the level below, d_A by Dijkstra from A's sun among A's members only;
+  length = the edge spring's on level 0, the rope above. One search a
+  system, each node once a level: about (n + m) log n in all (searching
+  level 0 from every sun was up to n · (m + n) log n). A path through a
+  third system is missed: a rope may be longer, never shorter. The `o`
+  report prints the searches and their time.
   On main.dot (JVM, 16 ms frames) 2D rests in 238 frames instead of 881,
   3D in 399 instead of 1010; the CPU time to rest is about the same.
 - **Balanced by mass** (2026-10-15, Karel). The graph slid sideways some
@@ -229,7 +269,11 @@ part of a decomposed graph is unclear).
 ### Seen (Karel, 2026-10-15)
 
 - While `o` runs by levels, every system of every level is drawn as a wire
-  icosahedron (2D: a circle) around the mass-weighted middle of what it holds
+  dodecahedron (icosahedron until Karel 2026-10-16: the dodecahedron is tidier;
+  2D: a circle; of level 0 only the suns of the lowest since Karel 2026-10-16, the
+  planets' are gone; in 3D also a ring of the system's reach, Karel 2026-10-16: R(node)
+  = half its longest edge, R(system) = max over members x of d(sun, x) + R(x); of a
+  stretched rope the two rings touch at the middle of the edge it goes over) around its sun (was: the mass-weighted middle of what it holds)
   now, as big as a ball (disc) of its mass; each sun of the lowest systems
   in a small one just around that node. Gone when `o` is let go.
 - Since: only with `:set suns` (`=<levels>`), while `o` runs and after

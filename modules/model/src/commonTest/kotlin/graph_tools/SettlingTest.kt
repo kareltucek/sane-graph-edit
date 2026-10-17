@@ -118,7 +118,7 @@ class SettlingTest {
     }
 
     @Test
-    fun `gravity is the way the edges go - a child put beside its parent in a graph that goes down is pulled down`() {
+    fun `gravity (Shift-drag) is the way the edges go - a child put beside its parent in a graph that goes down is pulled down`() {
         val g = Graph()
         val column = List(5) { Node("node $it", Vector2(0, it * 150)) }
         column.forEach { g.add(it) }
@@ -128,8 +128,44 @@ class SettlingTest {
         g.add(Edge(column[2], beside))
         g.ensureCachesFresh(force = true)
         assertTrue(Settling.down(g, depth = false).y > 0.5, "down: ${Settling.down(g, false)}")
-        Settling.settle(g, setOf(beside), g.nodes.toSet(), { if (it == beside) Settling.USUAL else Settling.FIXED })
+        Settling.Run(g, g.nodes.toSet(), { if (it == beside) Settling.USUAL else Settling.FIXED }, gravity = true).also { it.stir(setOf(beside)) }.toRest()
         assertTrue(beside.position.y > 300 + 20, "pulled down: ${beside.position}")
+    }
+
+    @Test
+    fun `a rope pulls its ends back to its length, but not nearer`() {
+        fun apart(rope: Double): Double {
+            val g = Graph()
+            val a = Node("a", Vector2(0, 0))
+            val b = Node("b", Vector2(1000, 0))
+            listOf(a, b).forEach { g.add(it) }
+            g.add(Edge(a, b))
+            g.ensureCachesFresh(force = true)
+            Settling.Run(g, g.nodes.toSet(), { Settling.USUAL }, edges = false, rope = { rope }).also { it.stir(g.nodes.toSet()) }.toRest()
+            return (b.position - a.position).length()
+        }
+        assertTrue(abs(apart(300.0) - 300) < 10, "pulled in: ${apart(300.0)}")
+        assertEquals(1000.0, apart(5000.0), 0.001, "slack: nothing")
+    }
+
+    @Test
+    fun `a root and its children go so that it is in their middle, and the middle of their masses stays`() {
+        val g = Graph()
+        val root = Node("root", Vector2(0, 0))
+        val children = listOf(Vector2(300, -300), Vector2(300, 0), Vector2(300, 300)).mapIndexed { i, at -> Node("child $i", at) }
+        (children + root).forEach { g.add(it) }
+        children.forEach { g.add(Edge(root, it)) }
+        g.ensureCachesFresh(force = true)
+        val middle = { children.map { it.position.x }.average() - root.position.x }
+        val masses = { (children + root).map { it.position.x }.average() }
+        val before = masses()
+        // nothing pushes: the middle child comes to lie on the root
+        Settling.Run(
+            g, g.nodes.toSet(), { Settling.USUAL }, balanced = true, edges = false, siblings = false, antigravity = false,
+            separation = 1.0, separatedBy = { _, _ -> null }, rooted = true,
+        ).also { run -> run.stir(g.nodes.toSet()); repeat(50) { run.step() } }
+        assertEquals(before, masses(), 1e-6, "the middle of the masses stays")
+        assertTrue(abs(middle()) < 100, "around the root: ${middle()}")
     }
 
     /** The node placed and [yielding] may move, as easily as each other; the others not. */

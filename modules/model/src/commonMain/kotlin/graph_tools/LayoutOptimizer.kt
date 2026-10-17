@@ -248,10 +248,11 @@ object LayoutOptimizer {
             val d1 = g.edgeMap[node]?.size.orElse(0).toDouble()
             val d2 = g.edgeMap[other]?.size.orElse(0).toDouble()
 
-            return degFactor(kotlin.math.min(d1, d2), depth)
+            // the busier end: a node with many children has them on a wider circle
+            return degFactor(kotlin.math.max(d1, d2), depth)
         }
 
-        /** [degFactor] of an edge whose smaller degree is [d]; in space with [depth]. */
+        /** [degFactor] of an edge whose larger degree is [d] (of a node's mass: its own); in space with [depth]. */
         fun degFactor(d: Double, depth: Boolean = false): Double =
             1.0 + (if (depth) Factors.PER_DEGREE_IN_SPACE else Factors.PER_DEGREE) * (if (d > 2) d + 1 else d)
 

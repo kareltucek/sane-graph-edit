@@ -654,7 +654,10 @@ class GestureController(
             // nodes only kept off each other: those the user put near each other stay near, and only those on others are pushed
             // those that follow keep to where they were relative to the dragged nodes, however many generations down
             // in 3D mode in space: the springs may take nodes off the plane, and spread them across it
-            Settling.Run(g, shown, weight, close = true, firm = following, budget = STEP_BUDGET, clock = clock, depth = graphView.viewTransform.threeD) { n ->
+            Settling.Run(
+                g, shown, weight, close = true, firm = following, budget = STEP_BUDGET, clock = clock, depth = graphView.viewTransform.threeD,
+                gravity = true,
+            ) { n ->
                 start[n]?.let { if (n in following) it + by() else it }
             }.also { settling = it }
         }
@@ -738,7 +741,7 @@ class GestureController(
         val depth = graphView.viewTransform.threeD
         // the whole graph by levels, all at once, or those of `:set suns=<levels>` alone
         return if (whole) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevels)
-        else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, gravity = false, adaptive = true).also { it.stir(moving, past) }
+        else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, adaptive = true).also { it.stir(moving, past) }
     }
 
     /**

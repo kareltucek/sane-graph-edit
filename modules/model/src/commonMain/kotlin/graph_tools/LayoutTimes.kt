@@ -12,6 +12,8 @@ object LayoutTimes {
         Order("order"),
         EdgePoints("edge points"),
         Index("index"),
+        /** The root spring's middles of the roots' children ([Settling]). */
+        Roots("roots"),
         /** The nodes one by one: those near each, the pushes and the pulls. */
         Springs("springs"),
         Apply("apply"),
@@ -36,6 +38,11 @@ object LayoutTimes {
     /** How many levels were made, and how long that took; none for a run of one level. */
     var made = 0
     var built = 0.0
+
+    /** The ropes' lengths ([Multilevel]): how long they took, how many searches (one a system), and how many nodes they reached. */
+    var roped = 0.0
+    var searches = 0
+    var reached = 0
 
     private fun of(level: Int) = levels.getOrPut(level) { Of(0) }
 
@@ -64,6 +71,9 @@ object LayoutTimes {
         level = 0
         made = 0
         built = 0.0
+        roped = 0.0
+        searches = 0
+        reached = 0
     }
 
     private fun ms(d: Double) = "${Platform.fixed(d, if (d < 1) 2 else if (d < 10) 1 else 0)} ms"
@@ -71,6 +81,7 @@ object LayoutTimes {
     /** Each level, the top first: its steps, and what a step of it took on average, whole and by part. */
     fun report(): String =
         (listOf("o: " + (if (made > 0) "$made levels made in ${ms(built)}" else "one level") + "; a step on average:") +
+            (if (searches > 0) listOf("  ropes: $searches searches, $reached nodes reached, in ${ms(roped)}") else emptyList()) +
             levels.entries.sortedByDescending { it.key }.map { (i, l) ->
                 val per = { d: Double -> ms(d / l.steps.coerceAtLeast(1)) }
                 val parts = Part.entries.filter { l.parts[it.ordinal] > 0 }.joinToString(", ") { "${it.title} ${per(l.parts[it.ordinal])}" }
