@@ -144,8 +144,9 @@ export class TerminalNode {
     // xterm encodes what a program asked to be told of the mouse only for the mouse over its own element, which is not
     // seen here: its core's mouse service is asked directly. Not public: a newer xterm may move it, and then the mouse is lost.
     private report(event: { col: number; row: number; button: number; action: number; ctrl: boolean; alt: boolean; shift: boolean }) {
+        type Core = { _core: { coreMouseService: { triggerMouseEvent(e: object): boolean } } };
         try {
-            (this.terminal as unknown as { _core: { coreMouseService: { triggerMouseEvent(e: object): boolean } } })._core.coreMouseService.triggerMouseEvent(event);
+            (this.terminal as unknown as Core)._core.coreMouseService.triggerMouseEvent(event);
         } catch {
             // no such service: the program is told nothing
         }
