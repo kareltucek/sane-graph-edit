@@ -217,6 +217,29 @@ class SessionFileContentTest {
     }
 
     @Test
+    fun `lines added in the middle of a block found by patterns stay in it, and the blocks below move down`() {
+        Fs.writeText(dir.resolve("blocks.txt"), "head\n\nSection A {\n  a1\n}\n\nSection B {\n  b1\n  b2\n  b3\n}\n\nSection C {\n  c1\n}\n")
+        val blocks = open(
+            "blocks.dot",
+            "digraph g {\n" +
+                "  b [\"content-type\"=\"plain:blocks.txt:/^Section B/,/^}/\"];\n" +
+                "  c [\"content-type\"=\"plain:blocks.txt:/^Section C/,/^}/\"];\n" +
+                "  whole [\"content-type\"=\"plain:blocks.txt\"];\n}\n",
+        )
+        assertEquals("Section B {\n  b1\n  b2\n  b3\n}", text(blocks, "b"))
+        edit(blocks, "b", "Section B {\n  b1\n  new1\n  new2\n  b2\n  b3\n}")
+        assertEquals("Section B {\n  b1\n  new1\n  new2\n  b2\n  b3\n}", text(blocks, "b"))
+        assertEquals("Section C {\n  c1\n}", text(blocks, "c"))
+        assertEquals("head\n\nSection A {\n  a1\n}\n\nSection B {\n  b1\n  new1\n  new2\n  b2\n  b3\n}\n\nSection C {\n  c1\n}", text(blocks, "whole"))
+        // and again, once more lines
+        edit(blocks, "b", "Section B {\n  b1\n  new1\n  new2\n  b2\n  more\n  b3\n}")
+        assertEquals("Section C {\n  c1\n}", text(blocks, "c"))
+        assertTrue(blocks.content.saveNow())
+        assertEquals("Section C {\n  c1\n}", text(blocks, "c"))
+        assertEquals("Section B {\n  b1\n  new1\n  new2\n  b2\n  more\n  b3\n}", text(blocks, "b"))
+    }
+
+    @Test
     fun `an edit in a source view shows in the graph`() {
         val source = opened("sections.txt:3-4")
         edit(source, SourceView.NODE_ID, "Section A\nfrom source")
