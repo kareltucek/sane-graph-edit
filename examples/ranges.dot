@@ -1,17 +1,17 @@
 digraph g {
   // Each node holds lines of sections.txt; whole holds all of it.
-  a [content-type="plain:sections.txt:3-6"; pos="0,0!"];
-  b [content-type="plain:sections.txt:8-11"; pos="200,0!"];
-  c [content-type="plain:sections.txt:13-16"; pos="400,0!"];
-  whole [content-type="plain:sections.txt"; pos="200,250!"];
+  a [content-type="plain:sections.txt:3-7"; pos="0,0!"];
+  b [content-type="plain:sections.txt:9-13"; pos="200,0!"];
+  c [content-type="plain:sections.txt:15-19"; pos="400,0!"];
+  whole [content-type="plain:sections.txt"; pos="200,300!"];
   // section B again, found by patterns: it stays right when lines are added above it
-  "b-found" [content-type="plain:sections.txt:/^Section B/,/^b3$/"; pos="600,0!"];
+  "b-found" [content-type="plain:sections.txt:/^Section B/,/^}/"; pos="600,0!"];
   // gf on these opens the same lines through a link
-  "to-a" [label="link: section A"; pos="0,450!"; link="sections.txt:3-6"; fillcolor="#F6EFC4"];
-  "to-b" [label="link: section B"; pos="200,450!"; link="sections.txt:8-11"; fillcolor="#F6EFC4"];
-  "to-c" [label="link: section C"; pos="400,450!"; link="sections.txt:13-16"; fillcolor="#F6EFC4"];
-  "to-whole" [label="link: whole file"; pos="600,450!"; link="sections.txt"; fillcolor="#F6EFC4"];
-  "to-b-found" [label="link: section B, by patterns"; pos="800,450!"; link="sections.txt:/^Section B/,/^b3$/"; fillcolor="#F6EFC4"];
+  "to-a" [label="link: section A"; pos="0,550!"; link="sections.txt:3-7"; fillcolor="#F6EFC4"];
+  "to-b" [label="link: section B"; pos="200,550!"; link="sections.txt:9-13"; fillcolor="#F6EFC4"];
+  "to-c" [label="link: section C"; pos="400,550!"; link="sections.txt:15-19"; fillcolor="#F6EFC4"];
+  "to-whole" [label="link: whole file"; pos="600,550!"; link="sections.txt"; fillcolor="#F6EFC4"];
+  "to-b-found" [label="link: section B, by patterns"; pos="800,550!"; link="sections.txt:/^Section B/,/^}/"; fillcolor="#F6EFC4"];
   // gf on it goes back to the list of examples
   index [label="examples"; pos="200,-150!"; link="index.dot:ranges"; fillcolor="#F6EFC4"];
   whole -> a;
