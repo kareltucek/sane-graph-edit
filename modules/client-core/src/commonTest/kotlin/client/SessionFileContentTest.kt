@@ -37,8 +37,12 @@ class SessionFileContentTest {
     private val client = EditorClient(Local(hub))
 
     private val views = mutableListOf<EditorView>()
+    private val messages = mutableListOf<String>()
     private val shell = object : Shell by NoShell {
         override fun views(): List<EditorView> = views
+        override fun message(text: String) {
+            messages += text
+        }
     }
 
     private fun opened(link: String): EditorView =
@@ -151,6 +155,20 @@ class SessionFileContentTest {
         assertEquals("Section A\nfrom the second tab", text(graph, "a"))
         assertEquals("head\n\nSection A\nfrom the second tab\n\nSection B\nb1", text(graph, "whole"))
         assertEquals("head\n\nSection A\nfrom the second tab\n\nSection B\nb1", text(twice, "whole"))
+    }
+
+    @Test
+    fun `file names the graph, and the file of the one node selected with its lines as they are now`() {
+        val file = dir.resolve("ranges.dot").toAbsolutePath().normalize()
+        graph.content.showFilePath()
+        assertEquals("$file", messages.last())
+        edit(graph, "a", "Section A\na1\nmore")
+        graph.g.cleanSelect(setOf(node(graph, "whole")))
+        graph.content.showFilePath()
+        assertEquals("graph: $file [modified]\nnode:  ${text.toAbsolutePath().normalize()} [modified]", messages.last())
+        graph.g.cleanSelect(setOf(node(graph, "a")))
+        graph.content.showFilePath()
+        assertEquals("node:  ${text.toAbsolutePath().normalize()}:3-5 [modified]", messages.last().lines().last())
     }
 
     @Test

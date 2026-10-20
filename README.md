@@ -494,7 +494,7 @@ navigation, not data.
 | `gF`            | Same as `gf`, but into a new tab                       |
 | `:browse [dir]` | New tab with a file tree of `dir` (default: working directory), its graphs and markdown files; `gf` on a node opens it. Files are one column right of their directory, subdirectories two; the tree is cut to the depth that fits the window, the last level being `name/ …`. The `help` node above the directory opens the key and command reference. `:tabnew` is `:browse` of the workspace |
 | `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line) |
-| `:file`         | Show the full path of the tab's file (or the browsed directory) |
+| `:file`         | Show the full path of the tab's file (or the browsed directory); with one node selected whose text is kept in a file, that file too, with its lines as they are now |
 | `:cd <dir>`     | Switch the workspace to `dir` (see [Workspaces](#workspaces)); bare `:cd` shows it |
 | `:open-workspace` | New tab with the workspaces that have a session and the graphs open in each; `gf` on a workspace switches to it, on a graph opens it here |
 | `Ctrl+E`        | Export graph as SVG                                    |

@@ -397,8 +397,11 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             return if (isDirty) "$shown [modified]" else shown
         }
 
-    /** `:file` — vim's: show [filePath]. */
-    fun showFilePath() = shell.message(filePath)
+    /** `:file` — vim's: show [filePath]; and with one node selected whose text is kept in a file, that file ([FileContent.describe]). */
+    fun showFilePath() {
+        val node = view.g.selectedNodes.singleOrNull()?.takeIf { sourceView == null }?.let { FileContent.describe(view, it) }
+        shell.message(node?.let { "graph: $filePath\nnode:  $it" } ?: filePath)
+    }
 
     /** True when there are no unsaved changes, the user agrees to lose them to [action], or `:set discard` says not to ask. */
     private fun confirmDiscard(action: String): Boolean =

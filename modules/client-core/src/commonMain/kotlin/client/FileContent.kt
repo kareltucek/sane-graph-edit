@@ -141,6 +141,20 @@ object FileContent {
     private fun windowOf(source: FileLink.Target): Kept? =
         source.path?.let { path -> bufferOf(path)?.let { buffer -> window(source, buffer)?.let { Kept(path, it, textOf(buffer.lines, it)) } } }
 
+    /**
+     * Where the text of [node] of [view] is kept, as `:file` tells it:
+     * the file, the lines as they are now in its buffer (or the
+     * section), `[modified]` when the file has unsaved edits; null for
+     * a node that keeps its own text.
+     */
+    fun describe(view: EditorView, node: Node): String? =
+        of(node, view.content.currentFile)?.let { source ->
+            val now = kept[key(view)]?.get(node.id)?.lines?.takeIf { source.lines != null }?.let { ":${it.first}-${it.last}" }
+            val part = source.section?.let { "#$it" } ?: now ?: source.lines?.let { ":$it" }.orEmpty()
+            val unsaved = buffers[source.path.toString()]?.let { it.text != it.disk } == true
+            "${source.path}$part" + if (unsaved) " [modified]" else ""
+        }
+
     /** The text [source] speaks of, unsaved edits included, or null when it cannot be had. */
     fun read(source: FileLink.Target): String? = windowOf(source)?.text
 
