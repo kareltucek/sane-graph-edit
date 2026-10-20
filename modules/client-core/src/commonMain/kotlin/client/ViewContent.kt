@@ -344,10 +344,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             try {
                 // with a document everyone attached gets the file's content; a failure comes back as a message
                 // the nodes whose text is kept in files take it from the files' buffers again: what is unsaved
-                // there stays, it is not this graph's alone. `:e!` gives that up too.
+                // there stays, it is not this graph's alone, and the others are read again. `:e!` gives that up too.
                 FileContent.forget(view)
                 document?.reload() ?: reloadOwn(path)
-                onceLoaded { if (force) FileContent.reload(view) else FileContent.reconcile(view) }
+                onceLoaded { if (force) FileContent.reload(view) else FileContent.refresh(view) }
                 view.repaint()
             } catch (t: Throwable) {
                 shell.alert("Reload error", "Could not reload $path:\n${t.message}")

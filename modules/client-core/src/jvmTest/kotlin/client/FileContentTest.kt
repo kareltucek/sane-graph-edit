@@ -193,6 +193,12 @@ class FileContentTest {
     }
 
     @Test
+    fun `an edit of a section shows at once in the node of the whole file`() {
+        edit(second, "section", "## One\n\nfirst\nand more")
+        assertEquals("# Doc\n\n## One\n\nfirst\nand more\n\n## Two\n\nsecond", text(second, "whole"))
+    }
+
+    @Test
     fun `what the file holds now is what is edited, when the node has no edit of its own`() {
         code.writeText("zero\n$untouched")
         first.startNodeEdit(node(first, "top"), null)

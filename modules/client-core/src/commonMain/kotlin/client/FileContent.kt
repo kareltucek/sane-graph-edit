@@ -243,12 +243,21 @@ object FileContent {
     fun entering(view: EditorView, node: Node) {
         reconcile(view)
         val buffer = kept[key(view)]?.get(node.id)?.let { buffers[it.path.toString()] }
-        val stale = buffer != null && buffer.text == buffer.disk && try {
+        if (buffer != null && stale(buffer)) reread(view, listOf(buffer.path))
+    }
+
+    /** Nothing in [buffer] is unsaved, and something else changed the file since it was read. */
+    private fun stale(buffer: Buffer): Boolean =
+        buffer.text == buffer.disk && try {
             Fs.readText(buffer.path) != buffer.disk
         } catch (e: Exception) {
             false
         }
-        if (buffer != null && stale) reread(view, listOf(buffer.path))
+
+    /** The graph of [view] is read again: its files are too, those that have nothing unsaved; in every open view. */
+    fun refresh(view: EditorView) {
+        val paths = nodesOf(view).mapNotNull { it.second.path }.distinct().filter { path -> buffers[path.toString()]?.let { stale(it) } == true }
+        if (paths.isEmpty()) reconcile(view) else reread(view, paths)
     }
 
     /** The windows of [nodes] of [view] (of all its nodes by default) are of no use: they were told to keep their text elsewhere, or their graph is read again. */
