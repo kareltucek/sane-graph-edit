@@ -240,6 +240,25 @@ class SessionFileContentTest {
     }
 
     @Test
+    fun `lines added to a block through gf are there when Ctrl+O goes back`() {
+        Fs.writeText(dir.resolve("blocks.txt"), "head\n\nSection A {\n  a1\n}\n\nSection B {\n  b1\n  b2\n  b3\n}\n\nSection C {\n  c1\n}\n")
+        val blocks = open(
+            "blocks.dot",
+            "digraph g {\n" +
+                "  b [\"content-type\"=\"plain:blocks.txt:7-11\"];\n" +
+                "  c [\"content-type\"=\"plain:blocks.txt:/^Section C/,/^}/\"];\n" +
+                "  whole [\"content-type\"=\"plain:blocks.txt\"];\n}\n",
+        )
+        blocks.g.cleanSelect(setOf(node(blocks, "b")))
+        blocks.content.followFileLink()
+        assertEquals("Section B {\n  b1\n  b2\n  b3\n}", text(blocks, SourceView.NODE_ID))
+        edit(blocks, SourceView.NODE_ID, "Section B {\n  b1\n  new1\n  new2\n  b2\n  b3\n}")
+        blocks.content.jumpBack()
+        assertEquals("Section B {\n  b1\n  new1\n  new2\n  b2\n  b3\n}", text(blocks, "b"))
+        assertEquals("Section C {\n  c1\n}", text(blocks, "c"))
+    }
+
+    @Test
     fun `an edit in a source view shows in the graph`() {
         val source = opened("sections.txt:3-4")
         edit(source, SourceView.NODE_ID, "Section A\nfrom source")
