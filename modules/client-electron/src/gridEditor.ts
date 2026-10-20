@@ -93,17 +93,6 @@ const PAINT_TIMEOUT_MS = 300;
 /** How long a neovim that was asked to end has for it. */
 const QUIT_TIMEOUT_MS = 1000;
 
-/** In an editor of all of a file, how far toward the text's colour the background of the node's lines is. */
-const MARK_SHARE = 0.12;
-
-/** The colour [share] of the way from [from] to [to], both `#rrggbb`; [from] when either is not one. */
-function mix(from: string, to: string, share: number): string {
-    const rgb = (c: string) => (/^#[0-9a-fA-F]{6}$/.test(c) ? [1, 3, 5].map((i) => parseInt(c.slice(i, i + 2), 16)) : null);
-    const a = rgb(from);
-    const b = rgb(to);
-    return a === null || b === null ? from : "#" + a.map((v, i) => Math.round(v + (b[i] - v) * share).toString(16).padStart(2, "0")).join("");
-}
-
 /** The editor shows once neovim has drawn the text, or after this long if it draws nothing. */
 const REVEAL_TIMEOUT_MS = 300;
 
@@ -179,10 +168,6 @@ export class GridEditor {
     private exited = false;
     private closed = false;
     private onText: (text: string) => void = () => {};
-    /** In an editor of all of a file ([openFile]): lines [first] up to [last] (from 0, without [last]) became [replacement]. */
-    private onLines: ((first: number, last: number, replacement: string[]) => void) | null = null;
-    /** `:w` in an editor of all of a file: the page saves, neovim writes nothing itself. */
-    private onWrite: () => void = () => {};
     private onExit: () => void = () => {};
     private onShown: () => void = () => {};
     private onDrawn: () => void = () => {};
@@ -248,65 +233,7 @@ export class GridEditor {
         editor.onLine = on.line;
         editor.onMessage = on.message;
         editor.onStatus = on.status;
-        editor.load(text.split("\n"), row, column, 0, colours, filetype, insert, () => Promise.resolve());
-        GridEditor.warm();
-        return editor;
-    }
-
-    /**
-     * Neovim on all of the file [file] a node keeps its text in, as
-     * the page has it (unsaved edits included): its buffer is named
-     * as the file, the node's lines ([file] `first` up to `last`, from
-     * 0) are marked and seen first, the cursor at [row], [column] of
-     * them. What changes is told by line ([on] `lines`), not as text;
-     * `:w` is told ([on] `write`) and writes nothing. Otherwise as
-     * [open].
-     */
-    static openFile(
-        file: { path: string; lines: string[]; first: number; last: number },
-        row: number,
-        column: number,
-        colours: Colours,
-        filetype: string,
-        insert: boolean,
-        on: {
-            lines: (first: number, last: number, replacement: string[]) => void;
-            write: () => void;
-            exit: () => void;
-            shown: () => void;
-            drawn: () => void;
-            line: (text: string | null) => void;
-            message: (text: string) => void;
-            status: (pieces: StatusPiece[]) => void;
-        },
-    ): GridEditor {
-        GridEditor.warm();
-        const editor = GridEditor.spare!;
-        GridEditor.spare = null;
-        editor.onLines = on.lines;
-        editor.onWrite = on.write;
-        editor.onExit = on.exit;
-        editor.onShown = on.shown;
-        editor.onDrawn = on.drawn;
-        editor.onLine = on.line;
-        editor.onMessage = on.message;
-        editor.onStatus = on.status;
-        const lines = file.lines.length > 0 ? file.lines : [""];
-        const setUp = (nvim: NeovimClient) =>
-            nvim.request("nvim_buf_set_name", [0, file.path])
-                .then(() => nvim.request("nvim_get_api_info", []))
-                // a write is the page's; what neovim would write is told instead, to this page only (plugins listen on channel 0)
-                .then(([channel]: [number]) =>
-                    nvim.command(`set nomodified | autocmd BufWriteCmd <buffer> call rpcnotify(${channel}, 'sge_write') | set nomodified`))
-                // the page writes the file behind neovim's back: that is no news to ask about or to read again
-                .then(() => nvim.command("setlocal noautoread | autocmd FileChangedShell <buffer> let v:fcs_choice = ''"))
-                // the node's lines on a background a little toward the text's colour; what is put in at their edges is theirs
-                .then(() => nvim.command(`highlight SgeNode guibg=${mix(colours.background, colours.foreground, MARK_SHARE)}`))
-                .then(() => nvim.request("nvim_create_namespace", ["sge"]))
-                .then((space: number) => nvim.request("nvim_buf_set_extmark", [0, space, file.first, 0, {
-                    end_row: Math.max(file.first, file.last), hl_group: "SgeNode", hl_eol: true, priority: 1, right_gravity: false, end_right_gravity: true,
-                }]));
-        editor.load(lines, file.first + row, column, file.first, colours, filetype, insert, setUp);
+        editor.load(text, row, column, colours, filetype, insert);
         GridEditor.warm();
         return editor;
     }
@@ -421,7 +348,6 @@ export class GridEditor {
         const client = attach({ proc: this.process });
         client.on("notification", (method: string, events: unknown[][]) => {
             if (method === "redraw") this.redraw(events);
-            else if (method === "sge_write" && !this.closed) this.onWrite();
         });
         this.nvim = client
             .uiAttach(this.columns, this.rows, { rgb: true, ext_linegrid: true, ext_cmdline: true, ext_messages: true } as never)
@@ -474,19 +400,12 @@ export class GridEditor {
                 : new Promise((resolve) => setTimeout(resolve, START_RETRY_MS)).then(() => this.started(nvim, triesLeft - 1)));
     }
 
-    /**
-     * Give the waiting neovim its [text], as if it had been started on it: nothing to undo, the cursor in place, line
-     * [topline] (from 0) the first one seen; [setUp] does what else there is to do once it has the text. One that fails
-     * leaves the text as it is.
-     */
-    private load(
-        text: string[], row: number, column: number, topline: number, colours: Colours, filetype: string, insert: boolean,
-        setUp: (nvim: NeovimClient) => Promise<unknown>,
-    ) {
+    /** Give the waiting neovim its text, as if it had been started on it: nothing to undo, the cursor in place. */
+    private load(text: string, row: number, column: number, colours: Colours, filetype: string, insert: boolean) {
         // the kind of text decides neovim's highlighting, indenting and the rest of what it does by file type
         const kind = filetype === "" ? "" : ` | setlocal filetype=${filetype}`;
         const mode = insert ? " | startinsert" : "";
-        this.lines = text;
+        this.lines = text.split("\n");
         const lines = [...this.lines];
         this.nvim
             .then((nvim) =>
@@ -496,10 +415,9 @@ export class GridEditor {
                     // by character, not by byte: the column is one of the text as drawn
                     .then(() => nvim.command(
                         `let &undolevels = g:sge_undolevels | set nomodified | call setcursorcharpos(${row + 1}, ${column + 1})` +
-                        ` | call winrestview({'topline': ${topline + 1}, 'leftcol': 0})${kind}` +
+                        ` | call winrestview({'topline': 1, 'leftcol': 0})${kind}` +
                         ` | highlight! Normal guifg=${colours.foreground} guibg=${colours.background}${mode}`,
-                    ))
-                    .then(() => setUp(nvim).catch(() => {})))
+                    )))
             .catch(() => {
                 // no neovim: the editor shows nothing, and closes with the text unchanged
             })
@@ -527,33 +445,16 @@ export class GridEditor {
             buffer.listen("lines", (_buffer: unknown, _tick: number, first: number, last: number, replacement: string[]) => {
                 this.lines.splice(first, last - first, ...replacement);
                 if (this.lines.length === 0) this.lines = [""];
-                // also while closing: neovim tells a change before it answers the last asking for the lines
-                this.onLines?.(first, last, replacement);
                 this.changed();
             });
             // what was typed before this point caused no event
             return buffer.lines;
         }).then((lines) => {
-            this.caughtUp(lines);
+            this.lines = lines.length > 0 ? lines : [""];
             this.changed();
         }).catch(() => {
             // neovim went away meanwhile; the text stays as it was last told
         });
-    }
-
-    /**
-     * Neovim's buffer holds [lines]: what it has that no event told (typed before the events were listened to, or
-     * not told yet when the editor closes) is told as the lines between what stayed at the start and at the end.
-     */
-    private caughtUp(lines: string[]) {
-        const now = lines.length > 0 ? lines : [""];
-        const was = this.lines;
-        let start = 0;
-        while (start < was.length && start < now.length && was[start] === now[start]) start++;
-        let end = 0;
-        while (end < was.length - start && end < now.length - start && was[was.length - 1 - end] === now[now.length - 1 - end]) end++;
-        this.lines = now;
-        if (start !== was.length || start !== now.length) this.onLines?.(start, was.length - end, now.slice(start, now.length - end));
     }
 
     private changed() {
@@ -836,7 +737,7 @@ export class GridEditor {
         this.onLine(null);
         // a neovim that had not got the text yet has nothing to tell
         const asked = !this.loaded ? Promise.resolve() : this.nvim.then((nvim) => nvim.buffer).then((buffer) => buffer.lines).then((lines) => {
-            this.caughtUp(lines);
+            this.lines = lines.length > 0 ? lines : [""];
         });
         const waited = new Promise<void>((resolve) => setTimeout(resolve, CLOSE_TIMEOUT_MS));
         return Promise.race([asked, waited]).catch(() => {}).then(() => {
