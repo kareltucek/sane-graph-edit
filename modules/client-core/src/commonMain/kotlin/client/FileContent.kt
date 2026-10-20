@@ -233,15 +233,20 @@ object FileContent {
     private fun change(view: EditorView, node: Node, window: Kept, text: String, own: Command?) {
         val buffer = buffers.getValue(window.path.toString())
         val now = text.split("\n")
-        val edit = Edit(window.lines, now.size)
-        buffer.lines = buffer.lines.subList(0, window.lines.first - 1) + now + buffer.lines.subList(window.lines.last, buffer.lines.size)
-        buffer.edits += edit
-        kept.values.forEach { windows ->
-            windows.keys.toList().forEach { id ->
-                windows.getValue(id).takeIf { it.path == window.path }?.let { windows[id] = Kept(it.path, moved(it.lines, edit), it.text) }
+        val first = window.lines.first
+        // by the lines that changed, not as all of the node's lines at once: the windows within it move by what was
+        // put in or taken out above them; the last first, so that where the others are is still where they were
+        LineDiff.of(buffer.lines.subList(first - 1, window.lines.last), now).asReversed().forEach { hunk ->
+            val edit = Edit((first + hunk.from)..(first + hunk.to - 1), hunk.lines.size)
+            buffer.lines = buffer.lines.subList(0, edit.old.first - 1) + hunk.lines + buffer.lines.subList(edit.old.last, buffer.lines.size)
+            buffer.edits += edit
+            kept.values.forEach { windows ->
+                windows.keys.toList().forEach { id ->
+                    windows.getValue(id).takeIf { it.path == window.path }?.let { windows[id] = Kept(it.path, moved(it.lines, edit), it.text) }
+                }
             }
         }
-        kept.getValue(key(view)).let { windows -> windows[node.id] = Kept(window.path, windows.getValue(node.id).lines, text) }
+        kept.getValue(key(view)).let { windows -> windows[node.id] = Kept(window.path, first..(first + now.size - 1), text) }
         documents(view).forEach { v ->
             val windows = kept[key(v)].orEmpty().toMutableMap()
             val follows = nodesOf(v).map { it.first }.filter { o -> windows[o.id]?.path == window.path && !(v === view && o === node) }.mapNotNull { o ->

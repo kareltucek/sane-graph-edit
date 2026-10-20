@@ -259,6 +259,28 @@ class SessionFileContentTest {
     }
 
     @Test
+    fun `lines added in two places of the node of the whole file go into the blocks they were added to`() {
+        Fs.writeText(dir.resolve("blocks.txt"), "head\n\nSection A {\n  a1\n}\n\nSection B {\n  b1\n}\n\nSection C {\n  c1\n}\n")
+        val blocks = open(
+            "blocks.dot",
+            "digraph g {\n" +
+                "  a [\"content-type\"=\"plain:blocks.txt:3-5\"];\n" +
+                "  b [\"content-type\"=\"plain:blocks.txt:/^Section B/,/^}/\"];\n" +
+                "  c [\"content-type\"=\"plain:blocks.txt:/^Section C/,/^}/\"];\n" +
+                "  whole [\"content-type\"=\"plain:blocks.txt\"];\n}\n",
+        )
+        edit(blocks, "whole", "head\n\nSection A {\n  a1\n  a2\n}\n\nSection B {\n  b1\n  b2\n  b3\n}\n\nSection C {\n  c1\n}")
+        assertEquals("Section A {\n  a1\n  a2\n}", text(blocks, "a"))
+        assertEquals("Section B {\n  b1\n  b2\n  b3\n}", text(blocks, "b"))
+        assertEquals("Section C {\n  c1\n}", text(blocks, "c"))
+        // and a line taken out of one, a line changed in another
+        edit(blocks, "whole", "head\n\nSection A {\n  a1\n}\n\nSection B {\n  b1\n  b2 changed\n  b3\n}\n\nSection C {\n  c1\n}")
+        assertEquals("Section A {\n  a1\n}", text(blocks, "a"))
+        assertEquals("Section B {\n  b1\n  b2 changed\n  b3\n}", text(blocks, "b"))
+        assertEquals("Section C {\n  c1\n}", text(blocks, "c"))
+    }
+
+    @Test
     fun `an edit in a source view shows in the graph`() {
         val source = opened("sections.txt:3-4")
         edit(source, SourceView.NODE_ID, "Section A\nfrom source")
