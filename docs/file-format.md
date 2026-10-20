@@ -234,7 +234,10 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     README) — **unless `g<letter>` is mapped
     to something else** (defaults: `gt`, `gT` switch tabs, `gF` below;
     user `:map`s too); then the mapping wins. `gf` is the command
-    `follow-file-link` and so works for `link` / `link-f`.
+    `follow-file-link` and so works for `link` / `link-f`. A node
+    without a `link` whose text is kept in a file (`content-type`
+    with a source) leads to that text: `gf` opens its lines, its
+    section or all of the file as a graph of one node.
   - `gF` (command `follow-file-link-in-tab`) follows `link-f` into a
     new tab.
   - A file is opened as a DOT graph; a directory is shown as a file

@@ -546,16 +546,19 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     private fun selectedLink(command: String, letter: Char, quiet: Boolean): FileLink.Target? {
         val node = view.g.selectedNodes.singleOrNull()
         val link = node?.let { FileLink.of(it, letter) }
+        // one without a link of its own, whose text is kept in a file, leads to that text: its lines, its section or all of it
+        val kept = node?.takeIf { link == null && letter == 'f' && sourceView == null }?.let { FileContent.of(it, currentFile) }
         val typeName = node?.let { FileLink.typeOf(it, letter) }
         val type = FileLink.Type.parse(typeName)
         val problem = when {
+            kept != null -> null
             node == null -> "select exactly one node"
             link == null -> "the node has no `${FileLink.attributeName(letter)}` attribute"
             type == null -> "`${FileLink.typeAttributeName(letter)}` is not a type a link can have: $typeName"
             else -> null
         }
         if (problem != null && !quiet) shell.message("$command: $problem")
-        return if (problem == null && link != null && type != null) FileLink.resolve(link, currentFile, type) else null
+        return kept ?: if (problem == null && link != null && type != null) FileLink.resolve(link, currentFile, type) else null
     }
 
     /**

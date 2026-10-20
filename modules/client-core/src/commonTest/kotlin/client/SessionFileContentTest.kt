@@ -257,6 +257,17 @@ class SessionFileContentTest {
     }
 
     @Test
+    fun `gf on a node whose text is kept in a file opens that text, and Ctrl+O goes back`() {
+        graph.g.cleanSelect(setOf(node(graph, "a")))
+        graph.content.followFileLink()
+        assertEquals(null, graph.content.currentFile)
+        assertEquals(FileLink.Lines(3, 4), graph.content.sourceView?.lines)
+        assertEquals("Section A\na1", text(graph, SourceView.NODE_ID))
+        graph.content.jumpBack()
+        assertEquals("ranges.dot", graph.content.currentFile?.name)
+    }
+
+    @Test
     fun `an edit in a source view shows in the graph`() {
         val source = opened("sections.txt:3-4")
         edit(source, SourceView.NODE_ID, "Section A\nfrom source")
