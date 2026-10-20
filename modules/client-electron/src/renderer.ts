@@ -1374,6 +1374,10 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             }
         });
     });
+    // a press that went to what runs in the node does not take the focus from it: a terminal's keys are its hidden xterm's
+    canvas.addEventListener("mousedown", (e) => {
+        if (held !== null) e.preventDefault();
+    });
     canvas.addEventListener("pointermove", (e) => {
         if (held !== null) toInside("drag", e);
         else current((view) => view.pointerMove(x(e), y(e), e.buttons !== 0, e.shiftKey));
