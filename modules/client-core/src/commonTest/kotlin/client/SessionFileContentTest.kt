@@ -205,6 +205,57 @@ class SessionFileContentTest {
         assertFalse("still own" in Fs.readText(text))
     }
 
+    /** Edit [id] of [view] in an editor of all of its file, which tells of [changes] (from 0, without the last), then closes. */
+    private fun editWhole(view: EditorView, id: String, vararg changes: Triple<Int, Int, List<String>>) {
+        val n = node(view, id)
+        view.startNodeEdit(n, null)
+        view.textEditStarted(n.id)
+        changes.forEach { (first, last, now) -> FileContent.linesChanged(view, n, first, last, now) }
+        view.textEditEnded(FileContent.textOf(view, n)!!)
+    }
+
+    @Test
+    fun `an editor of all of the file gets the buffer, with the node's lines among it`() {
+        editWhole(graph, "whole", Triple(0, 0, listOf("new")))
+        val whole = FileContent.wholeOf(graph, node(graph, "a"))!!
+        assertEquals(listOf("new", "head", "", "Section A", "a1", "", "Section B", "b1"), whole.lines)
+        assertEquals(4..5, whole.window)
+    }
+
+    @Test
+    fun `in an editor of all of the file, the node's lines are the node's edit, the others change the file only`() {
+        val other = open("other.dot", "digraph g {\n  twin [\"content-type\"=\"plain:sections.txt:3-4\"];\n}\n")
+        // a line above the node, one in it
+        editWhole(graph, "a", Triple(0, 1, listOf("HEAD")), Triple(3, 4, listOf("a1", "a2")))
+        assertEquals("Section A\na1\na2", text(graph, "a"))
+        assertEquals("Section A\na1\na2", text(other, "twin"))
+        assertEquals("HEAD\n\nSection A\na1\na2\n\nSection B\nb1", text(graph, "whole"))
+        assertTrue(graph.content.isDirty)
+        assertTrue("sections.txt" in FileContent.unsaved())
+        // undo takes back the node's edit; the line above it is the file's
+        graph.g.undo()
+        assertEquals("Section A\na1", text(graph, "a"))
+        assertEquals("HEAD\n\nSection A\na1\n\nSection B\nb1", text(graph, "whole"))
+    }
+
+    @Test
+    fun `an editor of all of the file that changes only lines no node holds leaves the graph unchanged`() {
+        // before the second line
+        editWhole(graph, "a", Triple(1, 1, listOf("between")))
+        assertEquals("Section A\na1", text(graph, "a"))
+        assertFalse(graph.content.isDirty)
+        assertTrue("sections.txt" in FileContent.unsaved())
+        assertTrue(graph.content.saveNow())
+        assertEquals("head\nbetween\n\nSection A\na1\n\nSection B\nb1\n", Fs.readText(text))
+        assertEquals("plain:sections.txt:4-5", node(graph, "a").attributes.other["content-type"])
+    }
+
+    @Test
+    fun `what is put in at the start of the node being edited is the node's`() {
+        editWhole(graph, "a", Triple(2, 2, listOf("Before A")))
+        assertEquals("Before A\nSection A\na1", text(graph, "a"))
+    }
+
     @Test
     fun `an edit in a source view shows in the graph`() {
         val source = opened("sections.txt:3-4")

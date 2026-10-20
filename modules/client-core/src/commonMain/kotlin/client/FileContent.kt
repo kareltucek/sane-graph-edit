@@ -224,21 +224,37 @@ object FileContent {
      * still to be done; it is the undo step. What follows from it is
      * none: an undo of it is a change the others follow again.
      */
-    private fun change(view: EditorView, node: Node, window: Kept, text: String, own: Command?) {
-        val buffer = buffers.getValue(window.path.toString())
-        val now = text.split("\n")
-        val edit = Edit(window.lines, now.size)
-        buffer.lines = buffer.lines.subList(0, window.lines.first - 1) + now + buffer.lines.subList(window.lines.last, buffer.lines.size)
+    private fun change(view: EditorView, node: Node, window: Kept, text: String, own: Command?) =
+        replace(view, node, window.path, window.lines, text.split("\n"), own)
+
+    /**
+     * Lines [old] of the buffer of [path] became [now], by an edit of
+     * [node] of [view] ([change]) or in an editor of all of the file
+     * ([linesChanged]): put it into the buffer, move the windows, and
+     * give the other nodes that see those lines their new text. What
+     * is put in at the start of [node]'s window is [node]'s, as what
+     * is put in at its end is. [own], when there is one, is the undo
+     * step.
+     */
+    private fun replace(view: EditorView, node: Node, path: Path, old: IntRange, now: List<String>, own: Command?) {
+        val buffer = buffers.getValue(path.toString())
+        val edit = Edit(old, now.size)
+        val mine = kept.getValue(key(view)).getValue(node.id).lines
+        buffer.lines = buffer.lines.subList(0, old.first - 1) + now + buffer.lines.subList(old.last, buffer.lines.size)
         buffer.edits += edit
         kept.values.forEach { windows ->
             windows.keys.toList().forEach { id ->
-                windows.getValue(id).takeIf { it.path == window.path }?.let { windows[id] = Kept(it.path, moved(it.lines, edit), it.text) }
+                windows.getValue(id).takeIf { it.path == path }?.let { windows[id] = Kept(it.path, moved(it.lines, edit), it.text) }
             }
         }
-        kept.getValue(key(view)).let { windows -> windows[node.id] = Kept(window.path, windows.getValue(node.id).lines, text) }
+        val inserted = old.isEmpty() && old.first == mine.first
+        kept.getValue(key(view)).let { windows ->
+            val lines = if (inserted) mine.first..(mine.last + now.size) else windows.getValue(node.id).lines
+            windows[node.id] = Kept(path, lines, textOf(buffer.lines, lines))
+        }
         documents(view).forEach { v ->
             val windows = kept[key(v)].orEmpty().toMutableMap()
-            val follows = nodesOf(v).map { it.first }.filter { o -> windows[o.id]?.path == window.path && !(v === view && o === node) }.mapNotNull { o ->
+            val follows = nodesOf(v).map { it.first }.filter { o -> windows[o.id]?.path == path && !(v === view && o === node) }.mapNotNull { o ->
                 val was = windows.getValue(o.id)
                 val seen = textOf(buffer.lines, was.lines)
                 // one with a change of its own keeps it: its turn comes
@@ -251,6 +267,32 @@ object FileContent {
         }
         (listOf(view) + view.shell.views()).distinct().forEach { it.repaint() }
     }
+
+    /** All of a file a node keeps its text in, for an editor of all of it: the lines of its buffer, and the node's among them (from 1). */
+    class Whole(val path: Path, val lines: List<String>, val window: IntRange)
+
+    /** The file [node] of [view] keeps its text in, as its buffer has it; null for a node that keeps its own text. */
+    fun wholeOf(view: EditorView, node: Node): Whole? =
+        kept[key(view)]?.get(node.id)?.let { window -> buffers[window.path.toString()]?.let { Whole(window.path, it.lines, window.lines) } }
+
+    /**
+     * In an editor of all of the file of [node] (which is being edited
+     * in [view]), lines [first] up to [last] (from 0, without [last])
+     * became [now]. The node shows its lines as they are now; it is
+     * changed for good, as one undo step, when the editor closes
+     * ([EditorView.textEditEnded] with [textOf]). Lines no node holds
+     * change only the file.
+     */
+    fun linesChanged(view: EditorView, node: Node, first: Int, last: Int, now: List<String>) = quietly {
+        kept[key(view)]?.get(node.id)?.let { window ->
+            replace(view, node, window.path, (first + 1)..last, now, null)
+            node.attributes.text = kept.getValue(key(view)).getValue(node.id).text
+            view.g.needsRecomputing(node)
+        }
+    }
+
+    /** What [node] of [view] holds of its file now; null for a node that keeps its own text. */
+    fun textOf(view: EditorView, node: Node): String? = kept[key(view)]?.get(node.id)?.text
 
     /** The user edited [node] of [view] from [before] to [text]: one undo step, which the other nodes of those lines follow. */
     fun edited(view: EditorView, node: Node, before: String, text: String) {

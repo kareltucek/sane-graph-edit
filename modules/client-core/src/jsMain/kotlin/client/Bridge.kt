@@ -423,6 +423,40 @@ class JsView internal constructor(
         view.repaint()
     }
 
+    /**
+     * For an editor of all of the file the node [id] keeps its text in
+     * ([FileContent.wholeOf]): `{path, lines, first, last}`, the file's
+     * lines with what is unsaved in them and the node's among them
+     * (from 0, without `last`); null for a node that keeps its own text.
+     */
+    fun fileToEdit(id: String): dynamic =
+        view.g.node(id)?.let { FileContent.wholeOf(view, it) }?.let { whole ->
+            val o: dynamic = js("({})")
+            o.path = whole.path.toString()
+            o.lines = whole.lines.toTypedArray()
+            o.first = whole.window.first - 1
+            o.last = whole.window.last
+            o
+        }
+
+    /** In the editor of all of the file, lines [first] up to [last] (from 0, without [last]) became [lines] ([FileContent.linesChanged]). */
+    fun fileLinesChanged(first: Int, last: Int, lines: Array<String>) {
+        view.editing?.let { FileContent.linesChanged(view, it, first, last, lines.toList()) }
+        view.repaint()
+    }
+
+    /** The editor of all of the file was closed: what the node holds of it now is its text, as one undo step. */
+    fun fileEditEnded() {
+        view.editing?.let { n -> view.textEditEnded(FileContent.textOf(view, n) ?: n.attributes.text) }
+        view.repaint()
+    }
+
+    /** `:w` in the editor of all of the file: the graph is saved, and with it its files. */
+    fun saveFromEditor() {
+        keys.activeView = view
+        keys.executeCommandLine("w")
+    }
+
     // --- input: positions in view pixels, buttons as the DOM numbers them (0 left, 1 middle, 2 right) ---
 
     private fun button(domButton: Int): PointerInput.Button? = when (domButton) {
