@@ -25,7 +25,7 @@ object SourceView {
 
     /** After the path, what of the file is meant, as a link says it. */
     private fun part(target: FileLink.Target): String =
-        target.section?.let { "#$it" } ?: target.lines?.let { ":$it" }.orEmpty()
+        target.section?.let { "#$it" } ?: target.anchor?.let { ":$it" } ?: target.lines?.let { ":$it" }.orEmpty()
 
     fun title(target: FileLink.Target): String = "${target.path?.name}${part(target)}"
 
@@ -48,7 +48,7 @@ object SourceView {
     fun build(target: FileLink.Target): Graph {
         val type = typeOf(target)
         val text = FileContent.read(FileLink.Target(target.path, null, target.lines)) ?: throw IllegalStateException("it cannot be read")
-        val part = target.lines != null || target.section != null
+        val part = target.lines != null || target.section != null || target.anchor != null
         return Graph().also { g ->
             g.add(
                 Node(name = NODE_ID).also {

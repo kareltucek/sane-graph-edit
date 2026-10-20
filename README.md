@@ -269,6 +269,8 @@ and shows every node as text.
 
 **Text kept in a file.** A type may be followed by `:` and where the
 text is, written as a link is: `code-kotlin:src/A.kt:10-20` (lines),
+`code-kotlin:src/A.kt:/^fun main/,/^}/` (lines found by patterns, as
+`git log -L` names them; they stay right when the file changes),
 `markdown:README.md#Depth` (a section of a markdown file),
 `plain:notes.txt` (all of it). The node then shows what the file
 holds, read when the graph is opened. All the nodes of all the open

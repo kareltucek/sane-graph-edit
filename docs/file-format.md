@@ -156,7 +156,19 @@ the link points at. Not every type is allowed in both.
 | `workspace` | — not allowed | a directory made the workspace (`:cd`) | `<path>` |
 | `file` | — not allowed | told from the path, as below (the default) | any of the above |
 
-- `<lines>` is `<n>` or `<from>-<to>`; `<section>` a markdown heading.
+- `<lines>` is `<n>` or `<from>-<to>`, or what `git log -L` writes:
+  `<start>,<end>`, each a line number or a `/<pattern>/`, the end also
+  `+<count>` lines, with at least one pattern in it —
+  `src/A.kt:/^fun main/,/^}/`, `notes.txt:/^Section B/,+4`,
+  `src/A.kt:40,/^}/`. A pattern is a regular expression looked for in
+  each line: the start's from the first line, the end's from the line
+  after the start; a `/` in it is written `\/` (and `\n`, `\l`, `\r`
+  are not usable in a DOT string, they are its line breaks). Such
+  lines are looked for each time the file is read, so they stay right
+  when the file changes; a save does not renumber them, and tells of
+  one that no longer finds the lines of its node. Lines that are not
+  found leave the node with a text of its own.
+- `<section>` is a markdown heading.
 - A node's text type may be followed by where the text is kept:
   `content-type="code-kotlin:src/A.kt:10-20"` (see the README). The
   part after the type is read as a `plain` link value.

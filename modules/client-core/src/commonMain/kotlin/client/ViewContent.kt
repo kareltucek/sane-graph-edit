@@ -71,7 +71,8 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** Whether [target] is a text file, or part of one, to show as a [SourceView]: not a graph, not a directory. */
     private fun isText(target: FileLink.Target): Boolean {
         val path = target.path
-        val whole = path != null && target.nodeId == null && target.section == null && !path.name.endsWith(".dot") && Fs.exists(path) && !Fs.isDirectory(path)
+        val whole = path != null && target.nodeId == null && target.section == null && target.anchor == null && !path.name.endsWith(".dot") &&
+            Fs.exists(path) && !Fs.isDirectory(path)
         val told = target.type == FileLink.Type.File && path != null && (target.lines != null || whole)
         return told || (target.type is FileLink.Type.Text && path != null)
     }
@@ -577,6 +578,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 showHelpInPlace()
             }
             target.section != null && lines == null -> shell.message("no section `${target.section}` in ${path?.name}")
+            target.anchor != null && lines == null -> shell.message("no lines `${target.anchor}` in ${path?.name}")
             // the text is only shown: editing it starts as anywhere else (a click, Space), or keys meant for the graph,
             // as Ctrl+O back, would go to the editor
             isText(target) -> if (mayLeave("open ${SourceView.title(target)}")) {
@@ -625,6 +627,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             }
             target.section != null && lines == null -> {
                 shell.message("no section `${target.section}` in ${path.name}")
+                null
+            }
+            target.anchor != null && lines == null -> {
+                shell.message("no lines `${target.anchor}` in ${path.name}")
                 null
             }
             isText(target) -> shell.newTab()?.takeIf { it.content.showSourceInPlace(target, edit = false) }

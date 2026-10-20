@@ -55,6 +55,18 @@ class FileLinkTest {
     }
 
     @Test
+    fun `lines named by patterns, with a type or without`() {
+        val at = { link: String, type: FileLink.Type -> FileLink.resolveIn(link, dir, type) }
+        assertEquals(FileLink.Lines(3, 4) to dir.resolve("notes.md"), at("notes.md:/^# Depth/,+2", FileLink.Type.File).let { it.lines to it.path })
+        assertEquals("/^# Depth/,/deep/", at("notes.md:/^# Depth/,/deep/", FileLink.Type.File).anchor.toString())
+        // in a graph the part after the path is a node; typed as text, lines
+        assertEquals(null, at("g.dot:/x/,+1", FileLink.Type.File).anchor)
+        assertEquals("/x/,+1", at("g.dot:/x/,+1", FileLink.Type.Text(NodeType(NodeType.Kind.Code, "dot"))).anchor.toString())
+        // not found: no lines, but the anchor is known
+        assertEquals(null to "/^# None/,+1", at("notes.md:/^# None/,+1", FileLink.Type.File).let { it.lines to it.anchor.toString() })
+    }
+
+    @Test
     fun `a link copied into a graph elsewhere leads to where it led`() {
         val from = dir.resolve("a/b/from.dot")
         val moved = { link: String, to: java.nio.file.Path? -> FileLink.moved(link, from, to) }
@@ -66,6 +78,7 @@ class FileLinkTest {
         // what does not depend on where the graph is, and a copy within one graph, stay
         listOf("/etc/hosts", "~/notes.md", "sge:help", "sge:examples").forEach { assertEquals(it, moved(it, dir.resolve("q/to.dot"))) }
         assertEquals("notes.md", moved("notes.md", from))
+        assertEquals("../b/notes.md:/^# D\\/x/,+2", moved("notes.md:/^# D\\/x/,+2", dir.resolve("a/c/to.dot")))
         // into an untitled graph: absolute
         assertEquals("${dir.resolve("a/b/notes.md")}:3", moved("notes.md:3", null))
     }

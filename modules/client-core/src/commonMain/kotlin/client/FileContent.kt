@@ -131,6 +131,7 @@ object FileContent {
         val named = source.lines
         return when {
             source.section != null -> Sections.find(buffer.lines, source.section)?.let { it.from..(it.to ?: it.from) }
+            source.anchor != null -> source.anchor.find(buffer.lines)?.let { it.from..(it.to ?: it.from) }
             // the type names them as they are in the file
             named != null -> buffer.edits.fold(named.from..(named.to ?: named.from)) { range, edit -> moved(range, edit) }
                 .let { now -> now.first.coerceIn(1, size + 1).let { first -> first..now.last.coerceIn(first - 1, size) } }
@@ -150,7 +151,7 @@ object FileContent {
     fun describe(view: EditorView, node: Node): String? =
         of(node, view.content.currentFile)?.let { source ->
             val now = kept[key(view)]?.get(node.id)?.lines?.takeIf { source.lines != null }?.let { ":${it.first}-${it.last}" }
-            val part = source.section?.let { "#$it" } ?: now ?: source.lines?.let { ":$it" }.orEmpty()
+            val part = source.section?.let { "#$it" } ?: source.anchor?.let { ":$it" } ?: now ?: source.lines?.let { ":$it" }.orEmpty()
             val unsaved = buffers[source.path.toString()]?.let { it.text != it.disk } == true
             "${source.path}$part" + if (unsaved) " [modified]" else ""
         }
@@ -268,6 +269,11 @@ object FileContent {
         reconcile(view)
         val buffer = kept[key(view)]?.get(node.id)?.let { buffers[it.path.toString()] }
         if (buffer != null && stale(buffer)) reread(view, listOf(buffer.path))
+        // one whose lines are not found keeps a text of its own, which is what is edited then
+        of(node, view.content.currentFile)?.takeIf { kept[key(view)]?.get(node.id) == null }?.let { source ->
+            val missing = source.section?.let { "no section `$it`" } ?: source.anchor?.let { "no lines `$it`" } ?: "nothing that can be read"
+            view.shell.message("${source.path?.name} has $missing: the node's text is not kept in it")
+        }
     }
 
     /** Nothing in [buffer] is unsaved, and something else changed the file since it was read. */
@@ -361,18 +367,29 @@ object FileContent {
             problem == null
         }.all { it }
 
-    /** The buffer of [path] is the file: the types that name lines of it name the lines of the windows. */
+    /**
+     * The buffer of [path] is the file: the types that name lines of
+     * it name the lines of the windows. A section or an [Anchor] is
+     * not renumbered; one that no longer finds the lines of its node
+     * is told of.
+     */
     private fun renumber(view: EditorView, path: Path) {
+        val lost = mutableListOf<String>()
         documents(view).forEach { v ->
             val windows = kept[key(v)].orEmpty()
-            val named = nodesOf(v).mapNotNull { (n, source) ->
-                val lines = source.lines?.takeIf { source.section == null && source.path == path }?.let { it.from..(it.to ?: it.from) }
-                windows[n.id]?.lines?.takeIf { lines != null && lines != it }?.let { now ->
+            val named = nodesOf(v).filter { (_, source) -> source.path == path }.mapNotNull { (n, source) ->
+                val lines = source.lines?.takeIf { source.section == null && source.anchor == null }?.let { it.from..(it.to ?: it.from) }
+                val found = buffers[path.toString()]?.let { b -> window(source, b) }
+                val window = windows[n.id]?.lines
+                val looked = source.section != null || source.anchor != null
+                if (looked && window != null && found != window) lost +=source.section?.let { "#$it" } ?: ":${source.anchor}"
+                window?.takeIf { lines != null && lines != it }?.let { now ->
                     val type = NodeType.of(n)
                     SetNodeTypeCommand(v.g, mapOf(n to n.attributes.other[NodeType.ATTRIBUTE]), type.copy(source = type.source!!.substringBeforeLast(':') + ":${now.first}-${now.last}"))
                 }
             }
             commit(v, named)
         }
+        if (lost.isNotEmpty()) view.shell.message("${path.name}: ${lost.distinct().joinToString(", ")} no longer finds the lines of its node")
     }
 }

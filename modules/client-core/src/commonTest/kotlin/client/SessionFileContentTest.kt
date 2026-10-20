@@ -172,6 +172,40 @@ class SessionFileContentTest {
     }
 
     @Test
+    fun `lines named by patterns are found where they are, after something else added lines above them`() {
+        val anchored = open("anchored.dot", "digraph g {\n  b [\"content-type\"=\"plain:sections.txt:/^Section B/,+2\"];\n}\n")
+        assertEquals("Section B\nb1", text(anchored, "b"))
+        Fs.writeText(text, "new\nhead\n\nSection A\na1\n\nSection B\nb1\n")
+        readAgain(anchored)
+        assertEquals("Section B\nb1", text(anchored, "b"))
+        // and the link leads there too
+        assertEquals(FileLink.Lines(7, 8), FileLink.resolveIn("sections.txt:/^Section B/,+2", dir).lines)
+    }
+
+    @Test
+    fun `a save does not renumber lines named by patterns, and tells of one that no longer finds them`() {
+        val anchored = open("anchored.dot", "digraph g {\n  b [\"content-type\"=\"plain:sections.txt:/^Section B/,+2\"];\n}\n")
+        edit(graph, "a", "Section A\na1\nmore")
+        edit(anchored, "b", "Section Bee\nb1")
+        anchored.content.saveNow()
+        assertEquals("plain:sections.txt:/^Section B/,+2", node(anchored, "b").attributes.other["content-type"])
+        assertEquals(emptyList(), messages)
+        edit(anchored, "b", "Renamed\nb1")
+        anchored.content.saveNow()
+        assertEquals("sections.txt: :/^Section B/,+2 no longer finds the lines of its node", messages.single())
+    }
+
+    @Test
+    fun `a node whose lines are not found keeps a text of its own, and says so when it is edited`() {
+        val lost = open("lost.dot", "digraph g {\n  d [label=\"own\"; \"content-type\"=\"plain:sections.txt:/^Section D/,+1\"];\n}\n")
+        assertEquals("own", text(lost, "d"))
+        edit(lost, "d", "still own")
+        assertEquals("sections.txt has no lines `/^Section D/,+1`: the node's text is not kept in it", messages.first())
+        assertEquals("still own", text(lost, "d"))
+        assertFalse("still own" in Fs.readText(text))
+    }
+
+    @Test
     fun `an edit in a source view shows in the graph`() {
         val source = opened("sections.txt:3-4")
         edit(source, SourceView.NODE_ID, "Section A\nfrom source")
