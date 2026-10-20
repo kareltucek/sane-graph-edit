@@ -913,6 +913,57 @@ function editorCellAt(x: number, y: number, grid: client.GridMetrics): { row: nu
         : null;
 }
 
+/** The row and column of the terminal [terminal] of the node [id] at the view position x, y; null outside it. */
+function terminalCellAt(id: string, terminal: TerminalNode, x: number, y: number, grid: client.GridMetrics): { row: number; column: number } | null {
+    const n = lastScene?.nodes.find((it) => it.id === id);
+    const place = n !== undefined && lastScene !== null ? textPlace(n, lastScene, grid) : null;
+    const bounds = canvas.getBoundingClientRect();
+    const column = place === null ? -1 : Math.floor((bounds.left + x - place.left) / place.cellWidth);
+    const row = place === null ? -1 : Math.floor((bounds.top + y - place.top) / place.cellHeight);
+    return column >= 0 && column < terminal.columns && row >= 0 && row < terminal.rows ? { row, column } : null;
+}
+
+/**
+ * What runs in a node and has the keys: neovim editing the node's text, or the shell of a terminal node. The mouse in its
+ * node is its, from a press to the release, for the buttons it [takes]; the wheel is its wherever the pointer is, when it
+ * has a [wheel]; Shift+Escape gives the keys back to the graph ([leave]).
+ */
+interface Inside {
+    /** The row and column of what it shows at the view position x, y; null outside it. */
+    cellAt(x: number, y: number): { row: number; column: number } | null;
+    takes(button: number): boolean;
+    mouse(action: "press" | "drag" | "release", button: number, cell: { row: number; column: number }, e: MouseEvent): void;
+    wheel: ((direction: "up" | "down", cell: { row: number; column: number }) => void) | null;
+    leave(): void;
+}
+
+/** What runs in a node of [view] and has the keys now, if anything does. */
+function inside(view: client.JsView, grid: client.GridMetrics): Inside | null {
+    const editor = editing?.editor;
+    const shell = inTerminal?.view === view ? inTerminal : null;
+    const terminal = shell === null ? undefined : terminals.get(view)?.get(shell.id);
+    // the one in a terminal of its own takes neither the mouse nor the wheel: it is no grid of cells drawn in the node
+    return editor instanceof GridEditor ? {
+        cellAt: (x, y) => editorCellAt(x, y, grid),
+        takes: (button) => button === 0,
+        mouse: (action, _button, cell) => editor.mouse(action, cell.row, cell.column),
+        wheel: (direction, cell) => editor.wheel(direction, cell.row, cell.column),
+        leave: () => endEdit(view),
+    } : editor !== undefined ? {
+        cellAt: () => null,
+        takes: () => false,
+        mouse: () => {},
+        wheel: null,
+        leave: () => endEdit(view),
+    } : terminal !== undefined && shell !== null ? {
+        cellAt: (x, y) => terminalCellAt(shell.id, terminal, x, y, grid),
+        takes: () => true,
+        mouse: (action, button, cell, e) => terminal.mouse(action, button, cell.row, cell.column, { ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey }),
+        wheel: (direction, cell) => terminal.wheel(direction, cell.row, cell.column),
+        leave: leaveTerminal,
+    } : null;
+}
+
 /** Close the editor, if any; what it holds becomes the node's text. */
 function endEdit(view: client.JsView) {
     const was = editing;
@@ -1260,12 +1311,12 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     window.addEventListener("keydown", (e) => {
         if (e.metaKey || e.key === "Meta" || e.key === "OS") e.stopImmediatePropagation();
     }, true);
-    // before the terminal has the key: Shift+Escape gives the keys back to the graph, and is not the shell's
+    // before a terminal or neovim has the key: Shift+Escape gives the keys back to the graph, and is not theirs
     window.addEventListener("keydown", (e) => {
-        if (inTerminal !== null && e.key === "Escape" && e.shiftKey) {
+        if ((inTerminal !== null || editing !== null) && e.key === "Escape" && e.shiftKey) {
             e.stopPropagation();
             e.preventDefault();
-            leaveTerminal();
+            current((view) => inside(view, grid)?.leave());
         }
     }, true);
 
@@ -1275,34 +1326,44 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     const y = (e: MouseEvent) => e.clientY - canvas.getBoundingClientRect().top;
     canvas.addEventListener("wheel", (e) => {
         e.preventDefault();
-        // while a node is edited the wheel is neovim's, wherever the pointer is: it scrolls the text, not the graph
-        if (editing?.editor instanceof GridEditor) {
-            const cell = editorCellAt(x(e), y(e), grid) ?? { row: 0, column: 0 };
-            if (e.deltaY !== 0) editing.editor.wheel(e.deltaY < 0 ? "up" : "down", cell.row, cell.column);
-        } else current((view) => view.wheel(x(e), y(e), e.deltaY));
+        // while something runs in a node the wheel is its, wherever the pointer is: it scrolls the text, not the graph
+        current((view) => {
+            const at = inside(view, grid);
+            const cell = at?.cellAt(x(e), y(e)) ?? { row: 0, column: 0 };
+            if (at?.wheel) {
+                if (e.deltaY !== 0) at.wheel(e.deltaY < 0 ? "up" : "down", cell);
+            } else view.wheel(x(e), y(e), e.deltaY);
+        });
     }, { passive: false });
-    // The left button inside the node being edited is neovim's (it places the cursor, a drag selects), from the press to the release.
-    let inEditor = false;
-    const toEditor = (action: "press" | "drag" | "release", e: PointerEvent) => {
-        const cell = editorCellAt(x(e), y(e), grid);
-        if (cell !== null && editing?.editor instanceof GridEditor) editing.editor.mouse(action, cell.row, cell.column);
+    // A button pressed in the node of what runs in it is its (in neovim the left one places the cursor, a drag selects;
+    // a terminal tells the program that asked for the mouse), from the press to the release.
+    let held: { at: Inside; button: number } | null = null;
+    const toInside = (action: "press" | "drag" | "release", e: PointerEvent) => {
+        const cell = held?.at.cellAt(x(e), y(e));
+        if (held !== null && cell !== null && cell !== undefined) held.at.mouse(action, held.button, cell, e);
     };
     canvas.addEventListener("pointerdown", (e) => {
         // a drag goes on when the pointer leaves the window; an event made by a test has no pointer to capture
         if (e.isTrusted) canvas.setPointerCapture(e.pointerId);
-        leaveTerminal();
-        inEditor = e.button === 0 && editorCellAt(x(e), y(e), grid) !== null;
-        if (inEditor) toEditor("press", e);
-        else current((view) => view.pointerDown(x(e), y(e), e.button, e.ctrlKey, e.shiftKey));
+        current((view) => {
+            const at = inside(view, grid);
+            held = at !== null && at.takes(e.button) && at.cellAt(x(e), y(e)) !== null ? { at, button: e.button } : null;
+            if (held !== null) toInside("press", e);
+            else {
+                // a press anywhere else gives the keys back to the graph
+                leaveTerminal();
+                view.pointerDown(x(e), y(e), e.button, e.ctrlKey, e.shiftKey);
+            }
+        });
     });
     canvas.addEventListener("pointermove", (e) => {
-        if (inEditor) toEditor("drag", e);
+        if (held !== null) toInside("drag", e);
         else current((view) => view.pointerMove(x(e), y(e), e.buttons !== 0, e.shiftKey));
     });
     canvas.addEventListener("pointerup", (e) => {
-        if (inEditor) toEditor("release", e);
+        if (held !== null) toInside("release", e);
         else current((view) => view.pointerUp(x(e), y(e), e.button, e.ctrlKey));
-        inEditor = false;
+        held = null;
     });
     canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     window.addEventListener("keydown", (e) => current((view) => {

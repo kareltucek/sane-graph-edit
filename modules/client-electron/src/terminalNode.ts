@@ -24,6 +24,14 @@ const PALETTE: string[] = (() => {
     return [...usual, ...cube, ...greys];
 })();
 
+/** xterm's numbers for the mouse (its `CoreMouseButton` and `CoreMouseAction`): no button, the wheel, and what happened. */
+const MOUSE_NONE = 3;
+const MOUSE_WHEEL = 4;
+const MOUSE_ACTIONS = { release: 0, press: 1, drag: 32 };
+
+/** How many lines a turn of the wheel scrolls back through what was printed. */
+const WHEEL_LINES = 3;
+
 export class TerminalNode {
     private readonly element = document.createElement("div");
     private readonly terminal: Terminal;
@@ -104,6 +112,43 @@ export class TerminalNode {
     /** As if the user had typed [data]. */
     type(data: string) {
         if (!this.ended) this.process.write(data);
+    }
+
+    get columns(): number {
+        return this.terminal.cols;
+    }
+
+    get rows(): number {
+        return this.terminal.rows;
+    }
+
+    /**
+     * The mouse at [column], [row] (from 0) of the terminal, [button] as the DOM numbers them: told to the program in it
+     * when it asked for the mouse, in the way it asked (which xterm knows); nothing otherwise.
+     */
+    mouse(action: "press" | "drag" | "release", button: number, row: number, column: number, held: { ctrl: boolean; alt: boolean; shift: boolean }) {
+        if (this.terminal.modes.mouseTrackingMode !== "none") {
+            this.report({ col: column, row, button: Math.min(button, MOUSE_NONE), action: MOUSE_ACTIONS[action], ...held });
+        }
+    }
+
+    /** The wheel over [column], [row]: the program's when it asked for the mouse; otherwise it scrolls back through what was printed. */
+    wheel(direction: "up" | "down", row: number, column: number) {
+        if (this.terminal.modes.mouseTrackingMode !== "none") {
+            this.report({ col: column, row, button: MOUSE_WHEEL, action: direction === "up" ? 0 : 1, ctrl: false, alt: false, shift: false });
+        } else {
+            this.terminal.scrollLines(direction === "up" ? -WHEEL_LINES : WHEEL_LINES);
+        }
+    }
+
+    // xterm encodes what a program asked to be told of the mouse only for the mouse over its own element, which is not
+    // seen here: its core's mouse service is asked directly. Not public: a newer xterm may move it, and then the mouse is lost.
+    private report(event: { col: number; row: number; button: number; action: number; ctrl: boolean; alt: boolean; shift: boolean }) {
+        try {
+            (this.terminal as unknown as { _core: { coreMouseService: { triggerMouseEvent(e: object): boolean } } })._core.coreMouseService.triggerMouseEvent(event);
+        } catch {
+            // no such service: the program is told nothing
+        }
     }
 
     /** The keys are the shell's from now on ([on]), or no longer. */

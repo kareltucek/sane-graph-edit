@@ -247,7 +247,12 @@ gives it a size of 80 columns and 24 rows, to be changed by its
 corners. The shell starts when the node is first entered (as a node
 is edited: `Space`, …) and then runs on and shows what it prints,
 whether the keys are its or the graph's. `Shift+Escape`, or a click
-on the graph, gives the keys back to the graph. It ends when the
+on the graph, gives the keys back to the graph; so does
+`Shift+Escape` in a node's editor. While the keys are the shell's,
+the mouse in the node is the program's that asks for it (a click, a
+drag, the wheel), as the left button and the wheel are neovim's in a
+node being edited; for one that does not ask, the wheel scrolls back
+through what was printed. It ends when the
 shell exits, the node is removed or the window closes. Nothing of it
 is saved, and opening a file starts nothing: the document only says
 that the node is a terminal. What the terminal shows is drawn in the
