@@ -604,7 +604,10 @@ node changed at the same time both survive.
 **Undo** is one stack per document, shared by all clients; `Undo` /
 `Redo` are requests, their effect arrives as a `Patched`.
 Successive patches by one client that set exactly the same fields
-within a second merge into one step (typing, nudging).
+within a second merge into one step (typing, nudging). A `Submit`
+with `derived` (nodes taking the text of the files they show,
+`Graph.commitDerived`) is applied and sent on, but is no step and
+does not make the document dirty.
 
 **Files** belong to the editor. It parses DOT into a `GraphState`,
 keeps the `ParseLog` and the graph name aside, and re-attaches them
