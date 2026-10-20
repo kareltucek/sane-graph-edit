@@ -20,7 +20,7 @@ data class Anchor(val start: Bound, val end: Bound) {
         }
 
         data class Pattern(val source: String) : Bound {
-            val regex: Regex by lazy { Regex(source) }
+            val regex: Regex by lazy { Regex(literalBraces(source)) }
 
             override fun toString(): String = "/${source.replace("/", "\\/")}/"
         }
@@ -59,6 +59,31 @@ data class Anchor(val start: Bound, val end: Bound) {
         }
 
     companion object {
+        private val quantifier = Regex("\\{[0-9]+(,[0-9]*)?\\}")
+
+        /**
+         * [source] with its braces that do not count (`{2}`, `{2,3}`)
+         * escaped: a brace of a block (`^}`, `{$`) is meant as itself,
+         * and the JVM and JavaScript disagree on which bare ones they
+         * take.
+         */
+        internal fun literalBraces(source: String): String {
+            val out = StringBuilder()
+            var i = 0
+            while (i < source.length) {
+                val c = source[i]
+                val counts = if (c == '{') quantifier.find(source, i)?.takeIf { it.range.first == i } else null
+                when {
+                    c == '\\' && i + 1 < source.length -> out.append(c).append(source[i + 1])
+                    counts != null -> out.append(counts.value)
+                    c == '{' || c == '}' -> out.append('\\').append(c)
+                    else -> out.append(c)
+                }
+                i += if (c == '\\' && i + 1 < source.length) 2 else counts?.value?.length ?: 1
+            }
+            return out.toString()
+        }
+
         private val number = Regex("[0-9]+")
         private val count = Regex("\\+([0-9]+)")
 

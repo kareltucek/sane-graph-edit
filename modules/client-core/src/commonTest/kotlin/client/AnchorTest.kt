@@ -36,6 +36,15 @@ class AnchorTest {
     }
 
     @Test
+    fun `a brace is a brace, unless it counts`() {
+        val blocks = listOf("Section B {", "  b1", "}", "x{2}")
+        assertEquals(FileLink.Lines(1, 3), Anchor.parse("/^Section B \\{?/,/^}/")!!.find(blocks))
+        assertEquals(FileLink.Lines(1, 3), Anchor.parse("/{$/,/^}$/")!!.find(blocks))
+        assertEquals(FileLink.Lines(4, 4), Anchor.parse("/^x\\{2}$/,+1")!!.find(blocks))
+        assertEquals(FileLink.Lines(2, 2), Anchor.parse("/^ {2}b/,+1")!!.find(blocks))
+    }
+
+    @Test
     fun `lines a pattern does not find are none`() {
         assertNull(Anchor.parse("/^Section D/,+2")!!.find(text))
         assertNull(Anchor.parse("/^Section C/,/^Section A/")!!.find(text))
