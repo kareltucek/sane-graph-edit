@@ -617,7 +617,8 @@ function inView(scene: Scene, width: number, height: number, x1: number, y1: num
 }
 
 /** The node whose text is being edited, and its editor. */
-let editing: { id: string; editor: NodeEditor | GridEditor } | null = null;
+/** The node being edited; [whole]: in an editor of all of the file its text is kept in. */
+let editing: { id: string; editor: NodeEditor | GridEditor; whole?: boolean } | null = null;
 
 /**
  * Which editor a node's text gets: neovim drawn by this page from
@@ -833,7 +834,25 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
     const row = click === null ? 0 : Math.min(lines.length - 1, Math.max(0, Math.floor((bounds.top + click.y - place.top) / place.cellHeight)));
     const column = click === null ? 0 : Math.min(Math.max(0, lines[row].length - 1), Math.max(0, Math.floor((bounds.left + click.x - place.left) / place.cellWidth)));
     view.textEditStarted(id);
-    if (useGridEditor) {
+    // a node whose text is kept in a file is edited in all of that file, its own lines marked
+    const file = useGridEditor ? view.fileToEdit(id) as { path: string; lines: string[]; first: number; last: number } | null | undefined : null;
+    if (file !== null && file !== undefined) {
+        const insert = view.hasDefaultText(id);
+        const editor = GridEditor.openFile(file, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), insert, {
+            lines: (first, last, replacement) => view.fileLinesChanged(first, last, replacement),
+            write: () => view.saveFromEditor(),
+            exit: () => endEdit(view),
+            shown: () => page.repaint(),
+            drawn: () => page.repaint(),
+            line: showEditorLine,
+            message: showMessage,
+            status: showEditorStatus,
+        });
+        editor.statusColumns = stripColumns();
+        editing = { id, editor, whole: true };
+        if (editorLine.style.display !== "block") showEditorLine(null);
+        showEditorLines(true);
+    } else if (useGridEditor) {
         // drawn in the node, so in the node's colours whatever they are
         // a new node's text is replaced by what is typed: its editor is ready to type, any other starts in normal mode
         const insert = view.hasDefaultText(id);
@@ -921,7 +940,9 @@ function endEdit(view: client.JsView) {
         showEditorLines(false);
         closing = was.editor.close().then((text) => {
             closing = null;
-            view.textEditEnded(text);
+            // an editor of all of a file told its changes as it went; what the node holds of the file is its text
+            if (was.whole) view.fileEditEnded();
+            else view.textEditEnded(text);
         });
     }
 }

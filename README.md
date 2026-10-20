@@ -290,7 +290,16 @@ quitting asks about those that are still unsaved. `gf` on a text file opens such
 writes the file. This is a first version.
 
 A node being edited in the Electron client is never bigger than the
-part of it that is on the screen; beyond that neovim scrolls.
+part of it that is on the screen; beyond that neovim scrolls. A node
+whose text is kept in a file is edited in all of that file, its own
+lines marked and seen first: neovim scrolls through the rest, and
+lines can be changed anywhere. A change in the node's lines is the
+node's, one undo step when the editor closes; one in lines no node
+holds changes only the file (unsaved, asked about on quitting, written
+by `:w`; neovim's own undo takes it back while the editor is open);
+nodes elsewhere that hold the changed lines follow. `:w` in neovim
+saves the graph and its files; neovim itself writes nothing. The
+Swing client edits the node's text alone.
 
 ### Levels of detail: `-` / `=`
 
