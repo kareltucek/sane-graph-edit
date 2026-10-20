@@ -327,6 +327,7 @@ object Actions {
             nodes = nodeMap.values.toList(),
             edges = edges,
             referencePoint = reference,
+            from = graphView.content.currentFile,
         )
     }
 
@@ -370,6 +371,7 @@ object Actions {
             src.deepClone().also {
                 it.position = src.position + delta
                 Depth.set(it, Depth.of(src) + sink)
+                FileLink.moveTo(it, frag.from, graphView.content.currentFile)
             }
         }
         val newNodes = pasteMap.values.toList()

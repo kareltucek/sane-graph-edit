@@ -55,6 +55,22 @@ class FileLinkTest {
     }
 
     @Test
+    fun `a link copied into a graph elsewhere leads to where it led`() {
+        val from = dir.resolve("a/b/from.dot")
+        val moved = { link: String, to: java.nio.file.Path? -> FileLink.moved(link, from, to) }
+        assertEquals("../b/notes.md#Depth", moved("notes.md#Depth", dir.resolve("a/c/to.dot")))
+        assertEquals("b/src/A.kt:10-20", moved("src/A.kt:10-20", dir.resolve("a/to.dot")))
+        assertEquals("../../x.dot:n1", moved("../x.dot:n1", dir.resolve("a/b/c/to.dot")))
+        // the graph it was in, by name
+        assertEquals("../b/from.dot:n5", moved(":n5", dir.resolve("a/c/to.dot")))
+        // what does not depend on where the graph is, and a copy within one graph, stay
+        listOf("/etc/hosts", "~/notes.md", "sge:help", "sge:examples").forEach { assertEquals(it, moved(it, dir.resolve("q/to.dot"))) }
+        assertEquals("notes.md", moved("notes.md", from))
+        // into an untitled graph: absolute
+        assertEquals("${dir.resolve("a/b/notes.md")}:3", moved("notes.md:3", null))
+    }
+
+    @Test
     fun `a source view of part of a file links to all of it, shown as the part is`() {
         val links = { link: String, type: FileLink.Type ->
             val node = SourceView.build(FileLink.resolveIn(link, dir, type)).nodes.single()

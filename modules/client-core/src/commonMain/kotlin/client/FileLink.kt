@@ -93,18 +93,58 @@ object FileLink {
 
     fun attributeName(letter: Char): String = "link-$letter"
 
+    /** The letter of the link attribute [name] (`link` is `f`); null for an attribute that is not a link. */
+    private fun letterOf(name: String): Char? =
+        when {
+            name == ATTRIBUTE -> 'f'
+            name.length == ATTRIBUTE.length + 2 && name.startsWith("$ATTRIBUTE-") && name.last().isLetter() -> name.last()
+            else -> null
+        }
+
     /** Letters of [node]'s links, sorted; `link` counts as `f`. */
-    fun letters(node: Node): List<Char> =
-        node.attributes.other.keys
-            .mapNotNull { k ->
-                when {
-                    k == ATTRIBUTE -> 'f'
-                    k.length == ATTRIBUTE.length + 2 && k.startsWith("$ATTRIBUTE-") && k.last().isLetter() -> k.last()
-                    else -> null
-                }
-            }
-            .distinct()
-            .sorted()
+    fun letters(node: Node): List<Char> = node.attributes.other.keys.mapNotNull { letterOf(it) }.distinct().sorted()
+
+    /**
+     * [node], copied from a graph whose file is [from] into one whose
+     * file is [to] (null for an untitled one), leads to where it led:
+     * its links and the file its text is kept in are written for [to].
+     */
+    fun moveTo(node: Node, from: Path?, to: Path?) {
+        val other = node.attributes.other
+        other.keys.filter { letterOf(it) != null }.forEach { name -> other[name]?.let { other[name] = moved(it, from, to) } }
+        NodeType.of(node).takeIf { it.source != null }?.let { type -> other[NodeType.ATTRIBUTE] = type.copy(source = moved(type.source!!, from, to)).attribute!! }
+    }
+
+    /**
+     * [link], written in a graph whose file is [from], as it is written
+     * in one whose file is [to] to lead to the same place: a relative
+     * path relative to the directory of [to], or absolute when [to] is
+     * null; `:<nodeid>`, the graph the link is in, names [from].
+     * What follows the path (`:<lines>`, `#<section>`) stays.
+     */
+    fun moved(link: String, from: Path?, to: Path?): String {
+        val after = { at: Int -> at >= 0 && link.substring(at + 1).let { it.isNotEmpty() && '/' !in it } }
+        val cut = listOf(link.lastIndexOf(':'), link.lastIndexOf('#')).filter(after).minOrNull() ?: link.length
+        val path = link.substring(0, cut)
+        val dir = { file: Path? -> file?.toAbsolutePath()?.getParent() ?: Workspace.dir }
+        val fixed = path.startsWith("/") || path == "~" || path.startsWith("~/") || link == HELP || link == EXAMPLES
+        val target = when {
+            fixed -> null
+            path.isEmpty() -> from?.takeIf { cut < link.length && link[cut] == ':' }
+            else -> dir(from).resolve(path)
+        }?.toAbsolutePath()?.normalize()
+        val same = from?.toAbsolutePath()?.normalize() == to?.toAbsolutePath()?.normalize()
+        return if (target == null || same) link else (if (to == null) "$target" else relative(target, dir(to))) + link.substring(cut)
+    }
+
+    /** [target] as a path relative to the directory [dir]. */
+    private fun relative(target: Path, dir: Path): String {
+        val parts = { p: Path -> "${p.toAbsolutePath().normalize()}".split('/').filter { it.isNotEmpty() } }
+        val to = parts(target)
+        val from = parts(dir)
+        val common = to.zip(from).takeWhile { (a, b) -> a == b }.size
+        return (List(from.size - common) { ".." } + to.drop(common)).joinToString("/")
+    }
 
     /** The raw `link-<letter>` value of [node]; `link` counts as `link-f`. */
     fun of(node: Node, letter: Char): String? =

@@ -58,9 +58,11 @@ class SessionFileContentTest {
     private fun node(view: EditorView, id: String): Node = view.g.nodes.single { it.attributes.name == id }
     private fun text(view: EditorView, id: String): String = node(view, id).attributes.text
 
-    private fun edit(view: EditorView, id: String, text: String) {
-        view.startNodeEdit(node(view, id), null)
-        view.textEditStarted(node(view, id).id)
+    private fun edit(view: EditorView, id: String, text: String) = edit(view, node(view, id), text)
+
+    private fun edit(view: EditorView, n: Node, text: String) {
+        view.startNodeEdit(n, null)
+        view.textEditStarted(n.id)
         view.textTyped(text)
         view.textEditEnded(text)
     }
@@ -107,6 +109,19 @@ class SessionFileContentTest {
         index.textEditEnded("head\n\nSection A\nfrom index\n\nSection B\nb1")
         assertEquals("head\n\nSection A\nfrom index\n\nSection B\nb1", text(graph, "whole"))
         assertEquals("Section A\nfrom index", text(graph, "a"))
+    }
+
+    @Test
+    fun `a node copied into a graph in another directory still holds the same file`() {
+        Fs.createDirectories(dir.resolve("sub"))
+        val elsewhere = open("sub/elsewhere.dot", "digraph g {\n  i [label=\"elsewhere\"];\n}\n")
+        graph.g.cleanSelect(setOf(node(graph, "a")))
+        Actions.copySelection(graph)
+        Actions.pasteClipboard(elsewhere)
+        val pasted = elsewhere.g.nodes.single { it.attributes.name != "i" }
+        assertEquals("Section A\na1", pasted.attributes.text)
+        edit(elsewhere, pasted, "Section A\nfrom elsewhere")
+        assertEquals("Section A\nfrom elsewhere", text(graph, "a"))
     }
 
     @Test

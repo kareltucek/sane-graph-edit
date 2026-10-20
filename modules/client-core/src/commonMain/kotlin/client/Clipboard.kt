@@ -37,6 +37,8 @@ data class NodeFragment(
     val nodes: List<Node>,
     val edges: List<Edge>,
     val referencePoint: Vector2,
+    /** The file of the graph the nodes were copied from: their relative paths are relative to it ([FileLink.moveTo]). */
+    val from: Path? = null,
 )
 
 /**
