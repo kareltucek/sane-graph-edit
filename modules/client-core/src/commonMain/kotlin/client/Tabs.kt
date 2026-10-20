@@ -112,12 +112,14 @@ class Tabs(
      * the user did not agree.
      */
     fun switchWorkspace(dir: Path): Boolean {
-        val agreed = open.all { mayClose(it) }
+        val agreed = open.all { mayClose(it) } && keptAgreed()
         if (agreed) {
             saveSession()
             Workspace.dir = dir.toAbsolutePath().normalize()
             session = sessionOf?.invoke()
             current?.let { host.leaving(it) }
+            // with the tabs go their jump lists, the only way back to what they left
+            open.firstOrNull()?.content?.dropKept()
             open.forEach { it.content.close() }
             open.clear()
             currentIndex = -1
@@ -208,6 +210,14 @@ class Tabs(
     private fun mayClose(view: EditorView): Boolean =
         !view.content.isDirty || (host.mayClose(view) ?: discardAgreed(view))
 
+    /** True when every graph a tab left with unsaved changes ([EditorClient.keep]) is shown again, or the user agrees to lose them. */
+    private fun keptAgreed(): Boolean {
+        val kept = open.flatMap { it.content.unsavedKept() }.distinct().filter { k -> open.none { it.content.document === k } }
+        val names = kept.map { k -> k.info.file?.let { Fs.path(it).name } ?: k.info.title ?: "(untitled)" }
+        return names.isEmpty() || graph_tools.ViewModes.discard ||
+            dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${names.joinToString(", ")}, which no tab shows? (:wa saves those with a file)")
+    }
+
     /** `:set discard` says not to ask; otherwise the user is asked. */
     private fun discardAgreed(view: EditorView): Boolean =
         graph_tools.ViewModes.discard || dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${view.content.title.removePrefix("*")}?")
@@ -249,7 +259,7 @@ class Tabs(
             files.isEmpty() || graph_tools.ViewModes.discard ||
                 dialogs.confirm("Unsaved changes", "Discard the unsaved changes to ${files.joinToString(", ")}? (:wa saves them)")
         }
-        val agreed = force || (open.all { mayClose(it) } && filesAgreed())
+        val agreed = force || (open.all { mayClose(it) } && keptAgreed() && filesAgreed())
         if (agreed) {
             saveSession()
             host.exit()

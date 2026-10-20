@@ -63,7 +63,8 @@ class EditorClient(private val connection: EditorConnection) {
      * is then told to [DocumentSession.onFailed]. Otherwise it throws.
      */
     fun open(path: String): DocumentSession =
-        opening[path]?.also { it.attachCount++ } ?: begin(OpenFile(path), null, DocumentInfo("", path, null, dirty = false, clients = 1), path)
+        (opening[path] ?: sessions.values.find { it.info.file == path })?.also { it.attachCount++ }
+            ?: begin(OpenFile(path), null, DocumentInfo("", path, null, dirty = false, clients = 1), path)
 
     /** [open] without waiting: [then] gets the document, or the reason there is none. */
     fun open(path: String, then: (Result<DocumentSession>) -> Unit) =
@@ -118,6 +119,39 @@ class EditorClient(private val connection: EditorConnection) {
                 session.attach(attached)
             }
         }
+    }
+
+    /**
+     * Documents with unsaved changes that no view shows: a view left
+     * them for another graph (a link followed, `Ctrl+O`), and going
+     * back finds them as they were. Being here keeps them open; the
+     * user is asked about them when the client ends.
+     */
+    private val kept: MutableList<DocumentSession> = mutableListOf()
+
+    /** A view leaves [session], which has unsaved changes: it stays open here. */
+    fun keep(session: DocumentSession) {
+        if (session in kept) session.close() else kept += session
+    }
+
+    /** A view shows [session] again, opened anew: it need not be kept. */
+    fun shown(session: DocumentSession) {
+        if (kept.remove(session)) session.close()
+    }
+
+    fun isKept(document: String): Boolean = kept.any { it.info.document == document }
+
+    /** The kept document [document], for a view to show again; it is the view's then. */
+    fun take(document: String): DocumentSession? = kept.find { it.info.document == document }?.also { kept.remove(it) }
+
+    /** The kept documents that have unsaved changes. */
+    val unsavedKept: List<DocumentSession> get() = kept.filter { it.info.dirty }
+
+    /** Close the kept documents: what is unsaved in them is lost. */
+    fun dropKept() {
+        val all = kept.toList()
+        kept.clear()
+        all.forEach { it.close() }
     }
 
     fun attach(document: String): DocumentSession = attach(Attach(document))

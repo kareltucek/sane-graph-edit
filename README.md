@@ -501,7 +501,14 @@ navigation, not data.
 | `Ctrl+Shift+E`  | Export only the selected nodes as SVG                  |
 
 On close, the editor prompts Save / Discard / Cancel for every
-unsaved tab. Last-used open/save directories are remembered in
+unsaved tab. A graph with unsaved changes that a tab leaves — a
+link followed, `Ctrl+O`, a file opened in its place — is not asked
+about but kept, with or without a file: going back (`Ctrl+O`, the
+link again) finds it as it was. Quitting asks about the kept ones,
+and `:wa` saves those that have a file. What the application made
+(the help, a file tree, the workspaces, the lines of a text file)
+is left without asking. Closing a tab (`:q`) asks as before.
+Last-used open/save directories are remembered in
 `~/.sanegrapedit.properties`.
 
 The `Ctrl+P` picker runs `sh -c "<picker>"` in the background with

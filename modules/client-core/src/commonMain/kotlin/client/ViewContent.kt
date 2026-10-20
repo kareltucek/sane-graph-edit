@@ -48,6 +48,10 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** What of which text file is shown when the view is a [SourceView] (a link to one). */
     var sourceView: FileLink.Target? = null
 
+    /** The graph was made by the application (help, a file tree, the workspaces, a [SourceView]): leaving it loses nothing worth asking about. */
+    private val generated: Boolean
+        get() = browseDir != null || sourceView != null || untitledName == FileLink.HELP_TITLE || untitledName == Workspaces.TITLE
+
     /** The view was opened to edit its [SourceView] node; that starts once the view is painted. */
     var pendingEdit: Boolean = false
 
@@ -102,15 +106,16 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
 
     /**
      * Make the document of [file] — or, without one, a new document
-     * holding [graph] — the one this view shows, and return the graph
-     * to edit.
+     * holding [graph], or the [taken] one — the one this view shows,
+     * and return the graph to edit. With [keep], the document left
+     * stays open when it has unsaved changes ([EditorClient.keep]).
      */
-    private fun adopt(graph: Graph, file: Path?): Graph {
-        val doc = client?.let { c ->
-            if (file != null) c.open(file.toAbsolutePath().normalize().toString()) else c.create(graph)
+    private fun adopt(graph: Graph, file: Path?, keep: Boolean = false, taken: DocumentSession? = null): Graph {
+        val doc = taken ?: client?.let { c ->
+            if (file != null) c.open(file.toAbsolutePath().normalize().toString()).also { c.shown(it) } else c.create(graph)
         }
         // only now: opening may have failed, and then the view keeps what it had
-        document?.close()
+        document?.takeIf { it !== doc }?.let { left -> if (keep && left.info.dirty && !generated) client?.keep(left) else left.close() }
         document = doc
         // our own changes repaint where they are made; these are other clients', undo and reload
         doc?.onChange = { local ->
@@ -184,10 +189,14 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** The view is built: its graph's changes are followed ([FileContent]). */
     var watching = false
 
-    /** Show [newGraph] (or the document of [file]) instead of the current graph. */
-    private fun replaceGraph(newGraph: Graph, file: Path? = null) {
+    /**
+     * Show [newGraph] (or the document of [file], or the kept [taken]
+     * one) instead of the current graph. With [keep], what had unsaved
+     * changes is kept to go back to.
+     */
+    private fun replaceGraph(newGraph: Graph, file: Path? = null, keep: Boolean = true, taken: DocumentSession? = null) {
         FileContent.left(view)
-        view.g = adopt(newGraph, file)
+        view.g = adopt(newGraph, file, keep, taken)
         // a graph with depth in it is shown with it
         onceLoaded { view.showDepth() }
         watch(view.g)
@@ -200,6 +209,21 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     fun close() {
         document?.close()
         document = null
+    }
+
+    /** The graphs views of this client left with unsaved changes ([EditorClient.keep]). */
+    fun unsavedKept(): List<DocumentSession> = client?.unsavedKept.orEmpty()
+
+    /** Give up the graphs views of this client left with unsaved changes. */
+    fun dropKept() {
+        client?.dropKept()
+    }
+
+    /** `:wa` for the graphs views of this client left with unsaved changes: those with a file are saved; how many have none. */
+    fun saveKept(): Int {
+        val (named, unnamed) = unsavedKept().partition { it.info.file != null }
+        named.forEach { kept -> kept.save { result -> result.exceptionOrNull()?.let { shell.message("${kept.info.file} was not saved: ${it.message}") } } }
+        return unnamed.size
     }
 
     // --- saving ---
@@ -294,7 +318,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     /** Ask for a file or directory and show it in this view. */
     fun open() {
         shell.chooseOpen()
-            ?.takeIf { confirmDiscard("open ${it.name}") }
+            ?.takeIf { mayLeave("open ${it.name}") }
             ?.let { path ->
                 val from = currentLocation()
                 if (Fs.isDirectory(path)) {
@@ -380,10 +404,21 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     private fun confirmDiscard(action: String): Boolean =
         !isDirty || ViewModes.discard || shell.confirm("Unsaved changes", "Discard unsaved changes and $action?")
 
+    /**
+     * Whether the view may show something else to [action] (a link,
+     * `Ctrl+O`): what has unsaved changes is kept to go back to
+     * ([EditorClient.keep]), what the application made is given up;
+     * without an editor to keep it the user is asked.
+     */
+    private fun mayLeave(action: String): Boolean = document != null || generated || confirmDiscard(action)
+
     /** An empty graph without a file (`Ctrl+N`, closing the last tab). */
     fun clearToEmpty() {
-        replaceGraph(Graph())
+        replaceGraph(Graph(), keep = false)
         currentFile = null
+        browseDir = null
+        sourceView = null
+        untitledName = null
         shell.stateChanged()
         view.repaint()
     }
@@ -457,6 +492,18 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         shell.sessionChanged()
     }
 
+    /** Show the kept graph without a file of [session] ([EditorClient.take]). */
+    private fun showKept(session: DocumentSession): Boolean {
+        replaceGraph(session.graph, taken = session)
+        currentFile = null
+        browseDir = null
+        sourceView = null
+        untitledName = null
+        shell.stateChanged()
+        shell.sessionChanged()
+        return true
+    }
+
     fun showHelpInPlace() {
         replaceGraph(Graph.defaultGraph())
         currentFile = null
@@ -522,21 +569,21 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             wrong != null -> shell.message(wrong)
             // as `:cd` does: the tabs are the workspace's, whatever this one held is kept by its session
             target.type == FileLink.Type.Workspace && path != null -> shell.switchWorkspace(path)
-            target.help -> if (confirmDiscard("open the help")) {
+            target.help -> if (mayLeave("open the help")) {
                 jumps.record(from)
                 showHelpInPlace()
             }
             target.section != null && lines == null -> shell.message("no section `${target.section}` in ${path?.name}")
             // the text is only shown: editing it starts as anywhere else (a click, Space), or keys meant for the graph,
             // as Ctrl+O back, would go to the editor
-            isText(target) -> if (confirmDiscard("open ${SourceView.title(target)}")) {
+            isText(target) -> if (mayLeave("open ${SourceView.title(target)}")) {
                 if (showSourceInPlace(target, edit = false)) jumps.record(from)
             }
             inThisGraph -> if (target.nodeId != null) {
                 jumps.record(from)
                 focusNode(target.nodeId)
             }
-            path == null || !confirmDiscard("open ${path.getFileName() ?: path}") -> Unit
+            path == null || !mayLeave("open ${path.getFileName() ?: path}") -> Unit
             Fs.isDirectory(path) -> {
                 jumps.record(from)
                 browseInPlace(path)
@@ -616,6 +663,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
             selection = view.g.selectedNodes.map { nodeKey(it) }.toSet(),
             transform = view.viewTransform.matrix.toList(),
             sourceView = sourceView,
+            document = document?.info?.document?.takeIf { currentFile == null && !generated },
         )
 
     /** How a node is recognised in a reloaded graph: its DOT id, or its label if it has none. */
@@ -637,8 +685,8 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
 
     /**
      * Show [loc]: reload its file or directory unless the view shows
-     * it already (asking first about unsaved changes), then restore its
-     * selection and view. False if it couldn't be opened.
+     * it already, or the graph without a file that was kept ([mayLeave]),
+     * then restore its selection and view. False if it couldn't be opened.
      */
     private fun goTo(loc: JumpList.Location): Boolean {
         val here = currentLocation()
@@ -646,10 +694,13 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val dir = loc.browseDir
         val source = loc.sourceView
         val sourcePath = source?.path
+        val untitled = loc.document?.takeIf { file == null && dir == null && source == null }
         val opened = when {
             loc.sameGraph(here) -> true
-            file == null && dir == null && source == null -> false  // an untitled graph that is gone
-            !confirmDiscard("go back to ${(file ?: dir ?: sourcePath)?.name}") -> false
+            // an untitled graph that is gone: left without changes, or before it was one to keep
+            file == null && dir == null && source == null && (untitled == null || client?.isKept(untitled) != true) -> false
+            !mayLeave("go back to ${(file ?: dir ?: sourcePath)?.name}") -> false
+            untitled != null -> client?.take(untitled)?.let { showKept(it) } == true
             source != null -> showSourceInPlace(source, edit = false)
             dir != null -> Fs.isDirectory(dir).also { if (it) browseInPlace(dir) }
             else -> file?.let { loadInPlace(it) } == true

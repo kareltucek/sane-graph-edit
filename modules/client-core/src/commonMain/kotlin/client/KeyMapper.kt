@@ -792,8 +792,10 @@ class KeyMapper(
                 val views = (listOf(gv) + gv.shell.views()).distinct().filter { it.content.isDirty }
                 val (named, unnamed) = views.partition { it.content.currentFile != null || it.content.sourceView != null }
                 named.forEach { it.content.save() }
+                // and those the tabs left, kept to go back to
+                val keptUnnamed = gv.content.saveKept()
                 FileContent.saveAll(gv)
-                if (unnamed.isNotEmpty()) gv.shell.message("wa: ${unnamed.size} unsaved without a file name (:w <file> in each)")
+                if (unnamed.size + keptUnnamed > 0) gv.shell.message("wa: ${unnamed.size + keptUnnamed} unsaved without a file name (:w <file> in each)")
             }
             "q" -> gv.shell.quit(force = false, all = false)
             "q!" -> gv.shell.quit(force = true, all = false)

@@ -1,6 +1,7 @@
 package client
 
 import DotGraphLoader
+import Graph
 
 /**
  * Periodic crash-safety snapshots for every view with unsaved
@@ -70,21 +71,26 @@ class Autosave(
 
     /** Write every view with unsaved changes right now. */
     fun flushAll() {
-        views().filter { it.content.isDirty }.forEach { writeBackup(it) }
+        val views = views()
+        views.filter { it.content.isDirty }.forEach { writeBackup(it.g, it.content.currentFile, it.autosaveId) }
+        // and those the views left, kept to go back to
+        views.flatMap { it.content.unsavedKept() }.distinct().filter { k -> views.none { it.content.document === k } }
+            .forEach { writeBackup(it.graph, it.info.file?.let { file -> Fs.path(file) }, it.info.document) }
     }
 
     /**
-     * Writes a single snapshot of [view] to a freshly numbered
-     * file in [backupDir]. On a failure the id is *not* advanced —
-     * the next tick retries with the same id: we'd rather fill
-     * holes than skip numbers silently.
+     * Writes a single snapshot of [graph] (of [file], or of the
+     * untitled one [untitledId]) to a freshly numbered file in
+     * [backupDir]. On a failure the id is *not* advanced — the next
+     * tick retries with the same id: we'd rather fill holes than
+     * skip numbers silently.
      */
-    private fun writeBackup(view: EditorView) {
-        val prefix = BackupPaths.prefixFor(view.content.currentFile, view.autosaveId)
+    private fun writeBackup(graph: Graph, file: Path?, untitledId: String) {
+        val prefix = BackupPaths.prefixFor(file, untitledId)
         val path = backupDir.resolve(BackupPaths.filenameFor(prefix, idAllocator.peek(prefix)))
         try {
             Fs.createDirectories(backupDir)
-            DotGraphLoader.saveToFile(view.g, path.toString())
+            DotGraphLoader.saveToFile(graph, path.toString())
             idAllocator.advance(prefix)
         } catch (_: Exception) {
             // best-effort — a failed backup does not fail the session

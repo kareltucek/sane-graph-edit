@@ -28,11 +28,13 @@ class JumpList(
         val transform: List<Double>,
         /** The lines shown when the tab is a [SourceView]. */
         val sourceView: FileLink.Target? = null,
+        /** The document of a graph without a file, which is kept while it has unsaved changes ([EditorClient.keep]). */
+        val document: String? = null,
     ) {
         fun sameSpot(other: Location): Boolean = sameGraph(other) && selection == other.selection
 
         fun sameGraph(other: Location): Boolean =
-            file == other.file && browseDir == other.browseDir && sourceView == other.sourceView
+            file == other.file && browseDir == other.browseDir && sourceView == other.sourceView && document == other.document
     }
 
     val size: Int get() = entries.size
