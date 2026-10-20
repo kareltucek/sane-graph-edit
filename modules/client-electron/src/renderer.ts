@@ -847,9 +847,12 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         // copy it edits (`node.txt`), in neovim's colours; neovim itself is left alone, its plugins too
         const home: string = require("os").homedir();
         const where = view.fileOf(id)?.replace(new RegExp(`^${home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=/)`), "~") ?? null;
+        // by its full path (`%F`) or its name (`%f`, `%t`): the first that the line has
+        let copy = NODE_FILE;
         const named = (pieces: StatusPiece[]) => {
-            const at = where === null ? -1 : pieces.findIndex((piece) => piece.text.includes(NODE_FILE));
-            return at < 0 ? pieces : pieces.map((piece, i) => (i === at ? { ...piece, text: piece.text.replace(NODE_FILE, where!) } : piece));
+            const name = [copy, NODE_FILE].find((it) => pieces.some((piece) => piece.text.includes(it))) ?? NODE_FILE;
+            const at = where === null ? -1 : pieces.findIndex((piece) => piece.text.includes(name));
+            return at < 0 ? pieces : pieces.map((piece, i) => (i === at ? { ...piece, text: piece.text.replace(name, where!) } : piece));
         };
         const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), insert, {
             text: (now) => view.textTyped(now),
@@ -860,6 +863,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
             message: showMessage,
             status: (pieces) => showEditorStatus(named(pieces)),
         });
+        copy = editor.file;
         editor.statusColumns = Math.max(MIN_STATUS_COLUMNS, stripColumns() - (where === null ? 0 : Math.max(0, where.length - NODE_FILE.length)));
         editing = { id, editor };
         if (editorLine.style.display !== "block") showEditorLine(null);

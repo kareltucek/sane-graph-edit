@@ -325,8 +325,13 @@ export class GridEditor {
         GridEditor.running.forEach((editor) => editor.discard(true));
     }
 
+    /** The file neovim edits, a copy of the node's text: what its status line names. */
+    get file(): string {
+        return path.join(this.directory, "node.txt");
+    }
+
     private constructor() {
-        const file = path.join(this.directory, "node.txt");
+        const file = this.file;
         fs.writeFileSync(file, "");
         this.clear();
 
