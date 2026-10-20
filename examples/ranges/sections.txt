@@ -1,0 +1,16 @@
+Test file for nodes that hold lines of a file; see ranges.dot.
+
+Section A
+a1
+a2
+a3
+
+Section B
+b1
+b2
+b3
+
+Section C
+c1
+c2
+c3

@@ -1,0 +1,10 @@
+digraph g {
+  // Each node holds lines of sections.txt; whole holds all of it.
+  a [content-type="plain:sections.txt:3-6"; pos="0,0!"];
+  b [content-type="plain:sections.txt:8-11"; pos="200,0!"];
+  c [content-type="plain:sections.txt:13-16"; pos="400,0!"];
+  whole [content-type="plain:sections.txt"; pos="200,250!"];
+  whole -> a;
+  whole -> b;
+  whole -> c;
+}
