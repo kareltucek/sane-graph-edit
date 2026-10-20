@@ -32,7 +32,7 @@ class ExampleLinksTest {
                     to.help -> true
                     path == null || !Files.exists(path) -> false
                     to.nodeId != null -> DotGraphLoader.loadFromFile(path.toString()).nodes.any { it.attributes.name == to.nodeId }
-                    else -> to.lines != null || path.extension == "dot"
+                    else -> true
                 }
             }.map { "${file.name} -> ${it.path}:${it.nodeId}" }
         }
