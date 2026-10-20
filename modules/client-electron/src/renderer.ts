@@ -98,8 +98,11 @@ function canvasColour(nodes: string): string {
 }
 const CORNER_RADIUS = 2;
 
-/** Neovim's status line has at least this many columns, however long the name of the file before it. */
+/** Neovim's status line has at least this many columns, however long the name of the file in it. */
 const MIN_STATUS_COLUMNS = 20;
+
+/** What neovim calls the copy of a node's text it edits ([GridEditor]): in its status line the node's file is named instead. */
+const NODE_FILE = "node.txt";
 const ARROWHEAD_RADIUS = 3;
 /** Text smaller than this on the screen is not drawn. */
 const MIN_TEXT_PX = 3;
@@ -840,11 +843,14 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         // drawn in the node, so in the node's colours whatever they are
         // a new node's text is replaced by what is typed: its editor is ready to type, any other starts in normal mode
         const insert = view.hasDefaultText(id);
-        // a node whose text is kept in a file says which, and where in it, before neovim's own status line (which only
-        // knows the copy it edits); neovim is left alone, its plugins too
+        // a node whose text is kept in a file says which, and where in it, in neovim's status line where neovim names the
+        // copy it edits (`node.txt`), in neovim's colours; neovim itself is left alone, its plugins too
         const home: string = require("os").homedir();
         const where = view.fileOf(id)?.replace(new RegExp(`^${home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=/)`), "~") ?? null;
-        const file: StatusPiece[] = where === null ? [] : [{ text: `${where}  ` }];
+        const named = (pieces: StatusPiece[]) => {
+            const at = where === null ? -1 : pieces.findIndex((piece) => piece.text.includes(NODE_FILE));
+            return at < 0 ? pieces : pieces.map((piece, i) => (i === at ? { ...piece, text: piece.text.replace(NODE_FILE, where!) } : piece));
+        };
         const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), insert, {
             text: (now) => view.textTyped(now),
             exit: () => endEdit(view),
@@ -852,9 +858,9 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
             drawn: () => page.repaint(),
             line: showEditorLine,
             message: showMessage,
-            status: (pieces) => showEditorStatus([...file, ...pieces]),
+            status: (pieces) => showEditorStatus(named(pieces)),
         });
-        editor.statusColumns = Math.max(MIN_STATUS_COLUMNS, stripColumns() - (where === null ? 0 : where.length + 2));
+        editor.statusColumns = Math.max(MIN_STATUS_COLUMNS, stripColumns() - (where === null ? 0 : Math.max(0, where.length - NODE_FILE.length)));
         editing = { id, editor };
         if (editorLine.style.display !== "block") showEditorLine(null);
         showEditorLines(true);
