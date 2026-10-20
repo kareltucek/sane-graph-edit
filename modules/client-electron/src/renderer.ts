@@ -97,6 +97,9 @@ function canvasColour(nodes: string): string {
     return "#" + rgb.map((c) => Math.round(c + (towards - c) * CANVAS_CONTRAST).toString(16).padStart(2, "0")).join("");
 }
 const CORNER_RADIUS = 2;
+
+/** Neovim's status line has at least this many columns, however long the name of the file before it. */
+const MIN_STATUS_COLUMNS = 20;
 const ARROWHEAD_RADIUS = 3;
 /** Text smaller than this on the screen is not drawn. */
 const MIN_TEXT_PX = 3;
@@ -837,6 +840,11 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         // drawn in the node, so in the node's colours whatever they are
         // a new node's text is replaced by what is typed: its editor is ready to type, any other starts in normal mode
         const insert = view.hasDefaultText(id);
+        // a node whose text is kept in a file says which, and where in it, before neovim's own status line (which only
+        // knows the copy it edits); neovim is left alone, its plugins too
+        const home: string = require("os").homedir();
+        const where = view.fileOf(id)?.replace(new RegExp(`^${home.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=/)`), "~") ?? null;
+        const file: StatusPiece[] = where === null ? [] : [{ text: `${where}  ` }];
         const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), insert, {
             text: (now) => view.textTyped(now),
             exit: () => endEdit(view),
@@ -844,9 +852,9 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
             drawn: () => page.repaint(),
             line: showEditorLine,
             message: showMessage,
-            status: showEditorStatus,
+            status: (pieces) => showEditorStatus([...file, ...pieces]),
         });
-        editor.statusColumns = stripColumns();
+        editor.statusColumns = Math.max(MIN_STATUS_COLUMNS, stripColumns() - (where === null ? 0 : where.length + 2));
         editing = { id, editor };
         if (editorLine.style.display !== "block") showEditorLine(null);
         showEditorLines(true);

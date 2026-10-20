@@ -417,6 +417,9 @@ class JsView internal constructor(
         view.repaint()
     }
 
+    /** Where the node [id] keeps its text, for its editor to show: the file and its lines ([FileContent.where]); null for a node that keeps its own. */
+    fun fileOf(id: String): String? = view.g.node(id)?.let { FileContent.where(view, it) }
+
     /** The editor was closed with [text] in it: the node's text changes, as one undo step. */
     fun textEditEnded(text: String) {
         view.textEditEnded(text)

@@ -149,11 +149,17 @@ object FileContent {
      * a node that keeps its own text.
      */
     fun describe(view: EditorView, node: Node): String? =
+        where(view, node)?.let { place ->
+            val unsaved = of(node, view.content.currentFile)?.let { buffers[it.path.toString()] }?.let { it.text != it.disk } == true
+            place + if (unsaved) " [modified]" else ""
+        }
+
+    /** Where the text of [node] of [view] is kept: the file and the lines as they are now (or the section); null for a node that keeps its own text. */
+    fun where(view: EditorView, node: Node): String? =
         of(node, view.content.currentFile)?.let { source ->
             val now = kept[key(view)]?.get(node.id)?.lines?.takeIf { source.lines != null }?.let { ":${it.first}-${it.last}" }
             val part = source.section?.let { "#$it" } ?: source.anchor?.let { ":$it" } ?: now ?: source.lines?.let { ":$it" }.orEmpty()
-            val unsaved = buffers[source.path.toString()]?.let { it.text != it.disk } == true
-            "${source.path}$part" + if (unsaved) " [modified]" else ""
+            "${source.path}$part"
         }
 
     /** The text [source] speaks of, unsaved edits included, or null when it cannot be had. */
