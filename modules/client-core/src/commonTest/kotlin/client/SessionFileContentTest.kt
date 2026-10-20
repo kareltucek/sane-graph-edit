@@ -13,6 +13,8 @@ import kotlin.random.Random
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /** Nodes of files in views that are clients of an editor, as in the application; on the JVM and in JavaScript. */
 class SessionFileContentTest {
@@ -67,7 +69,7 @@ class SessionFileContentTest {
         view.textEditEnded(text)
     }
 
-    /** `:e`, agreeing to what it asks: the graph took the files' text when it was opened, which is a change of it. */
+    /** `:e`, agreeing to what it asks. */
     private fun readAgain(view: EditorView) {
         graph_tools.ViewModes.discard = true
         try {
@@ -81,8 +83,26 @@ class SessionFileContentTest {
     fun forget() = FileContent.dropAll()
 
     @Test
-    fun `the graph shows the file`() {
+    fun `the graph shows the file, and that is no change of it`() {
         assertEquals("Section A\na1", text(graph, "a"))
+        assertFalse(graph.content.isDirty)
+        graph.g.undo()
+        assertEquals("Section A\na1", text(graph, "a"))
+    }
+
+    @Test
+    fun `a graph that follows an edit made in another is not changed, and an undo there reaches it`() {
+        val other = open("other.dot", "digraph g {\n  twin [\"content-type\"=\"plain:sections.txt:3-4\"];\n}\n")
+        edit(graph, "a", "Section A\nedited")
+        assertEquals("Section A\nedited", text(other, "twin"))
+        assertTrue(graph.content.isDirty)
+        assertFalse(other.content.isDirty)
+        graph.g.undo()
+        assertEquals("Section A\na1", text(graph, "a"))
+        assertEquals("Section A\na1", text(other, "twin"))
+        assertEquals("head\n\nSection A\na1\n\nSection B\nb1", text(graph, "whole"))
+        graph.g.redo()
+        assertEquals("Section A\nedited", text(other, "twin"))
     }
 
     @Test

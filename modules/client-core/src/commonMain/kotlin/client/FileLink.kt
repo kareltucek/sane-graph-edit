@@ -112,7 +112,9 @@ object FileLink {
     fun moveTo(node: Node, from: Path?, to: Path?) {
         val other = node.attributes.other
         other.keys.filter { letterOf(it) != null }.forEach { name -> other[name]?.let { other[name] = moved(it, from, to) } }
-        NodeType.of(node).takeIf { it.source != null }?.let { type -> other[NodeType.ATTRIBUTE] = type.copy(source = moved(type.source!!, from, to)).attribute!! }
+        NodeType.of(node).takeIf { it.source != null }?.let { type ->
+            other[NodeType.ATTRIBUTE] = type.copy(source = moved(type.source!!, from, to)).attribute!!
+        }
     }
 
     /**

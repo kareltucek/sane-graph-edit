@@ -40,7 +40,14 @@ data object ListDocuments : Request
  */
 @Serializable
 @SerialName("submit")
-data class Submit(val document: String, val opId: String, val baseRevision: Long, val patch: Patch) : Request
+data class Submit(
+    val document: String,
+    val opId: String,
+    val baseRevision: Long,
+    val patch: Patch,
+    /** The change follows from something else than an edit of the document (the files its nodes show): no undo step, not dirty. */
+    val derived: Boolean = false,
+) : Request
 
 @Serializable
 @SerialName("undo")

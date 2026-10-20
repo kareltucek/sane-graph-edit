@@ -263,6 +263,12 @@ class DocumentSession internal constructor(
         submit(if (patch.isEmpty && !applied) effectOf(cmd, after) else patch)
     }
 
+    override fun commitDerived(cmd: Command) {
+        val before = GraphState.of(graph)
+        cmd.redo()
+        submit(before.diff(GraphState.of(graph)), derived = true)
+    }
+
     private fun effectOf(cmd: Command, after: GraphState): Patch {
         cmd.undo()
         val before = GraphState.of(graph)
@@ -279,7 +285,7 @@ class DocumentSession internal constructor(
         submit(pending.fold(base) { s, p -> s.apply(p.second) }.diff(GraphState.of(graph)))
     }
 
-    private fun submit(patch: Patch) {
+    private fun submit(patch: Patch, derived: Boolean = false) {
         when {
             patch.isEmpty -> {}
             // it stays in the replica, and goes out when the editor has answered
@@ -288,7 +294,7 @@ class DocumentSession internal constructor(
                 val opId = client.newOpId()
                 pending.addLast(opId to patch)
                 onChange(true)
-                client.send(Submit(info.document, opId, revision, patch))
+                client.send(Submit(info.document, opId, revision, patch, derived))
             }
         }
     }

@@ -116,6 +116,15 @@ class Graph(
         committer?.commit(cmd, applied = true) ?: history.commitWithoutRun(cmd)
     }
 
+    /**
+     * Execute [cmd], which follows from something else than an edit of
+     * this graph — the text of a file its nodes show: it is no undo
+     * step, and it does not make the graph one to save.
+     */
+    fun commitDerived(cmd: Command) {
+        committer?.commitDerived(cmd) ?: cmd.redo()
+    }
+
     fun undo() {
         committer?.undo() ?: history.undo()
     }

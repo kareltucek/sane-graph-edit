@@ -40,6 +40,9 @@ interface Command {
 interface Committer {
     /** Record [cmd] as one undo step, running it first unless it is already [applied]. */
     fun commit(cmd: Command, applied: Boolean)
+
+    /** Run [cmd], which is no undo step and no change to save ([Graph.commitDerived]). */
+    fun commitDerived(cmd: Command)
     fun undo()
     fun redo()
 }

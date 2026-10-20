@@ -68,6 +68,9 @@ class FileContentTest {
         assertEquals("## One\n\nfirst", text(second, "section"))
         assertEquals("# Doc\n\n## One\n\nfirst\n\n## Two\n\nsecond", text(second, "whole"))
         assertEquals("own text", text(first, "own"))
+        // which is no change of them
+        assertFalse(first.content.isDirty)
+        assertFalse(second.content.isDirty)
     }
 
     private val untouched = code.readText()

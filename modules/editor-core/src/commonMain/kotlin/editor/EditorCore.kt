@@ -147,17 +147,20 @@ class EditorCore(private val files: FileStore) {
         val before = d.state
         val after = before.apply(r.patch)
         val forward = before.diff(after)
-        val top = d.undo.lastOrNull()
-        val merges = top != null && top.client == client && now - top.time <= COALESCE_MS && forward.setsSameFieldsAs(top.forward)
-        if (merges) {
-            top!!.forward = forward
-            top.time = now
-        } else if (!forward.isEmpty) {
-            d.undo.addLast(HistoryEntry(forward, after.diff(before), client, now))
-            while (d.undo.size > MAX_DEPTH) d.undo.removeFirst()
+        // what follows from elsewhere is no step of the history and no change to save
+        if (!r.derived) {
+            val top = d.undo.lastOrNull()
+            val merges = top != null && top.client == client && now - top.time <= COALESCE_MS && forward.setsSameFieldsAs(top.forward)
+            if (merges) {
+                top!!.forward = forward
+                top.time = now
+            } else if (!forward.isEmpty) {
+                d.undo.addLast(HistoryEntry(forward, after.diff(before), client, now))
+                while (d.undo.size > MAX_DEPTH) d.undo.removeFirst()
+            }
+            d.redo.clear()
         }
-        d.redo.clear()
-        return changed(d, after, forward, client, r.opId)
+        return changed(d, after, forward, client, r.opId, dirties = !r.derived)
     }
 
     /** Undo the last change, or redo the last undone one. */
@@ -174,11 +177,11 @@ class EditorCore(private val files: FileStore) {
         return changed(d, d.state.apply(patch), patch, client, null)
     }
 
-    private fun changed(d: Document, state: GraphState, patch: Patch, client: String, opId: String?): List<Outgoing> {
+    private fun changed(d: Document, state: GraphState, patch: Patch, client: String, opId: String?, dirties: Boolean = true): List<Outgoing> {
         val wasDirty = d.dirty
         d.state = state
         d.revision++
-        d.dirty = d.dirty || !patch.isEmpty
+        d.dirty = d.dirty || (dirties && !patch.isEmpty)
         val ids = patch.addNodes.keys + patch.setNodes.keys + patch.removeNodes + patch.addEdges.keys + patch.setEdges.keys + patch.removeEdges
         ids.forEach { d.lastChange[it] = Change(d.revision, client) }
         val info = if (d.dirty != wasDirty) toAll(d, DocumentChanged(d.info)) else emptyList()

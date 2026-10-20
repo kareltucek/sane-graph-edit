@@ -152,6 +152,15 @@ object FileContent {
         }
     }
 
+    /** Nodes take what their buffers hold: that is no edit of the graph ([graph_tools.Graph.commitDerived]). */
+    private fun follow(view: EditorView, commands: List<Command>) {
+        when (commands.size) {
+            0 -> Unit
+            1 -> view.g.commitDerived(commands.single())
+            else -> view.g.commitDerived(CompositeCommand(commands))
+        }
+    }
+
     private fun quietly(action: () -> Unit) {
         if (!busy) {
             busy = true
@@ -179,7 +188,7 @@ object FileContent {
                     window.text.takeIf { it != n.attributes.text && n !== v.editing }?.let { EditTextCommand(v.g, n, n.attributes.text, it, coalesceWindowMs = 0) }
                 }
             }
-            commit(v, taken)
+            follow(v, taken)
         }
         val windows = kept.getValue(key(view))
         val size = { n: Node -> windows.getValue(n.id).lines.let { it.last - it.first } }
@@ -197,8 +206,8 @@ object FileContent {
      * is or becomes [text]: put it into the buffer, move the windows
      * and give the other nodes that see those lines their new text.
      * [own] is the command that changes [node] itself, when that is
-     * still to be done; it is one undo step with what follows from
-     * it in the same graph.
+     * still to be done; it is the undo step. What follows from it is
+     * none: an undo of it is a change the others follow again.
      */
     private fun change(view: EditorView, node: Node, window: Kept, text: String, own: Command?) {
         val buffer = buffers.getValue(window.path.toString())
@@ -222,12 +231,13 @@ object FileContent {
                 if (unchanged) kept.getValue(key(v))[o.id] = Kept(was.path, was.lines, seen)
                 seen.takeIf { unchanged && it != o.attributes.text && o !== v.editing }?.let { EditTextCommand(v.g, o, o.attributes.text, it, coalesceWindowMs = 0) }
             }
-            commit(v, listOfNotNull(own.takeIf { v === view }) + follows)
+            own?.takeIf { v === view }?.let { v.g.commit(it) }
+            follow(v, follows)
         }
         (listOf(view) + view.shell.views()).distinct().forEach { it.repaint() }
     }
 
-    /** The user edited [node] of [view] from [before] to [text]: one undo step, with what follows from it in the same graph. */
+    /** The user edited [node] of [view] from [before] to [text]: one undo step, which the other nodes of those lines follow. */
     fun edited(view: EditorView, node: Node, before: String, text: String) {
         val window = kept[key(view)]?.get(node.id)
         val command = EditTextCommand(view.g, node, before, text)
