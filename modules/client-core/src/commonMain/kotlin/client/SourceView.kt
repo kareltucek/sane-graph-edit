@@ -44,16 +44,21 @@ object SourceView {
         }
     }
 
-    /** The graph; throws when the file cannot be read. */
+    /** The graph; throws when the file cannot be read. A node that holds part of the file links (`gf`) to all of it. */
     fun build(target: FileLink.Target): Graph {
         val type = typeOf(target)
         val text = FileContent.read(FileLink.Target(target.path, null, target.lines)) ?: throw IllegalStateException("it cannot be read")
+        val part = target.lines != null || target.section != null
         return Graph().also { g ->
             g.add(
                 Node(name = NODE_ID).also {
                     it.attributes.text = text
                     it.attributes.other[NodeType.ATTRIBUTE] = type.attribute!!
                     it.attributes.other["fontname"] = "monospace"
+                    if (part) {
+                        it.attributes.other[FileLink.ATTRIBUTE] = "${target.path!!.toAbsolutePath().normalize()}"
+                        it.attributes.other[FileLink.TYPE_ATTRIBUTE] = type.copy(source = null).attribute ?: "plain"
+                    }
                     it.position = Vector2(0, 0)
                 },
             )

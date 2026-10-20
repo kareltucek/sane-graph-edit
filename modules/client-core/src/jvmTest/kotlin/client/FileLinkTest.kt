@@ -53,4 +53,18 @@ class FileLinkTest {
         val plain = FileLink.resolveIn("notes.md", dir, FileLink.Type.Text(NodeType.Plain))
         assertEquals(NodeType.Kind.Plain, SourceView.typeOf(plain).kind)
     }
+
+    @Test
+    fun `a source view of part of a file links to all of it, shown as the part is`() {
+        val links = { link: String, type: FileLink.Type ->
+            val node = SourceView.build(FileLink.resolveIn(link, dir, type)).nodes.single()
+            FileLink.of(node, 'f')?.let { FileLink.resolveIn(it, dir, FileLink.Type.parse(FileLink.typeOf(node, 'f'))!!) }?.let { it.path to it.lines }
+        }
+        val whole = dir.resolve("notes.md").toAbsolutePath().normalize() to null
+        assertEquals(whole, links("notes.md:2-3", FileLink.Type.File))
+        assertEquals(whole, links("notes.md#depth", FileLink.Type.File))
+        assertEquals(null, links("notes.md", FileLink.Type.File))
+        val node = SourceView.build(FileLink.resolveIn("notes.md:2", dir, FileLink.Type.Text(NodeType.Plain))).nodes.single()
+        assertEquals("plain", FileLink.typeOf(node, 'f'))
+    }
 }
