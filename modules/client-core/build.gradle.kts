@@ -14,7 +14,7 @@ plugins {
 // writes them out when it starts (`client.HelpFiles`), so that the built-in help can lead to them.
 val helpFiles = tasks.register("generateHelpFiles") {
     val root = rootProject.projectDir
-    val sources = rootProject.fileTree("examples") { include("*.dot") } + rootProject.files("README.md", "docs/file-format.md")
+    val sources = rootProject.fileTree("examples") { include("*.dot", "*.txt") } + rootProject.files("README.md", "docs/file-format.md")
     val out = layout.buildDirectory.dir("generated/helpFiles")
     inputs.files(sources)
     outputs.dir(out)

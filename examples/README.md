@@ -12,6 +12,8 @@ Small DOT files for manual testing of the editor and its CLI.
   `:export-selection`.
 - `cube.dot` — eight nodes with a depth. `:set 3d`, then the middle
   button turns it.
+- `ranges.dot` — nodes holding sections A, B and C of
+  `sections.txt`, and one holding all of it.
 
 ## Try them
 
