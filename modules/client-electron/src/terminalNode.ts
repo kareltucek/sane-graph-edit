@@ -61,6 +61,8 @@ export class TerminalNode {
     /** Where a drag that selects started, while it goes on; and what is selected, from where it started to where it went. */
     private anchor: Spot | null = null;
     private selection: { from: Spot; to: Spot } | null = null;
+    /** The middle button pasted when pressed: its release is not told to the program. */
+    private pasting = false;
     /** What the terminal shows, as it was last asked for, and in which colours; null once it shows something else. */
     private painted: { colours: string; painting: TerminalPainting } | null = null;
 
@@ -173,14 +175,19 @@ export class TerminalNode {
     /**
      * The mouse at [column], [row] (from 0) of the terminal, [button] as the DOM numbers them. A drag of the left button
      * pressed with Shift selects the text, which is then what the middle button pastes elsewhere; any other press lets go
-     * of what was selected. Otherwise it is told to the program in it when it asked for the mouse, in the way it asked.
+     * of what was selected. The middle button pastes the primary selection, when the program did not ask for the mouse or
+     * with Shift. Otherwise it is told to the program in it when it asked for the mouse, in the way it asked.
      */
     mouse(action: "press" | "drag" | "release", button: number, row: number, column: number, held: Held) {
         const at = { row: this.terminal.buffer.active.viewportY + row, column };
         const selects = action === "press" ? button === 0 && held.shift : this.anchor !== null;
-        if (action === "press" && this.selection !== null) this.show(() => (this.selection = null));
+        const pastes = action === "press" && button === 1 && (held.shift || this.terminal.modes.mouseTrackingMode === "none");
+        const pasted = action !== "press" && button === 1 && this.pasting;
+        if (action === "press" && !pastes && this.selection !== null) this.show(() => (this.selection = null));
+        if (action === "press" && button === 1) this.pasting = pastes;
         if (selects) this.select(action, at);
-        else this.tell(action, button, row, column, held);
+        else if (pastes) this.terminal.paste(require("electron").clipboard.readText("selection"));
+        else if (!pasted) this.tell(action, button, row, column, held);
     }
 
     /** Select from where the drag started to [at] (a row of all the buffer, with what was scrolled back); when let go, that is the primary selection. */
