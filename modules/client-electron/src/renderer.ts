@@ -3,7 +3,7 @@ import { Bitmaps, Recent } from "./bitmaps";
 import { Canvas2D, Cells, GridEditor, PaintedCell, Painting, StatusPiece } from "./gridEditor";
 import { MarkdownPictures, Picture, REFERENCE_FONT_PX } from "./markdown";
 import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nodeEditor";
-import { TerminalNode } from "./terminalNode";
+import { TerminalNode, type TerminalPainting } from "./terminalNode";
 import { NodePicture, Shell, shellColours, SpaceRenderer, SpaceScene } from "./space";
 import { mockRoom, outlines, wallsOf } from "./room";
 import { startVr, VrLive, VrScene, VrSurface } from "./vrServer";
@@ -334,9 +334,14 @@ const paintings = new Recent<Painting | null>(10000);
  * comes.
  */
 function paintingOf(n: SceneNode): Painting | null {
+    return terminalPaintingOf(n) ?? highlightingOf(n);
+}
+
+/** What the terminal of [n] shows, if [n] is a terminal node whose shell runs. */
+function terminalPaintingOf(n: SceneNode): TerminalPainting | null {
     // a terminal node whose shell runs shows what its terminal does
     const terminal = n.type === "terminal" ? shownTerminals?.get(n.id) : undefined;
-    return terminal !== undefined ? terminal.painting(inkOf(n), n.bg ?? colours().background) : highlightingOf(n);
+    return terminal?.painting(inkOf(n), n.bg ?? colours().background) ?? null;
 }
 
 function highlightingOf(n: SceneNode): Painting | null {
@@ -414,23 +419,29 @@ function textCorner(n: SceneNode): { left: number; top: number } {
     return n.manual ? { left: n.x - n.width / 2 + inset, top: n.y - n.height / 2 + inset } : { left: n.x - n.textWidth / 2, top: n.y - n.textHeight / 2 };
 }
 
-/** The text of [n] in its cells: as neovim painted it if [painting] is given, plain otherwise. A little room around it for what reaches out of a cell. */
-function textContent(n: SceneNode, grid: client.GridMetrics, painting: Painting | null): Content {
+/** The cells the text of [n] is in, inside what it may be drawn on. A little room around it for what reaches out of a cell. */
+function textCells(n: SceneNode, grid: client.GridMetrics): Cells {
     const room = n.fontSize * 0.25;
     const { left: textLeft, top: textTop } = textCorner(n);
-    // of a node with a size of its own, what is in the node: its text may be bigger or (a terminal's label) smaller than what it shows
-    const box = n.manual
-        ? { left: n.x - n.width / 2, top: n.y - n.height / 2, width: n.width, height: n.height }
-        : { left: textLeft - room, top: textTop - room, width: n.textWidth + 2 * room, height: n.textHeight + 2 * room };
-    const cells: Cells = {
+    return {
         left: textLeft,
         top: textTop,
         cellWidth: grid.advance * n.fontSize,
         cellHeight: grid.lineHeight * n.fontSize,
         font: `${n.fontSize}px ${FONT}`,
         baseline: grid.ascent * n.fontSize,
-        clip: box,
+        // of a node with a size of its own, what is in the node: its text may be bigger or (a terminal's label) smaller than what it shows
+        clip: n.manual
+            ? { left: n.x - n.width / 2, top: n.y - n.height / 2, width: n.width, height: n.height }
+            : { left: textLeft - room, top: textTop - room, width: n.textWidth + 2 * room, height: n.textHeight + 2 * room },
     };
+}
+
+/** The text of [n] in its cells: as neovim painted it if [painting] is given, plain otherwise. */
+function textContent(n: SceneNode, grid: client.GridMetrics, painting: Painting | null): Content {
+    const cells = textCells(n, grid);
+    const { left: textLeft, top: textTop } = cells;
+    const box = cells.clip;
     const ink = inkOf(n);
     return painting !== null
         ? { key: `painting ${nameOf(painting)} ${n.fontSize}`, ...box, draw: (to, seen) => GridEditor.drawPainting(to, cells, painting, undefined, seen) }
@@ -448,6 +459,43 @@ function textContent(n: SceneNode, grid: client.GridMetrics, painting: Painting 
                 });
             },
         };
+}
+
+/**
+ * What a terminal shows, row by row: a row that looks as one did before is drawn from the drawing kept of that one, wherever
+ * it is now, and a terminal that prints and scrolls has only its new rows to draw. Each with room above and below it for what
+ * reaches out of its cells, drawn over by the rows below as the whole would be.
+ */
+function rowContents(n: SceneNode, grid: client.GridMetrics, painting: TerminalPainting): Content[] {
+    const cells = textCells(n, grid);
+    const box = cells.clip;
+    const room = n.fontSize * 0.25;
+    return painting.rows.map((row, index) => {
+        const rowTop = cells.top + index * cells.cellHeight;
+        const top = Math.max(box.top, rowTop - room);
+        const height = Math.min(box.top + box.height, rowTop + cells.cellHeight + room) - top;
+        const at: Cells = { ...cells, top: rowTop, clip: { left: box.left, top, width: box.width, height } };
+        const one = { rows: [row], background: painting.background };
+        // where in its drawing the row is, and how much of it is cut off by the node, is part of what it looks like
+        return {
+            key: `row ${n.fontSize} ${painting.background} ${rowTop - top} ${painting.rowKeys[index]}`,
+            left: box.left,
+            top,
+            width: box.width,
+            height,
+            draw: (to: Canvas2D) => GridEditor.drawPainting(to, at, one),
+        };
+    }).filter((it) => it.height > 0);
+}
+
+/** What [n] shows inside its outline, in the parts that are drawn and kept each by itself. */
+function contentsOf(n: SceneNode, grid: client.GridMetrics): Content[] {
+    // a markdown node is its picture, once that is made; a terminal what it shows; a code node what neovim painted, once that is
+    const picture = pictureOf(n);
+    const terminal = terminalPaintingOf(n);
+    return picture !== null ? [pictureContent(n, picture)]
+        : terminal !== null ? rowContents(n, grid, terminal)
+        : [textContent(n, grid, paintingOf(n))];
 }
 
 /** A name for each painting and picture, for the key of a drawing made from it. */
@@ -544,8 +592,6 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
     // the node being edited has its editor where the text would be, once that shows
     const shown = (smallText || n.fontSize * scale >= MIN_TEXT_PX) && !(n.id === editing?.id && editing.editor.shown);
     if (shown) {
-        // a markdown node is its picture, once that is made; a code node what neovim painted, once that is
-        const picture = pictureOf(n);
         ctx.save();
         if (n.manual) {
             // a node with a size of its own shows what fits in it
@@ -553,7 +599,9 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
             ctx.rect(left, top, n.width, n.height);
             ctx.clip();
         }
-        drawContent(picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n)), view, dpr);
+        // only what is in the view
+        const seen = { top: -view.offsetY / scale, bottom: (ctx.canvas.height / dpr - view.offsetY) / scale };
+        contentsOf(n, grid).filter((it) => it.top <= seen.bottom && it.top + it.height >= seen.top).forEach((it) => drawContent(it, view, dpr));
         ctx.restore();
     }
     if (n.manual && n.selected) {
@@ -1106,11 +1154,7 @@ function cacheStats(grid: client.GridMetrics, threeD: boolean): string {
     const line = (name: string, bytes: number, count: number, of: number) => `${(name + ":").padEnd(20)}${megabytes(bytes)}, ${share(count, of)}`;
     const nodes = lastScene?.nodes ?? [];
     // a node's drawing is kept by what it shows, as [drawContent] names it
-    const drawn = nodes.filter((n) => {
-        const picture = pictureOf(n);
-        const content = picture !== null ? pictureContent(n, picture) : textContent(n, grid, paintingOf(n));
-        return bitmaps.has(`${content.key}\n${content.width} ${content.height}`);
-    }).length;
+    const drawn = nodes.filter((n) => contentsOf(n, grid).every((content) => bitmaps.has(`${content.key}\n${content.width} ${content.height}`))).length;
     const flat = bitmaps.stats;
     const space = spaceRenderer?.stats(lastSpaceIds) ?? null;
     // 2D cache: the text of a node as 2D mode draws it. 3D closeup nodes: those seen at more than half their size, drawn at the

@@ -32,6 +32,11 @@ const MOUSE_ACTIONS = { release: 0, press: 1, drag: 32 };
 /** How many lines a turn of the wheel scrolls back through what was printed. */
 const WHEEL_LINES = 3;
 
+/** What a terminal shows, and for each row what it looks like, as one string: two rows that look alike have the same. */
+export interface TerminalPainting extends Painting {
+    rowKeys: string[];
+}
+
 export class TerminalNode {
     private readonly element = document.createElement("div");
     private readonly terminal: Terminal;
@@ -39,7 +44,7 @@ export class TerminalNode {
     private ended = false;
     private focused = false;
     /** What the terminal shows, as it was last asked for, and in which colours; null once it shows something else. */
-    private painted: { colours: string; painting: Painting } | null = null;
+    private painted: { colours: string; painting: TerminalPainting } | null = null;
 
     /** [onEnd] is told when the shell is gone, by itself or because this was closed; [changed] when what the terminal shows is other than it was. */
     constructor(host: HTMLElement, private readonly onEnd: () => void, private readonly changed: () => void) {
@@ -79,32 +84,36 @@ export class TerminalNode {
     }
 
     /** What the terminal shows now, cell by cell, in [foreground] on [background] where the shell names no colours. The same object until it shows something else. */
-    painting(foreground: string, background: string): Painting {
+    painting(foreground: string, background: string): TerminalPainting {
         const colours = `${foreground} ${background}`;
         if (this.painted === null || this.painted.colours !== colours) {
             const buffer = this.terminal.buffer.active;
+            // one cell read again and again: a new one for each would be a lot of them
+            const reused = buffer.getNullCell();
+            const colour = (rgb: boolean, palette: boolean, value: number, usual: string) =>
+                rgb ? `#${value.toString(16).padStart(6, "0")}` : palette ? PALETTE[value] ?? usual : usual;
+            const rowKeys: string[] = [];
             const rows = Array.from({ length: this.terminal.rows }, (_, y) => {
                 const line = buffer.getLine(buffer.viewportY + y);
-                return Array.from({ length: this.terminal.cols }, (_, x): PaintedCell => {
-                    const cell = line?.getCell(x);
-                    const colour = (rgb: boolean, palette: boolean, value: number, usual: string) =>
-                        rgb ? `#${value.toString(16).padStart(6, "0")}` : palette ? PALETTE[value] ?? usual : usual;
+                let key = "";
+                const row = Array.from({ length: this.terminal.cols }, (_, x): PaintedCell => {
+                    const cell = line?.getCell(x, reused);
                     const fg = cell === undefined ? foreground : colour(cell.isFgRGB(), cell.isFgPalette(), cell.getFgColor(), foreground);
                     const bg = cell === undefined ? background : colour(cell.isBgRGB(), cell.isBgPalette(), cell.getBgColor(), background);
                     // the cursor, while the keys are the shell's: the cell the other way around
                     const cursor = this.focused && buffer.viewportY === buffer.baseY && x === buffer.cursorX && y === buffer.cursorY;
                     const turned = (cell !== undefined && cell.isInverse() !== 0) !== cursor;
-                    return {
-                        text: cell?.getChars() || " ",
-                        foreground: turned ? bg : fg,
-                        background: turned ? fg : bg,
-                        bold: cell !== undefined && cell.isBold() !== 0,
-                        italic: cell !== undefined && cell.isItalic() !== 0,
-                        underline: cell !== undefined && cell.isUnderline() !== 0,
-                    };
+                    const bold = cell !== undefined && cell.isBold() !== 0;
+                    const italic = cell !== undefined && cell.isItalic() !== 0;
+                    const underline = cell !== undefined && cell.isUnderline() !== 0;
+                    const text = cell?.getChars() || " ";
+                    key += `${text}\u0001${fg}\u0001${bg}\u0001${turned ? 1 : 0}${bold ? 1 : 0}${italic ? 1 : 0}${underline ? 1 : 0}`;
+                    return { text, foreground: turned ? bg : fg, background: turned ? fg : bg, bold, italic, underline };
                 });
+                rowKeys.push(key);
+                return row;
             });
-            this.painted = { colours, painting: { rows, background } };
+            this.painted = { colours, painting: { rows, background, rowKeys } };
         }
         return this.painted.painting;
     }
