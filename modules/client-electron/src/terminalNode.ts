@@ -132,10 +132,16 @@ export class TerminalNode {
         }
     }
 
-    /** The wheel over [column], [row]: the program's when it asked for the mouse; otherwise it scrolls back through what was printed. */
+    /**
+     * The wheel over [column], [row]: the program's when it asked for the mouse; arrow keys to a program that has the whole
+     * screen (less, tmux), which has nothing to scroll back through; otherwise it scrolls back through what was printed.
+     */
     wheel(direction: "up" | "down", row: number, column: number) {
         if (this.terminal.modes.mouseTrackingMode !== "none") {
             this.report({ col: column, row, button: MOUSE_WHEEL, action: direction === "up" ? 0 : 1, ctrl: false, alt: false, shift: false });
+        } else if (this.terminal.buffer.active.type === "alternate") {
+            const arrow = `\x1b${this.terminal.modes.applicationCursorKeysMode ? "O" : "["}${direction === "up" ? "A" : "B"}`;
+            this.type(arrow.repeat(WHEEL_LINES));
         } else {
             this.terminal.scrollLines(direction === "up" ? -WHEEL_LINES : WHEEL_LINES);
         }
