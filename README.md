@@ -252,7 +252,10 @@ on the graph, gives the keys back to the graph; so does
 the mouse in the node is the program's that asks for it (a click, a
 drag, the wheel), as the left button and the wheel are neovim's in a
 node being edited; for one that does not ask, the wheel scrolls back
-through what was printed. It ends when the
+through what was printed, or, in one that has the whole screen (less,
+tmux), sends it ↑ and ↓. A drag with `Shift` selects text whatever
+the program asks, and the selection is what the middle button pastes
+(the primary selection). It ends when the
 shell exits, the node is removed or the window closes. Nothing of it
 is saved, and opening a file starts nothing: the document only says
 that the node is a terminal. What the terminal shows is drawn in the

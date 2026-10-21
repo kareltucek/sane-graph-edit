@@ -37,6 +37,8 @@ const MOUSE_DRAG = 32;
 const MOUSE_FURTHEST: { [encoding in MouseEncoding]?: number } = { x10: 223, utf8: 2015 };
 
 type Held = { ctrl: boolean; alt: boolean; shift: boolean };
+/** A cell of all the buffer: its row counted with what was scrolled back. */
+type Spot = { row: number; column: number };
 const NOTHING_HELD: Held = { ctrl: false, alt: false, shift: false };
 
 /** How many lines a turn of the wheel scrolls back through what was printed. */
@@ -56,6 +58,9 @@ export class TerminalNode {
     private encoding: MouseEncoding = "x10";
     /** The cell a drag was last told of: a move within it is not told again. */
     private dragged: string | null = null;
+    /** Where a drag that selects started, while it goes on; and what is selected, from where it started to where it went. */
+    private anchor: Spot | null = null;
+    private selection: { from: Spot; to: Spot } | null = null;
     /** What the terminal shows, as it was last asked for, and in which colours; null once it shows something else. */
     private painted: { colours: string; painting: TerminalPainting } | null = null;
 
@@ -123,6 +128,10 @@ export class TerminalNode {
             const colour = (rgb: boolean, palette: boolean, value: number, usual: string) =>
                 rgb ? `#${value.toString(16).padStart(6, "0")}` : palette ? PALETTE[value] ?? usual : usual;
             const rowKeys: string[] = [];
+            const range = this.ordered();
+            const selected = (row: number, column: number) => range !== null &&
+                (row > range[0].row || (row === range[0].row && column >= range[0].column)) &&
+                (row < range[1].row || (row === range[1].row && column <= range[1].column));
             const rows = Array.from({ length: this.terminal.rows }, (_, y) => {
                 const line = buffer.getLine(buffer.viewportY + y);
                 let key = "";
@@ -130,9 +139,9 @@ export class TerminalNode {
                     const cell = line?.getCell(x, reused);
                     const fg = cell === undefined ? foreground : colour(cell.isFgRGB(), cell.isFgPalette(), cell.getFgColor(), foreground);
                     const bg = cell === undefined ? background : colour(cell.isBgRGB(), cell.isBgPalette(), cell.getBgColor(), background);
-                    // the cursor, while the keys are the shell's: the cell the other way around
+                    // the cursor, while the keys are the shell's, and what is selected: the cell the other way around
                     const cursor = this.focused && buffer.viewportY === buffer.baseY && x === buffer.cursorX && y === buffer.cursorY;
-                    const turned = (cell !== undefined && cell.isInverse() !== 0) !== cursor;
+                    const turned = ((cell !== undefined && cell.isInverse() !== 0) !== cursor) !== selected(buffer.viewportY + y, x);
                     const bold = cell !== undefined && cell.isBold() !== 0;
                     const italic = cell !== undefined && cell.isItalic() !== 0;
                     const underline = cell !== undefined && cell.isUnderline() !== 0;
@@ -162,10 +171,56 @@ export class TerminalNode {
     }
 
     /**
-     * The mouse at [column], [row] (from 0) of the terminal, [button] as the DOM numbers them: told to the program in it
-     * when it asked for the mouse, in the way it asked (which xterm knows); nothing otherwise.
+     * The mouse at [column], [row] (from 0) of the terminal, [button] as the DOM numbers them. A drag of the left button
+     * pressed with Shift selects the text, which is then what the middle button pastes elsewhere; any other press lets go
+     * of what was selected. Otherwise it is told to the program in it when it asked for the mouse, in the way it asked.
      */
     mouse(action: "press" | "drag" | "release", button: number, row: number, column: number, held: Held) {
+        const at = { row: this.terminal.buffer.active.viewportY + row, column };
+        const selects = action === "press" ? button === 0 && held.shift : this.anchor !== null;
+        if (action === "press" && this.selection !== null) this.show(() => (this.selection = null));
+        if (selects) this.select(action, at);
+        else this.tell(action, button, row, column, held);
+    }
+
+    /** Select from where the drag started to [at] (a row of all the buffer, with what was scrolled back); when let go, that is the primary selection. */
+    private select(action: "press" | "drag" | "release", at: Spot) {
+        const from = this.anchor ?? at;
+        this.anchor = action === "release" ? null : from;
+        if (action === "drag") this.show(() => (this.selection = { from, to: at }));
+        const text = action === "release" ? this.selected() : "";
+        if (text !== "") require("electron").clipboard.writeText(text, "selection");
+    }
+
+    /** The selected text: rows that go on in the next one (wrapped) without a line end, and nothing at the end of a row that was not printed. */
+    private selected(): string {
+        const range = this.ordered();
+        const buffer = this.terminal.buffer.active;
+        const text = (first: Spot, last: Spot) => Array.from({ length: last.row - first.row + 1 }, (_, i) => first.row + i).map((row) => {
+            const end = row === last.row ? last.column + 1 : this.terminal.cols;
+            const part = buffer.getLine(row)?.translateToString(end === this.terminal.cols, row === first.row ? first.column : 0, end) ?? "";
+            const goesOn = row < last.row && buffer.getLine(row + 1)?.isWrapped === true;
+            return row === last.row || goesOn ? part : `${part}\n`;
+        }).join("");
+        return range === null ? "" : text(...range);
+    }
+
+    /** Where the selection begins and ends, in the order of the text; null when nothing is selected. */
+    private ordered(): [Spot, Spot] | null {
+        const s = this.selection;
+        const forwards = s !== null && (s.from.row < s.to.row || (s.from.row === s.to.row && s.from.column <= s.to.column));
+        return s === null ? null : forwards ? [s.from, s.to] : [s.to, s.from];
+    }
+
+    /** Make [change] to what is shown, and show it. */
+    private show(change: () => void) {
+        change();
+        this.painted = null;
+        this.changed();
+    }
+
+    /** The mouse told to the program in the terminal when it asked for it, in the way it asked; nothing otherwise. */
+    private tell(action: "press" | "drag" | "release", button: number, row: number, column: number, held: Held) {
         const mode = this.terminal.modes.mouseTrackingMode;
         const wanted = mode === "x10" ? action === "press" : mode === "vt200" ? action !== "drag" : mode !== "none";
         const cell = `${row} ${column}`;
