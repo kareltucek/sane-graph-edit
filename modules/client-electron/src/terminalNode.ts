@@ -24,10 +24,20 @@ const PALETTE: string[] = (() => {
     return [...usual, ...cube, ...greys];
 })();
 
-/** xterm's numbers for the mouse (its `CoreMouseButton` and `CoreMouseAction`): no button, the wheel, and what happened. */
-const MOUSE_NONE = 3;
-const MOUSE_WHEEL = 4;
-const MOUSE_ACTIONS = { release: 0, press: 1, drag: 32 };
+/** How a program asked to be told of the mouse (DECSET 1005, 1006, 1015); "x10" when it named no way. */
+type MouseEncoding = "x10" | "utf8" | "sgr" | "urxvt";
+const MOUSE_ENCODINGS: { [mode: number]: MouseEncoding } = { 1005: "utf8", 1006: "sgr", 1015: "urxvt" };
+
+/** The numbers of a mouse report: a button let go (but in SGR), the wheel up and down, and what is added for a drag. */
+const MOUSE_RELEASED = 3;
+const WHEEL_UP = 64;
+const WHEEL_DOWN = 65;
+const MOUSE_DRAG = 32;
+/** The furthest column or row the encoding can tell of, from 1. */
+const MOUSE_FURTHEST: { [encoding in MouseEncoding]?: number } = { x10: 223, utf8: 2015 };
+
+type Held = { ctrl: boolean; alt: boolean; shift: boolean };
+const NOTHING_HELD: Held = { ctrl: false, alt: false, shift: false };
 
 /** How many lines a turn of the wheel scrolls back through what was printed. */
 const WHEEL_LINES = 3;
@@ -43,6 +53,9 @@ export class TerminalNode {
     private readonly process: IPty;
     private ended = false;
     private focused = false;
+    private encoding: MouseEncoding = "x10";
+    /** The cell a drag was last told of: a move within it is not told again. */
+    private dragged: string | null = null;
     /** What the terminal shows, as it was last asked for, and in which colours; null once it shows something else. */
     private painted: { colours: string; painting: TerminalPainting } | null = null;
 
@@ -70,6 +83,23 @@ export class TerminalNode {
         this.terminal.onData((data) => this.process.write(data));
         this.terminal.onScroll(other);
         this.process.onExit(() => this.close());
+        // xterm tells which mouse events a program asked for, but not in which way: that is followed here, and xterm too takes it
+        const asked = (on: boolean) => (params: (number | number[])[]) => {
+            params.forEach((mode) => {
+                const named = typeof mode === "number" ? MOUSE_ENCODINGS[mode] : undefined;
+                if (named !== undefined && on) this.encoding = named;
+                else if (named !== undefined && this.encoding === named) this.encoding = "x10";
+            });
+            return false;
+        };
+        const reset = () => {
+            this.encoding = "x10";
+            return false;
+        };
+        this.terminal.parser.registerCsiHandler({ prefix: "?", final: "h" }, asked(true));
+        this.terminal.parser.registerCsiHandler({ prefix: "?", final: "l" }, asked(false));
+        this.terminal.parser.registerCsiHandler({ intermediates: "!", final: "p" }, reset);
+        this.terminal.parser.registerEscHandler({ final: "c" }, reset);
     }
 
     /** As many columns and rows as the node has room for. */
@@ -135,10 +165,13 @@ export class TerminalNode {
      * The mouse at [column], [row] (from 0) of the terminal, [button] as the DOM numbers them: told to the program in it
      * when it asked for the mouse, in the way it asked (which xterm knows); nothing otherwise.
      */
-    mouse(action: "press" | "drag" | "release", button: number, row: number, column: number, held: { ctrl: boolean; alt: boolean; shift: boolean }) {
-        if (this.terminal.modes.mouseTrackingMode !== "none") {
-            this.report({ col: column, row, button: Math.min(button, MOUSE_NONE), action: MOUSE_ACTIONS[action], ...held });
-        }
+    mouse(action: "press" | "drag" | "release", button: number, row: number, column: number, held: Held) {
+        const mode = this.terminal.modes.mouseTrackingMode;
+        const wanted = mode === "x10" ? action === "press" : mode === "vt200" ? action !== "drag" : mode !== "none";
+        const cell = `${row} ${column}`;
+        const again = action === "drag" && this.dragged === cell;
+        this.dragged = action === "drag" ? cell : null;
+        if (wanted && !again && button <= 2) this.report(button + (action === "drag" ? MOUSE_DRAG : 0), action === "release", row, column, held);
     }
 
     /**
@@ -146,8 +179,9 @@ export class TerminalNode {
      * screen (less, tmux), which has nothing to scroll back through; otherwise it scrolls back through what was printed.
      */
     wheel(direction: "up" | "down", row: number, column: number) {
-        if (this.terminal.modes.mouseTrackingMode !== "none") {
-            this.report({ col: column, row, button: MOUSE_WHEEL, action: direction === "up" ? 0 : 1, ctrl: false, alt: false, shift: false });
+        const mode = this.terminal.modes.mouseTrackingMode;
+        if (mode !== "none" && mode !== "x10") {
+            this.report(direction === "up" ? WHEEL_UP : WHEEL_DOWN, false, row, column, NOTHING_HELD);
         } else if (this.terminal.buffer.active.type === "alternate") {
             const arrow = `\x1b${this.terminal.modes.applicationCursorKeysMode ? "O" : "["}${direction === "up" ? "A" : "B"}`;
             this.type(arrow.repeat(WHEEL_LINES));
@@ -156,15 +190,24 @@ export class TerminalNode {
         }
     }
 
-    // xterm encodes what a program asked to be told of the mouse only for the mouse over its own element, which is not
-    // seen here: its core's mouse service is asked directly. Not public: a newer xterm may move it, and then the mouse is lost.
-    private report(event: { col: number; row: number; button: number; action: number; ctrl: boolean; alt: boolean; shift: boolean }) {
-        type Core = { _core: { coreMouseService: { triggerMouseEvent(e: object): boolean } } };
-        try {
-            (this.terminal as unknown as Core)._core.coreMouseService.triggerMouseEvent(event);
-        } catch {
-            // no such service: the program is told nothing
-        }
+    /**
+     * Tell the program of the mouse at [row], [column] (from 0): [code] is the button, the wheel's direction, and a drag, as
+     * reports number them; [released] for a button let go. xterm tells of the mouse only over its own element, which is not
+     * seen here, so the report is made here, in the way the program asked for. A cell further than that way can tell of is not told.
+     */
+    private report(code: number, released: boolean, row: number, column: number, held: Held) {
+        const modifiers = this.terminal.modes.mouseTrackingMode === "x10" ? 0 : (held.shift ? 4 : 0) + (held.alt ? 8 : 0) + (held.ctrl ? 16 : 0);
+        const x = column + 1;
+        const y = row + 1;
+        const button = (released && this.encoding !== "sgr" ? MOUSE_RELEASED : code) + modifiers;
+        const fits = Math.max(x, y) <= (MOUSE_FURTHEST[this.encoding] ?? Infinity);
+        const characters = `\x1b[M${String.fromCharCode(button + 32, x + 32, y + 32)}`;
+        const report = this.encoding === "sgr" ? `\x1b[<${button};${x};${y}${released ? "m" : "M"}`
+            : this.encoding === "urxvt" ? `\x1b[${button + 32};${x};${y}M`
+            // the usual way is a byte each, not as UTF-8 would have them
+            : this.encoding === "x10" ? Buffer.from(characters, "latin1")
+            : characters;
+        if (fits && !this.ended) this.process.write(report);
     }
 
     /** The keys are the shell's from now on ([on]), or no longer. */
