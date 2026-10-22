@@ -1466,13 +1466,16 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             e.preventDefault();
             current((view) => inside(view, grid)?.leave());
         }
-        // Ctrl+Space in a node entered maximizes it, as entering it with Ctrl+Space would have; it is not theirs either
+        // Ctrl+Space in a node entered maximizes it, as entering it with Ctrl+Space would have, or one maximized back to its
+        // size, its zoom kept as when it is left; it is not theirs either
         if ((inTerminal !== null || editing !== null) && e.key === " " && e.ctrlKey) {
             // not even to the listeners of the window: a key a test sends goes to it
             e.stopImmediatePropagation();
             e.preventDefault();
-            if (inTerminal !== null) inTerminal = { ...inTerminal, maximized: true };
-            if (editing !== null) editing = { ...editing, maximized: true };
+            const was = inTerminal ?? editing;
+            if (was?.maximized === true) leftMaximized(was.id);
+            if (inTerminal !== null) inTerminal = { ...inTerminal, maximized: !inTerminal.maximized };
+            if (editing !== null) editing = { ...editing, maximized: !editing.maximized };
             page.repaint();
         }
     }, true);
