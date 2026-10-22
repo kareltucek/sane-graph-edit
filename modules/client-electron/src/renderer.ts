@@ -96,6 +96,12 @@ function canvasColour(nodes: string): string {
     const towards = isLight(nodes) ? 0 : 255;
     return "#" + rgb.map((c) => Math.round(c + (towards - c) * CANVAS_CONTRAST).toString(16).padStart(2, "0")).join("");
 }
+
+/** The colour halfway between [a] and [b]. */
+function halfway(a: string, b: string): string {
+    const to = channels(b);
+    return "#" + channels(a).map((c, i) => Math.round((c + to[i]) / 2).toString(16).padStart(2, "0")).join("");
+}
 const CORNER_RADIUS = 2;
 
 /** Neovim's status line has at least this many columns, however long the name of the file in it. */
@@ -561,13 +567,16 @@ function viewOf(n: SceneNode, scene: View): View {
     return { scale, offsetX: scene.offsetX + n.x * (scene.scale - scale), offsetY: scene.offsetY + n.y * (scene.scale - scale) };
 }
 
-/** Draw [n]. Text too small to read is left out, unless [smallText]: a picture that is kept is not made again for being small. */
 /** How strong a faint node is drawn. */
 const FAINT = 0.5;
 /** How big the corners of a selected node that is resized by them are drawn, in pixels. */
 const GRIP_PX = 7;
 
-function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number, smallText = false) {
+/**
+ * Draw [n]. Text too small to read is left out, unless [smallText]: a picture that is kept is not made again for being small.
+ * One [entered] (being edited, or its terminal has the keys) is outlined as a selected one, halfway to its background.
+ */
+function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: number, smallText = false, entered = false) {
     const view = viewOf(n, scene);
     const scale = view.scale;
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * view.offsetX, dpr * view.offsetY);
@@ -585,9 +594,10 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
     }
     ctx.fillStyle = n.bg ?? colours().background;
     ctx.fill();
-    ctx.strokeStyle = ink;
+    // its selection is not what is worked with while it is entered
+    ctx.strokeStyle = entered ? halfway(ink, n.bg ?? colours().background) : ink;
     // a selected node's outline stays visible however far out the view is zoomed
-    ctx.lineWidth = n.selected ? Math.max(2, 2.2 / scale) : 1;
+    ctx.lineWidth = n.selected || entered ? Math.max(2, 2.2 / scale) : 1;
     ctx.stroke();
     // the node being edited has its editor where the text would be, once that shows
     const shown = (smallText || n.fontSize * scale >= MIN_TEXT_PX) && !(n.id === editing?.id && editing.editor.shown);
@@ -604,7 +614,7 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
         contentsOf(n, grid).filter((it) => it.top <= seen.bottom && it.top + it.height >= seen.top).forEach((it) => drawContent(it, view, dpr));
         ctx.restore();
     }
-    if (n.manual && n.selected) {
+    if (n.manual && n.selected && !entered) {
         // where it is taken to be resized
         const grip = GRIP_PX / scale;
         ctx.fillStyle = ink;
@@ -1269,6 +1279,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     graphScene = view.scene() as Scene;
     const scene = enlarged(view, graphScene, width, height, grid);
     const maximized = maximizedIn(view);
+    const entered = editing?.id ?? (inTerminal?.view === view ? inTerminal.id : null);
     // In 3D mode the graph is drawn with depth on the canvas below, and this one, clear, has only what is laid over the graph:
     // the node being edited with its editor, a maximized terminal, and the selection box.
     const threeD = view.threeD;
@@ -1332,7 +1343,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
             const halfHeight = n.height * n.depthScale / 2;
             return inView(scene, width, height, n.x - halfWidth, n.y - halfHeight, n.x + halfWidth, n.y + halfHeight, outline);
         })
-        .forEach((n) => drawNode(n, grid, scene, dpr));
+        .forEach((n) => drawNode(n, grid, scene, dpr, false, n.id === entered));
     // each node set its own
     ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     if (!threeD && scene.shells.length > 0) {
