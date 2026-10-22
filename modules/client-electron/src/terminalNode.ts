@@ -72,8 +72,8 @@ export class TerminalNode {
     private pasting = false;
     /** What the terminal shows, as it was last asked for, and in which colours; null once it shows something else. */
     private painted: { colours: string; painting: TerminalPainting } | null = null;
-    /** The rows painted last, by [hashOf] how they looked, and in which colours. */
-    private looks: { colours: string; rows: Map<number, Look[]> } = { colours: "", rows: new Map() };
+    /** The rows painted last, by [hashOf] how they looked and as they were shown, and in which colours. */
+    private looks: { colours: string; rows: Map<number, Look[]>; shown: Look[] } = { colours: "", rows: new Map(), shown: [] };
 
     /** [onEnd] is told when the shell is gone, by itself or because this was closed; [changed] when what the terminal shows is other than it was. */
     constructor(host: HTMLElement, private readonly onEnd: () => void, private readonly changed: () => void) {
@@ -139,7 +139,7 @@ export class TerminalNode {
         if (this.painted === null || this.painted.colours !== colours) {
             const buffer = this.terminal.buffer.active;
             const range = this.ordered();
-            const before = this.looks.colours === colours ? this.looks.rows : new Map<number, Look[]>();
+            const before = this.looks.colours === colours ? this.looks : { rows: new Map<number, Look[]>(), shown: [] };
             const looks = Array.from({ length: this.terminal.rows }, (_, y): Look => {
                 const at = buffer.viewportY + y;
                 const line = buffer.getLine(at);
@@ -149,13 +149,16 @@ export class TerminalNode {
                 const from = range === null || at < range[0].row || at > range[1].row ? -1 : at === range[0].row ? range[0].column : 0;
                 const to = range === null || from === -1 ? -1 : at === range[1].row ? range[1].column : this.terminal.cols - 1;
                 const also = [cursor, from, to];
-                const hash = raw === null ? 0 : hashOf(raw, also);
-                const seen = raw === null ? undefined : before.get(hash)?.find((it) => it.raw !== null && same(it.raw, raw) && it.also.every((v, i) => v === also[i]));
+                const alike = (it: Look | undefined) => it !== undefined && it.raw !== null && raw !== null && same(it.raw, raw) && it.also.every((v, i) => v === also[i]);
+                // the row where it was first: unless what is shown scrolled, that is the one, and no hash is needed
+                const there = alike(before.shown[y]) ? before.shown[y] : undefined;
+                const hash = there?.hash ?? (raw === null ? 0 : hashOf(raw, also));
+                const seen = there ?? (raw === null ? undefined : before.rows.get(hash)?.find(alike));
                 return seen ?? { hash, raw: raw === null ? null : copied(raw), also, ...this.paintedRow(line, foreground, background, cursor, from, to) };
             });
             const rows = new Map<number, Look[]>();
             looks.filter((it) => it.raw !== null).forEach((it) => rows.set(it.hash, [...(rows.get(it.hash) ?? []), it]));
-            this.looks = { colours, rows };
+            this.looks = { colours, rows, shown: looks };
             this.painted = { colours, painting: { rows: looks.map((it) => it.cells), background, rowKeys: looks.map((it) => it.key) } };
         }
         return this.painted.painting;

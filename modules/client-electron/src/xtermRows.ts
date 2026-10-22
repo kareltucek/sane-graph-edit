@@ -33,17 +33,22 @@ export function rawRow(line: IBufferLine): RawRow | null {
     return ours ? { data: (data as Uint32Array).subarray(0, line.length * CELL_SIZE), extras: `${combined}\u0002${extended}` } : null;
 }
 
+// Loops, not reduce or every: these go through every number of every row shown, and a call for each costs several times as much.
+
 /** A number for [row] with [also], the same for rows that are the same. */
 export function hashOf(row: RawRow, also: number[]): number {
-    const mixed = (hash: number, value: number) => Math.imul(hash ^ value, 16777619);
-    const ofData = row.data.reduce(mixed, 2166136261);
-    const ofExtras = Array.from(row.extras, (c) => c.charCodeAt(0)).reduce(mixed, ofData);
-    return also.reduce(mixed, ofExtras) >>> 0;
+    let hash = 2166136261;
+    for (let i = 0; i < row.data.length; i++) hash = Math.imul(hash ^ row.data[i], 16777619);
+    for (let i = 0; i < row.extras.length; i++) hash = Math.imul(hash ^ row.extras.charCodeAt(i), 16777619);
+    for (let i = 0; i < also.length; i++) hash = Math.imul(hash ^ also[i], 16777619);
+    return hash >>> 0;
 }
 
 /** Whether rows [a] and [b] are the same. */
 export function same(a: RawRow, b: RawRow): boolean {
-    return a.data.length === b.data.length && a.extras === b.extras && a.data.every((value, i) => value === b.data[i]);
+    let equal = a.data.length === b.data.length && a.extras === b.extras;
+    for (let i = 0; equal && i < a.data.length; i++) equal = a.data[i] === b.data[i];
+    return equal;
 }
 
 /** [row] kept as it is now: xterm changes its numbers in place. */
