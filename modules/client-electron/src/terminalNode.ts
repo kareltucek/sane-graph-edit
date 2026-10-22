@@ -45,6 +45,9 @@ const NOTHING_HELD: Held = { ctrl: false, alt: false, shift: false };
 /** How many lines a turn of the wheel scrolls back through what was printed. */
 const WHEEL_LINES = 3;
 
+/** How many looks of rows painted lately are kept, by their hash: what scrolling back and forth shows again is not read again. As much as xterm scrolls back (1000), and more. */
+const KEPT_LOOKS = 2000;
+
 /** What a terminal shows, and for each row what it looks like, as one string: two rows that look alike have the same. */
 export interface TerminalPainting extends Painting {
     rowKeys: string[];
@@ -72,7 +75,7 @@ export class TerminalNode {
     private pasting = false;
     /** What the terminal shows, as it was last asked for, and in which colours; null once it shows something else. */
     private painted: { colours: string; painting: TerminalPainting } | null = null;
-    /** The rows painted last, by [hashOf] how they looked and as they were shown, and in which colours. */
+    /** The rows painted lately, by [hashOf] how they looked, the last used last; those shown last, as they were; and in which colours. */
     private looks: { colours: string; rows: Map<number, Look[]>; shown: Look[] } = { colours: "", rows: new Map(), shown: [] };
 
     /** [onEnd] is told when the shell is gone, by itself or because this was closed; [changed] when what the terminal shows is other than it was. */
@@ -131,15 +134,15 @@ export class TerminalNode {
 
     /**
      * What the terminal shows now, cell by cell, in [foreground] on [background] where the shell names no colours. The same
-     * object until it shows something else. A row that looks as one did the last time (where it was, or elsewhere when what
-     * is shown scrolled) is taken from then, as xterm keeps it ([rawRow]), without reading its cells again.
+     * object until it shows something else. A row that looks as one did lately (where it was the last time, or elsewhere when
+     * what is shown scrolled) is taken from then, as xterm keeps it ([rawRow]), without reading its cells again.
      */
     painting(foreground: string, background: string): TerminalPainting {
         const colours = `${foreground} ${background}`;
         if (this.painted === null || this.painted.colours !== colours) {
             const buffer = this.terminal.buffer.active;
             const range = this.ordered();
-            const before = this.looks.colours === colours ? this.looks : { rows: new Map<number, Look[]>(), shown: [] };
+            const before = this.looks.colours === colours ? this.looks : { colours, rows: new Map<number, Look[]>(), shown: [] };
             const looks = Array.from({ length: this.terminal.rows }, (_, y): Look => {
                 const at = buffer.viewportY + y;
                 const line = buffer.getLine(at);
@@ -156,8 +159,15 @@ export class TerminalNode {
                 const seen = there ?? (raw === null ? undefined : before.rows.get(hash)?.find(alike));
                 return seen ?? { hash, raw: raw === null ? null : copied(raw), also, ...this.paintedRow(line, foreground, background, cursor, from, to) };
             });
-            const rows = new Map<number, Look[]>();
-            looks.filter((it) => it.raw !== null).forEach((it) => rows.set(it.hash, [...(rows.get(it.hash) ?? []), it]));
+            // those shown now are the last used; over [KEPT_LOOKS], those used longest ago are let go of
+            const rows = before.rows;
+            looks.filter((it) => it.raw !== null).forEach((it) => {
+                const alike = rows.get(it.hash) ?? [];
+                rows.delete(it.hash);
+                rows.set(it.hash, alike.includes(it) ? alike : [...alike, it]);
+            });
+            const oldest = rows.keys();
+            while (rows.size > KEPT_LOOKS) rows.delete(oldest.next().value!);
             this.looks = { colours, rows, shown: looks };
             this.painted = { colours, painting: { rows: looks.map((it) => it.cells), background, rowKeys: looks.map((it) => it.key) } };
         }
