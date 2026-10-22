@@ -105,29 +105,34 @@ class PointerInput(private val view: EditorView) {
      * A node that has a size of its own ([ManualSize]) being resized
      * by a corner: the corner opposite to the one taken is [fixed],
      * the one taken is from it towards [towards] (1 or -1 each way).
-     * [before] is what the node's size and place were, for undo.
+     * [before] is what the node's size and place were, for undo. In 3D
+     * mode, where a place of the screen is not one of the graph, the
+     * node is resized around its middle where it is [seen], and stays
+     * where it is.
      */
-    private class Resizing(val node: Node, val fixed: Vector2, val towards: Vector2, val before: Pair<String?, Vector2>)
+    private class Resizing(val node: Node, val fixed: Vector2, val towards: Vector2, val before: Pair<String?, Vector2>, val seen: Apparent?)
 
     private var resizing: Resizing? = null
 
-    /** The corner at [pos], of a node that is resized by its corners; not in 3D mode, where a place of the screen is not one of the graph. */
+    /** The corner at [pos], of a node that is resized by its corners: where the node appears, in 3D mode. */
     private fun cornerAt(pos: Vector2): Resizing? {
         val reach = GRIP_PIXELS / view.viewTransform.scale
         val corners = listOf(Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1))
-        val sized = if (view.viewTransform.threeD) emptyList() else view.g.visibleNodes().filter { ManualSize.of(it) != null }
-        return sized.firstNotNullOfOrNull { n ->
+        val threeD = view.viewTransform.threeD
+        return view.g.visibleNodes().filter { ManualSize.of(it) != null }.firstNotNullOfOrNull { n ->
             val half = n.cache.shapeBounds / 2
-            corners.firstOrNull { (n.position + half * it - pos).length() <= reach }
-                ?.let { Resizing(n, n.position - half * it, it, n.attributes.other[ManualSize.ATTRIBUTE] to n.position) }
+            val seen = if (threeD) view.apparent(n) else Apparent(n.position, 1.0)
+            seen?.let { s -> corners.firstOrNull { (s.position + half * s.scale * it - pos).length() <= reach } }
+                ?.let { Resizing(n, n.position - half * it, it, n.attributes.other[ManualSize.ATTRIBUTE] to n.position, seen.takeIf { threeD }) }
         }
     }
 
     private fun resize(by: Resizing, pos: Vector2) {
-        val asked = (pos - by.fixed) * by.towards
+        val seen = by.seen
+        val asked = if (seen == null) (pos - by.fixed) * by.towards else (pos - seen.position) * by.towards * (2.0 / seen.scale)
         val size = Vector2(asked.x.coerceAtLeast(ManualSize.SMALLEST), asked.y.coerceAtLeast(ManualSize.SMALLEST))
         by.node.attributes.other[ManualSize.ATTRIBUTE] = ManualSize.write(size)
-        by.node.position = by.fixed + by.towards * size / 2
+        if (seen == null) by.node.position = by.fixed + by.towards * size / 2
         view.g.needsRecomputing(by.node)
         view.repaint()
     }

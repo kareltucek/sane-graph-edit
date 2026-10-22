@@ -224,7 +224,8 @@ A node is as big as its text ("auto") unless it was given a size of
 its own ("manual", in the picker): then it keeps that size whatever
 is in it, and what does not fit is cut off. A selected manual node
 shows its corners; dragging one resizes the node, the opposite corner
-staying where it is (not in 3D mode). Back to "auto" in the picker.
+staying where it is (in 3D mode the node stays where it is, and grows
+or shrinks around its middle). Back to "auto" in the picker.
 In the file it is the attribute `node-size="320x200"`, width and
 height in the graph's units.
 
