@@ -45,8 +45,11 @@ const NOTHING_HELD: Held = { ctrl: false, alt: false, shift: false };
 /** How many lines a turn of the wheel scrolls back through what was printed. */
 const WHEEL_LINES = 3;
 
-/** How many looks of rows painted lately are kept, by their hash: what scrolling back and forth shows again is not read again. As much as xterm scrolls back (1000), and more. */
-const KEPT_LOOKS = 2000;
+/** How many times as many looks of rows painted lately as the terminal has rows are kept, by their hash: what scrolling back and forth shows again is not read again. */
+const KEPT_SCREENS = 5;
+
+/** How many lines printed are kept to scroll back to. */
+const SCROLLBACK = 10000;
 
 /** What a terminal shows, and for each row what it looks like, as one string: two rows that look alike have the same. */
 export interface TerminalPainting extends Painting {
@@ -83,7 +86,7 @@ export class TerminalNode {
         // there for the keys, and not to be seen
         this.element.style.cssText = "position: fixed; left: 0; top: 0; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;";
         host.appendChild(this.element);
-        this.terminal = new Terminal({ cols: 80, rows: 24 });
+        this.terminal = new Terminal({ cols: 80, rows: 24, scrollback: SCROLLBACK });
         this.terminal.open(this.element);
         // loaded here, not bundled: node-pty is native code
         const pty: typeof import("node-pty") = require("node-pty");
@@ -159,7 +162,7 @@ export class TerminalNode {
                 const seen = there ?? (raw === null ? undefined : before.rows.get(hash)?.find(alike));
                 return seen ?? { hash, raw: raw === null ? null : copied(raw), also, ...this.paintedRow(line, foreground, background, cursor, from, to) };
             });
-            // those shown now are the last used; over [KEPT_LOOKS], those used longest ago are let go of
+            // those shown now are the last used; over [KEPT_SCREENS] of them, those used longest ago are let go of
             const rows = before.rows;
             looks.filter((it) => it.raw !== null).forEach((it) => {
                 const alike = rows.get(it.hash) ?? [];
@@ -167,7 +170,7 @@ export class TerminalNode {
                 rows.set(it.hash, alike.includes(it) ? alike : [...alike, it]);
             });
             const oldest = rows.keys();
-            while (rows.size > KEPT_LOOKS) rows.delete(oldest.next().value!);
+            while (rows.size > KEPT_SCREENS * this.terminal.rows) rows.delete(oldest.next().value!);
             this.looks = { colours, rows, shown: looks };
             this.painted = { colours, painting: { rows: looks.map((it) => it.cells), background, rowKeys: looks.map((it) => it.key) } };
         }
