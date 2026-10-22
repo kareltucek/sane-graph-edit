@@ -112,6 +112,9 @@ class JsApp internal constructor(private val client: EditorClient, private val m
                 override fun startNodeEdit(nodeId: String, screenClick: Vector2?) {
                     if (isCurrent()) page.editNode(nodeId, screenClick != null, screenClick?.x ?: 0.0, screenClick?.y ?: 0.0)
                 }
+                override fun startMaximized(nodeId: String) {
+                    if (isCurrent()) page.enterMaximized(nodeId)
+                }
                 override fun endNodeEdit() {
                     if (isCurrent()) page.endEdit()
                 }
@@ -199,6 +202,7 @@ class JsApp internal constructor(private val client: EditorClient, private val m
  * `room()` — as text, a line for each surface of the room a headset is in (`:room`); `roomMock()` — make a room up, and the same;
  * `editNode(id, atClick, x, y)` — let the user edit the node's text, with the caret at the view position x, y if `atClick`;
  * `endEdit()` — close that editor;
+ * `enterMaximized(id)` — give the keys to the terminal of the node, shown as big as the window lets it while it has them;
  * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`;
  * `showLine(text)` — show the `:` line holding `text`, the caret at its end, and give it the keys; `hideLine()`;
  * `showMessage(text)` — show `text` (several lines) until the user dismisses it; `hideMessage()`;

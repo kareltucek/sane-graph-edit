@@ -1483,6 +1483,7 @@ class KeyMapper(
             "=" to "detail-more",
             "<Space>" to "edit-node",
             "<S-Space>" to "select-and-edit-node",
+            "<C-Space>" to "enter-maximized",
 
             // Filtering
             "h" to "hide",

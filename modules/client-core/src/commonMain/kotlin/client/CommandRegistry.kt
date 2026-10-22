@@ -101,6 +101,7 @@ fun registerEditingCommands() {
     r.register("view-front") { impl.viewFront(it) }
     r.register("edit-node") { impl.editNode(it, false) }
     r.register("select-and-edit-node") { impl.editNode(it, true) }
+    r.register("enter-maximized") { impl.enterMaximized(it) }
 
     // Filtering
     r.register("hide") { impl.hideSelected(it) }

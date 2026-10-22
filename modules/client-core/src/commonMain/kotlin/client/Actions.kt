@@ -668,6 +668,13 @@ object Actions {
         }
     }
 
+    /** Go into the terminal of the last active node as big as the window lets it; any other node is edited as by [editNode]. */
+    fun enterMaximized(graphView: EditorView) {
+        graphView.g.lastActiveNode?.let { n ->
+            if (NodeType.of(n).kind == NodeType.Kind.Terminal) graphView.startMaximized(n.id) else graphView.startNodeEdit(n, null)
+        }
+    }
+
     fun deleteNode(graphView: EditorView, reconnectNodes: Boolean) {
         val g = graphView.g
         val sel = g.selectedNodes.toList()
