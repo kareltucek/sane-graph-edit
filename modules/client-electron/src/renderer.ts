@@ -782,6 +782,9 @@ let inTerminal: { view: client.JsView; id: string; maximized: boolean } | null =
 let maximizedZoom: number | null = null;
 let keptZoom: (zoom: number) => void = () => {};
 
+/** How far a notch of the wheel turns in a DOM event, as the client core takes it too. */
+const WHEEL_NOTCH_PX = 100;
+
 /** How much bigger a notch of Ctrl+wheel makes the text of a maximized node. */
 const ZOOM_STEP = 1.1;
 
@@ -1473,13 +1476,15 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         current((view) => {
             const at = inside(view, grid);
             const cell = at?.cellAt(x(e), y(e)) ?? { row: 0, column: 0 };
+            // while drawing is slow, several notches come as one event: as many steps as it has, and at least one
+            const steps = e.deltaY === 0 ? 0 : Math.max(1, Math.round(Math.abs(e.deltaY) / WHEEL_NOTCH_PX));
             // Ctrl+wheel in a maximized node makes its text bigger or smaller, and so its rows and columns fewer or more
             const shown = lastScene?.nodes.find((n) => n.id === maximizedIn(view));
             if (e.ctrlKey && shown !== undefined && lastScene !== null) {
-                if (e.deltaY !== 0) maximizedZoom = lastScene.scale * shown.depthScale * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+                maximizedZoom = lastScene.scale * shown.depthScale * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP) ** steps;
                 page.repaint();
             } else if (at?.wheel) {
-                if (e.deltaY !== 0) at.wheel(e.deltaY < 0 ? "up" : "down", cell);
+                Array.from({ length: steps }, () => at.wheel?.(e.deltaY < 0 ? "up" : "down", cell));
             } else view.wheel(x(e), y(e), e.deltaY);
         });
     }, { passive: false });
