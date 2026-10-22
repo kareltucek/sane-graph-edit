@@ -44,6 +44,13 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
 
     /** Directory shown when the view is a [FileTree] (`:browse`, `gf` on a directory). */
     var browseDir: Path? = null
+        set(value) {
+            field = value
+            browsedNodes = view.g.nodes.size
+        }
+
+    /** How many nodes the [FileTree] has: with one added or deleted, the view is an untitled graph of the user's ([edited]). */
+    private var browsedNodes = 0
 
     /** What of which text file is shown when the view is a [SourceView] (a link to one). */
     var sourceView: FileLink.Target? = null
@@ -121,6 +128,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         // our own changes repaint where they are made; these are other clients', undo and reload
         doc?.onChange = { local ->
             if (watching) FileContent.reconcile(view)
+            if (local) edited()
             if (!local) view.repaint()
         }
         doc?.onInfo = {
@@ -425,6 +433,21 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         untitledName = null
         shell.stateChanged()
         view.repaint()
+    }
+
+    /** The user changed the graph: a [FileTree] with a node added or deleted is no more one, but an untitled graph to save. */
+    private fun edited() {
+        if (browseDir != null && view.g.nodes.size != browsedNodes) {
+            browseDir = null
+            untitledName = null
+            shell.stateChanged()
+        }
+    }
+
+    /** The view is of [path], a file not there yet: saving makes it, as `:e` of a new file in vim. */
+    fun startNew(path: Path) {
+        currentFile = path.toAbsolutePath().normalize()
+        shell.stateChanged()
     }
 
     /** Replace the graph with the [FileTree] of [dir], cut to fit the view; it is laid out around the middle of the view. */

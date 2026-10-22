@@ -177,6 +177,8 @@ class Tabs(
         return when {
             Fs.isDirectory(path) -> browse(path)
             text -> add(Graph(), null).also { it.content.showSourceInPlace(FileLink.Target(path.toAbsolutePath().normalize(), null)) }
+            // a graph file not there yet: an empty graph, which saving makes it
+            !Fs.exists(path) && path.name.endsWith(".dot") -> add(Graph(), null).also { it.content.startNew(path) }
             else -> add(Graph(), path)
         }.also { if (!Fs.isDirectory(path)) AppState.lastOpenDir = path.toAbsolutePath().getParent() }
     }

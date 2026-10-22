@@ -7,6 +7,7 @@ import editor.EditorCore
 import editor.EditorHub
 import editor.FileStore
 import graph_tools.AddNodeCommand
+import graph_tools.MoveNodesCommand
 import graph_tools.Node
 import sync.Event
 import sync.Request
@@ -110,11 +111,22 @@ class KeptGraphsTest {
     @Test
     fun `what the application made is left without asking, and not kept`() {
         val view = tabs.browse(dir)
-        change(view)
+        val moved = view.g.nodes.first()
+        view.g.commit(MoveNodesCommand(view.g, mapOf(moved to moved.position), mutableMapOf(moved to moved.position + Vector2(10, 0))))
         follow(view, "b.dot")
         assertEquals(b, view.content.currentFile)
         assertEquals(emptyList(), questions)
         assertEquals(emptyList(), view.content.unsavedKept())
+    }
+
+    @Test
+    fun `a browse graph with a node added or deleted is an untitled graph of the user's`() {
+        val view = tabs.browse(dir)
+        change(view)
+        assertEquals(null, view.content.browseDir)
+        assertEquals("*(untitled)", view.content.title)
+        follow(view, "b.dot")
+        assertEquals(1, view.content.unsavedKept().size)
     }
 
     @Test

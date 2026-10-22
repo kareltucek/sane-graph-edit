@@ -13,7 +13,7 @@ import utils.Vector2
  * to the right. Every node carries a `link` ([FileLink]) to its
  * path, so `gf` opens a `.dot` or `.md` file or browses a directory.
  * A `help` node above the browsed directory links to the built-in
- * help graph.
+ * help graph; the one below it says how to start a graph instead.
  *
  * Only directories and [SHOWN] files are shown, hidden entries
  * (`.git`, …) are skipped. The scan is breadth-first and stops after
@@ -44,6 +44,9 @@ object FileTree {
     private val dirColor = Rgb(0xDBE9F6)
     private val currentDirColor = Rgb(0x8FB8E0)
     private val helpColor = Rgb(0xF6EFC4)
+
+    /** Below the browsed directory: `i` selects all of the graph, `d` deletes it, and the view is a graph of the user's ([ViewContent]). */
+    const val START_NODE = "press id to delete\nthis browse graph\nand start editing"
     private const val COLUMN_GAP = 40.0
     private const val ROW_GAP = 8.0
 
@@ -109,8 +112,11 @@ object FileTree {
         }
         g.add(help)
         g.add(Edge(chain.last(), help))
+        val start = Node(START_NODE, Vector2(0, 0)).also { it.attributes.bg = helpColor }
+        g.add(start)
+        g.add(Edge(chain.last(), start))
 
-        val fits = layout(g, chain, help, files, dirs, available)
+        val fits = layout(g, chain, help, start, files, dirs, available)
         g.lastActiveNode = chain.last()
         return Rendered(g, fits)
     }
@@ -168,7 +174,7 @@ object FileTree {
      * the directory's first row, and so do the subdirectories'
      * blocks; a directory is centred on its subdirectories (or its
      * files); the ancestor chain is on the browsed directory's row,
-     * [help] is right above the browsed directory.
+     * [help] is right above the browsed directory, [start] right below.
      *
      * True if the graph fits [available]: it is then centred on the
      * origin, otherwise the browsed directory is — a fresh tab's
@@ -178,6 +184,7 @@ object FileTree {
         g: Graph,
         chain: List<Node>,
         help: Node,
+        start: Node,
         files: Map<Node, List<Node>>,
         dirs: Map<Node, List<Node>>,
         available: Vector2,
@@ -187,6 +194,7 @@ object FileTree {
         val column = mutableMapOf<Node, Int>()
         chain.forEachIndexed { i, n -> column[n] = i }
         column[help] = chain.lastIndex
+        column[start] = chain.lastIndex
         fun assignColumns(n: Node) {
             files[n].orEmpty().forEach { f -> column[f] = column.getValue(n) + 1 }
             dirs[n].orEmpty().forEach { d -> column[d] = column.getValue(n) + 2; assignColumns(d) }
@@ -213,6 +221,7 @@ object FileTree {
         placeRows(chain.last(), 0)
         chain.dropLast(1).forEach { y[it] = y.getValue(chain.last()) }
         y[help] = y.getValue(chain.last()) - rowHeight
+        y[start] = y.getValue(chain.last()) + rowHeight
 
         val centre = { n: Node -> Vector2(columnLeft[column.getValue(n)] + size(n).x / 2, y.getValue(n)) }
         val topLeft = g.nodes.map { centre(it) - size(it) / 2 }.reduce(Vector2::min)
