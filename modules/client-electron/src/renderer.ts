@@ -670,8 +670,8 @@ function inView(scene: Scene, width: number, height: number, x1: number, y1: num
     return Math.max(x1, x2) >= left && Math.min(x1, x2) <= right && Math.max(y1, y2) >= top && Math.min(y1, y2) <= bottom;
 }
 
-/** The node whose text is being edited, and its editor. */
-let editing: { id: string; editor: NodeEditor | GridEditor } | null = null;
+/** The node whose text is being edited, and its editor; [maximized] when it is shown as big as the window lets it meanwhile. */
+let editing: { id: string; editor: NodeEditor | GridEditor; maximized: boolean } | null = null;
 
 /**
  * Which editor a node's text gets: neovim drawn by this page from
@@ -743,13 +743,16 @@ function textPlace(n: SceneNode, whole: Scene, grid: client.GridMetrics): Place 
     };
 }
 
-/** Open neovim on the node [id]; with [click] (a position in the view) the cursor goes to the character clicked. */
-function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
+/**
+ * Open neovim on the node [id]; with [click] (a position in the view) the cursor goes to the character clicked. A [maximized]
+ * one is shown as big as the window lets it while it is edited.
+ */
+function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, maximized = false) {
     // the click that asks for this also closed the editor that was open; that one tells its text first
     endEdit(view);
     // a terminal node has no text to edit: entering it is going to its shell
-    if (lastScene?.nodes.find((it) => it.id === id)?.type === "terminal") enterTerminal(view, id);
-    else (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click));
+    if (lastScene?.nodes.find((it) => it.id === id)?.type === "terminal") enterTerminal(view, id, maximized);
+    else (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click, maximized));
 }
 
 // --- terminal nodes: a shell in a terminal over the node, started when the node is first entered, running on afterwards ---
@@ -762,31 +765,41 @@ const terminals = new Map<client.JsView, Map<string, TerminalNode>>();
 let inTerminal: { view: client.JsView; id: string; maximized: boolean } | null = null;
 
 /**
- * The zoom a maximized terminal is shown at: as last left a terminal entered in the graph, or as set with Ctrl+wheel in a
- * maximized one; null before either. The user's whatever the workspace, kept by the client core ([client.JsApp.terminalZoom]).
+ * The zoom a maximized node (a terminal or an editor entered with Ctrl+Space) is shown at, as Ctrl+wheel in one sets it;
+ * null before any was, and then the view's. The user's whatever the workspace: kept by the client core
+ * ([client.JsApp.maximizedZoom]) when a maximized node is left.
  */
-let terminalZoom: number | null = null;
+let maximizedZoom: number | null = null;
 let keptZoom: (zoom: number) => void = () => {};
 
-function keepTerminalZoom(zoom: number) {
-    if (zoom !== terminalZoom) keptZoom(zoom);
-    terminalZoom = zoom;
-}
+/** How much bigger a notch of Ctrl+wheel makes the text of a maximized node. */
+const ZOOM_STEP = 1.1;
 
-/** How much bigger a notch of Ctrl+wheel makes the text of a maximized terminal. */
-const TERMINAL_ZOOM_STEP = 1.1;
-
-/** Pixels of the window left free around a maximized terminal, as around a node being edited. */
+/** Pixels of the window left free around a maximized node, as around a node being edited. */
 const MAXIMIZED_MARGIN = 40;
 
+/** The node of [view] that is maximized now: a terminal with the keys, or a node being edited; null when none is. */
+function maximizedIn(view: client.JsView): string | null {
+    return (inTerminal?.maximized === true && inTerminal.view === view ? inTerminal.id : null) ?? (editing?.maximized === true ? editing.id : null);
+}
+
+/** A maximized node [id] was left: the zoom it was shown at is kept. */
+function leftMaximized(id: string) {
+    const n = lastScene?.nodes.find((it) => it.id === id);
+    const zoom = n !== undefined && lastScene !== null ? lastScene.scale * n.depthScale : null;
+    if (zoom !== null) keptZoom(zoom);
+    maximizedZoom = zoom ?? maximizedZoom;
+    page.repaint();
+}
+
 /**
- * [scene] with the terminal that is maximized, if any, as it is shown meanwhile: over the window but [MAXIMIZED_MARGIN],
- * in as many whole cells as fit there, its text as big as at [terminalZoom], the last thing drawn. The graph is not told.
+ * [scene] with the node that is maximized, if any, as it is shown meanwhile: over the window but [MAXIMIZED_MARGIN],
+ * in as many whole cells as fit there, its text as big as at [maximizedZoom], the last thing drawn. The graph is not told.
  */
 function enlarged(view: client.JsView, scene: Scene, width: number, height: number, grid: client.GridMetrics): Scene {
-    const which = inTerminal?.maximized === true && inTerminal.view === view ? inTerminal.id : null;
-    const n = scene.nodes.find((it) => it.id === which && it.type === "terminal");
-    const zoom = terminalZoom ?? scene.scale * (n?.depthScale ?? 1);
+    const which = maximizedIn(view);
+    const n = scene.nodes.find((it) => it.id === which);
+    const zoom = maximizedZoom ?? scene.scale * (n?.depthScale ?? 1);
     const fits = (room: number, cell: number) => n === undefined ? 0 : Math.max(1, Math.floor((room / zoom - n.fontSize) / (cell * n.fontSize)));
     const big = n === undefined ? undefined : {
         ...n,
@@ -826,14 +839,12 @@ function enterTerminal(view: client.JsView, id: string, maximized = false) {
     page.repaint();
 }
 
-/** The keys are the graph's again; the zoom a terminal entered in the graph was left at is what a maximized one is shown at. */
+/** The keys are the graph's again. */
 function leaveTerminal() {
     const was = inTerminal;
     inTerminal = null;
     if (was !== null) terminals.get(was.view)?.get(was.id)?.focus(false);
-    const n = was !== null && !was.maximized && terminals.get(was.view) === shownTerminals ? lastScene?.nodes.find((it) => it.id === was.id) : undefined;
-    if (n !== undefined && lastScene !== null) keepTerminalZoom(lastScene.scale * n.depthScale);
-    if (was?.maximized === true) page.repaint();
+    if (was?.maximized === true && terminals.get(was.view) === shownTerminals) leftMaximized(was.id);
 }
 
 /** What a terminal is sent for a key that is not a character, by the key's name. */
@@ -930,7 +941,7 @@ function sizeTerminals(view: client.JsView, scene: Scene, grid: client.GridMetri
     });
 }
 
-function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null) {
+function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, maximized: boolean) {
     const n = lastScene?.nodes.find((it) => it.id === id);
     const text = view.textToEdit(id);
     if (n === undefined || lastScene === null || text == null || editing !== null) return;
@@ -966,7 +977,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         });
         copy = editor.file;
         editor.statusColumns = Math.max(MIN_STATUS_COLUMNS, stripColumns() - (where === null ? 0 : Math.max(0, where.length - NODE_FILE.length)));
-        editing = { id, editor };
+        editing = { id, editor, maximized };
         if (editorLine.style.display !== "block") showEditorLine(null);
         showEditorLines(true);
     } else {
@@ -982,7 +993,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
             () => endEdit(view),
             () => page.repaint(),
         );
-        editing = { id, editor };
+        editing = { id, editor, maximized };
         editor.place(place);
     }
 }
@@ -1088,6 +1099,7 @@ function endEdit(view: client.JsView) {
     const was = editing;
     if (was !== null) {
         editing = null;
+        if (was.maximized) leftMaximized(was.id);
         showEditorLines(false);
         closing = was.editor.close().then((text) => {
             closing = null;
@@ -1256,7 +1268,7 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     if (pickerOpen()) markPickedType(view);
     graphScene = view.scene() as Scene;
     const scene = enlarged(view, graphScene, width, height, grid);
-    const maximized = inTerminal?.maximized === true ? inTerminal.id : null;
+    const maximized = maximizedIn(view);
     // In 3D mode the graph is drawn with depth on the canvas below, and this one, clear, has only what is laid over the graph:
     // the node being edited with its editor, a maximized terminal, and the selection box.
     const threeD = view.threeD;
@@ -1364,8 +1376,8 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
 
 function start(app: client.JsApp, grid: client.GridMetrics) {
     let scheduled = false;
-    terminalZoom = app.terminalZoom() ?? null;
-    keptZoom = (zoom) => app.keepTerminalZoom(zoom);
+    maximizedZoom = app.maximizedZoom() ?? null;
+    keptZoom = (zoom) => app.keepMaximizedZoom(zoom);
     /** Do [action] with the view the page shows now; there is none before the first tab. */
     const current = (action: (view: client.JsView) => void) => {
         const view = app.current();
@@ -1400,10 +1412,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.repaint = repaint;
     page.editNode = (id, atClick, x, y) => current((view) => editNode(view, grid, id, atClick ? { x, y } : null));
     page.endEdit = () => current((view) => endEdit(view));
-    page.enterMaximized = (id) => current((view) => {
-        endEdit(view);
-        enterTerminal(view, id, true);
-    });
+    page.enterMaximized = (id) => current((view) => editNode(view, grid, id, null, true));
     page.tabs = () => showTabs(app);
     page.cacheStats = () => cacheStats(grid, app.current()?.threeD ?? false);
     page.room = roomText;
@@ -1453,10 +1462,10 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         current((view) => {
             const at = inside(view, grid);
             const cell = at?.cellAt(x(e), y(e)) ?? { row: 0, column: 0 };
-            // Ctrl+wheel in a maximized terminal makes its text bigger or smaller, and so its rows and columns fewer or more
-            const shown = lastScene?.nodes.find((n) => n.id === inTerminal?.id);
-            if (inTerminal?.maximized === true && e.ctrlKey && shown !== undefined && lastScene !== null) {
-                if (e.deltaY !== 0) keepTerminalZoom(lastScene.scale * shown.depthScale * (e.deltaY < 0 ? TERMINAL_ZOOM_STEP : 1 / TERMINAL_ZOOM_STEP));
+            // Ctrl+wheel in a maximized node makes its text bigger or smaller, and so its rows and columns fewer or more
+            const shown = lastScene?.nodes.find((n) => n.id === maximizedIn(view));
+            if (e.ctrlKey && shown !== undefined && lastScene !== null) {
+                if (e.deltaY !== 0) maximizedZoom = lastScene.scale * shown.depthScale * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
                 page.repaint();
             } else if (at?.wheel) {
                 if (e.deltaY !== 0) at.wheel(e.deltaY < 0 ? "up" : "down", cell);

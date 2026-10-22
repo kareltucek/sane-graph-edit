@@ -8,10 +8,10 @@ package client
  */
 class GlobalState(private val file: Path = Fs.configDir.resolve("global.properties")) {
 
-    /** The zoom a maximized terminal is shown at; null before one was kept. */
-    var terminalZoom: Double?
-        get() = read()[TERMINAL_ZOOM]?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
-        set(value) = write(TERMINAL_ZOOM, value?.toString())
+    /** The zoom a maximized node (a terminal or an editor) is shown at; null before one was kept. */
+    var maximizedZoom: Double?
+        get() = read()[MAXIMIZED_ZOOM]?.toDoubleOrNull()?.takeIf { it.isFinite() && it > 0 }
+        set(value) = write(MAXIMIZED_ZOOM, value?.toString())
 
     private fun read(): Map<String, String> =
         try {
@@ -33,6 +33,6 @@ class GlobalState(private val file: Path = Fs.configDir.resolve("global.properti
     }
 
     companion object {
-        private const val TERMINAL_ZOOM = "terminalZoom"
+        private const val MAXIMIZED_ZOOM = "maximizedZoom"
     }
 }

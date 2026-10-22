@@ -27,7 +27,7 @@ interface Renderer {
     /** Let the user edit the node's text in place; [screenClick] is where to put the caret. */
     fun startNodeEdit(nodeId: String, screenClick: Vector2?)
 
-    /** Go into the terminal of the node, shown as big as the window lets it while it has the keys; without terminals, as [startNodeEdit]. */
+    /** As [startNodeEdit], the node shown as big as the window lets it while it has the keys; where nothing is, just that. */
     fun startMaximized(nodeId: String) = startNodeEdit(nodeId, null)
 
     fun endNodeEdit()
@@ -99,6 +99,13 @@ class EditorView(
         FileContent.entering(this, n)
         g.ensureCachesFresh()
         startNodeEdit(n.id, screenClick)
+    }
+
+    /** As [startNodeEdit], the node shown as big as the window lets it meanwhile. */
+    fun startMaximized(n: Node) {
+        FileContent.entering(this, n)
+        g.ensureCachesFresh()
+        startMaximized(n.id)
     }
 
     init {

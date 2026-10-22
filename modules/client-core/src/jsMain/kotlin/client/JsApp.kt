@@ -190,11 +190,11 @@ class JsApp internal constructor(private val client: EditorClient, private val m
 
     private val global = GlobalState()
 
-    /** The zoom a maximized terminal is shown at, the user's whatever the workspace; null before one was kept. */
-    fun terminalZoom(): Double? = global.terminalZoom
+    /** The zoom a maximized node is shown at, the user's whatever the workspace; null before one was kept. */
+    fun maximizedZoom(): Double? = global.maximizedZoom
 
-    fun keepTerminalZoom(zoom: Double) {
-        global.terminalZoom = zoom
+    fun keepMaximizedZoom(zoom: Double) {
+        global.maximizedZoom = zoom
     }
 }
 
@@ -211,7 +211,7 @@ class JsApp internal constructor(private val client: EditorClient, private val m
  * `room()` — as text, a line for each surface of the room a headset is in (`:room`); `roomMock()` — make a room up, and the same;
  * `editNode(id, atClick, x, y)` — let the user edit the node's text, with the caret at the view position x, y if `atClick`;
  * `endEdit()` — close that editor;
- * `enterMaximized(id)` — give the keys to the terminal of the node, shown as big as the window lets it while it has them;
+ * `enterMaximized(id)` — as `editNode(id, false, 0, 0)`, the node shown as big as the window lets it while it has the keys;
  * `setting(name, value)` — the user's init file sets something that is the page's own, e.g. `nvim-theme`;
  * `showLine(text)` — show the `:` line holding `text`, the caret at its end, and give it the keys; `hideLine()`;
  * `showMessage(text)` — show `text` (several lines) until the user dismisses it; `hideMessage()`;

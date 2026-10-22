@@ -216,7 +216,7 @@ Flags:
 | `1`        | Centre view on selection                                  |
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |
-| `Ctrl+Space` | Enter a terminal node maximized (below); any other node as `Space` |
+| `Ctrl+Space` | Same as `Space`, the node shown maximized (below) meanwhile |
 
 ### How big a node is: `node-size`
 
@@ -258,13 +258,13 @@ tmux), sends it ↑ and ↓. A drag with `Shift` selects text whatever
 the program asks, and the selection is what the middle button pastes
 (the primary selection); the middle button pastes it into the
 terminal too, in one whose program does not ask for the mouse, or
-with `Shift`. Entered with `Ctrl+Space`, the terminal is shown over
-the whole window but a margin, with as many columns and rows as fit
-there, until the keys go back to the graph; then it is the node's
-size again, and the graph never changed. Its text is as big as when
-you last gave the keys back from a terminal entered with `Space`, and
-`Ctrl`+wheel in it makes it bigger or smaller; that zoom is yours,
-kept in `~/.config/sane-graph-edit/global.properties`. It ends when the
+with `Shift`. Entered with `Ctrl+Space`, a terminal, as any node
+edited so, is shown over the whole window but a margin, with as many
+columns and rows as fit there, until the keys go back to the graph;
+then it is the node's size again, and the graph never changed.
+`Ctrl`+wheel in it makes its text bigger or smaller; the zoom it was
+left at is yours for the next one, kept in
+`~/.config/sane-graph-edit/global.properties`. It ends when the
 shell exits, the node is removed or the window closes. Nothing of it
 is saved, and opening a file starts nothing: the document only says
 that the node is a terminal. What the terminal shows is drawn in the
