@@ -1,6 +1,7 @@
-import { Terminal } from "@xterm/xterm";
+import { type IBufferLine, Terminal } from "@xterm/xterm";
 import type { IPty } from "node-pty";
 import type { PaintedCell, Painting } from "./gridEditor";
+import { copied, hashOf, rawRow, type RawRow, same } from "./xtermRows";
 
 // A terminal node: the user's shell in a terminal as big as the node. The shell is started when the node is first entered
 // and then goes on, shown and running, whether the keys are the node's or the graph's; it ends when the shell does, when
@@ -49,6 +50,12 @@ export interface TerminalPainting extends Painting {
     rowKeys: string[];
 }
 
+/**
+ * A row as painted: as xterm kept it ([raw]; null when that could not be had), with [also] the cursor's column and the
+ * selected columns in it, the [hash] of both, its cells and its key ([TerminalPainting.rowKeys]).
+ */
+type Look = { hash: number; raw: RawRow | null; also: number[]; cells: PaintedCell[]; key: string };
+
 export class TerminalNode {
     private readonly element = document.createElement("div");
     private readonly terminal: Terminal;
@@ -65,6 +72,8 @@ export class TerminalNode {
     private pasting = false;
     /** What the terminal shows, as it was last asked for, and in which colours; null once it shows something else. */
     private painted: { colours: string; painting: TerminalPainting } | null = null;
+    /** The rows painted last, by [hashOf] how they looked, and in which colours. */
+    private looks: { colours: string; rows: Map<number, Look[]> } = { colours: "", rows: new Map() };
 
     /** [onEnd] is told when the shell is gone, by itself or because this was closed; [changed] when what the terminal shows is other than it was. */
     constructor(host: HTMLElement, private readonly onEnd: () => void, private readonly changed: () => void) {
@@ -120,43 +129,59 @@ export class TerminalNode {
         }
     }
 
-    /** What the terminal shows now, cell by cell, in [foreground] on [background] where the shell names no colours. The same object until it shows something else. */
+    /**
+     * What the terminal shows now, cell by cell, in [foreground] on [background] where the shell names no colours. The same
+     * object until it shows something else. A row that looks as one did the last time (where it was, or elsewhere when what
+     * is shown scrolled) is taken from then, as xterm keeps it ([rawRow]), without reading its cells again.
+     */
     painting(foreground: string, background: string): TerminalPainting {
         const colours = `${foreground} ${background}`;
         if (this.painted === null || this.painted.colours !== colours) {
             const buffer = this.terminal.buffer.active;
-            // one cell read again and again: a new one for each would be a lot of them
-            const reused = buffer.getNullCell();
-            const colour = (rgb: boolean, palette: boolean, value: number, usual: string) =>
-                rgb ? `#${value.toString(16).padStart(6, "0")}` : palette ? PALETTE[value] ?? usual : usual;
-            const rowKeys: string[] = [];
             const range = this.ordered();
-            const selected = (row: number, column: number) => range !== null &&
-                (row > range[0].row || (row === range[0].row && column >= range[0].column)) &&
-                (row < range[1].row || (row === range[1].row && column <= range[1].column));
-            const rows = Array.from({ length: this.terminal.rows }, (_, y) => {
-                const line = buffer.getLine(buffer.viewportY + y);
-                let key = "";
-                const row = Array.from({ length: this.terminal.cols }, (_, x): PaintedCell => {
-                    const cell = line?.getCell(x, reused);
-                    const fg = cell === undefined ? foreground : colour(cell.isFgRGB(), cell.isFgPalette(), cell.getFgColor(), foreground);
-                    const bg = cell === undefined ? background : colour(cell.isBgRGB(), cell.isBgPalette(), cell.getBgColor(), background);
-                    // the cursor, while the keys are the shell's, and what is selected: the cell the other way around
-                    const cursor = this.focused && buffer.viewportY === buffer.baseY && x === buffer.cursorX && y === buffer.cursorY;
-                    const turned = ((cell !== undefined && cell.isInverse() !== 0) !== cursor) !== selected(buffer.viewportY + y, x);
-                    const bold = cell !== undefined && cell.isBold() !== 0;
-                    const italic = cell !== undefined && cell.isItalic() !== 0;
-                    const underline = cell !== undefined && cell.isUnderline() !== 0;
-                    const text = cell?.getChars() || " ";
-                    key += `${text}\u0001${fg}\u0001${bg}\u0001${turned ? 1 : 0}${bold ? 1 : 0}${italic ? 1 : 0}${underline ? 1 : 0}`;
-                    return { text, foreground: turned ? bg : fg, background: turned ? fg : bg, bold, italic, underline };
-                });
-                rowKeys.push(key);
-                return row;
+            const before = this.looks.colours === colours ? this.looks.rows : new Map<number, Look[]>();
+            const looks = Array.from({ length: this.terminal.rows }, (_, y): Look => {
+                const at = buffer.viewportY + y;
+                const line = buffer.getLine(at);
+                const raw = line === undefined ? null : rawRow(line);
+                // where in it the cursor is, while the keys are the shell's, and what of it is selected
+                const cursor = this.focused && buffer.viewportY === buffer.baseY && y === buffer.cursorY ? buffer.cursorX : -1;
+                const from = range === null || at < range[0].row || at > range[1].row ? -1 : at === range[0].row ? range[0].column : 0;
+                const to = range === null || from === -1 ? -1 : at === range[1].row ? range[1].column : this.terminal.cols - 1;
+                const also = [cursor, from, to];
+                const hash = raw === null ? 0 : hashOf(raw, also);
+                const seen = raw === null ? undefined : before.get(hash)?.find((it) => it.raw !== null && same(it.raw, raw) && it.also.every((v, i) => v === also[i]));
+                return seen ?? { hash, raw: raw === null ? null : copied(raw), also, ...this.paintedRow(line, foreground, background, cursor, from, to) };
             });
-            this.painted = { colours, painting: { rows, background, rowKeys } };
+            const rows = new Map<number, Look[]>();
+            looks.filter((it) => it.raw !== null).forEach((it) => rows.set(it.hash, [...(rows.get(it.hash) ?? []), it]));
+            this.looks = { colours, rows };
+            this.painted = { colours, painting: { rows: looks.map((it) => it.cells), background, rowKeys: looks.map((it) => it.key) } };
         }
         return this.painted.painting;
+    }
+
+    /** The cells of [line], and what they look like as one string, the cursor at column [cursor] and [from] to [to] selected (-1: none). */
+    private paintedRow(line: IBufferLine | undefined, foreground: string, background: string, cursor: number, from: number, to: number): { cells: PaintedCell[]; key: string } {
+        // one cell read again and again: a new one for each would be a lot of them
+        const reused = this.terminal.buffer.active.getNullCell();
+        const colour = (rgb: boolean, palette: boolean, value: number, usual: string) =>
+            rgb ? `#${value.toString(16).padStart(6, "0")}` : palette ? PALETTE[value] ?? usual : usual;
+        let key = "";
+        const cells = Array.from({ length: this.terminal.cols }, (_, x): PaintedCell => {
+            const cell = line?.getCell(x, reused);
+            const fg = cell === undefined ? foreground : colour(cell.isFgRGB(), cell.isFgPalette(), cell.getFgColor(), foreground);
+            const bg = cell === undefined ? background : colour(cell.isBgRGB(), cell.isBgPalette(), cell.getBgColor(), background);
+            // the cursor and what is selected: the cell the other way around
+            const turned = ((cell !== undefined && cell.isInverse() !== 0) !== (x === cursor)) !== (x >= from && x <= to && from !== -1);
+            const bold = cell !== undefined && cell.isBold() !== 0;
+            const italic = cell !== undefined && cell.isItalic() !== 0;
+            const underline = cell !== undefined && cell.isUnderline() !== 0;
+            const text = cell?.getChars() || " ";
+            key += `${text}\u0001${fg}\u0001${bg}\u0001${turned ? 1 : 0}${bold ? 1 : 0}${italic ? 1 : 0}${underline ? 1 : 0}`;
+            return { text, foreground: turned ? bg : fg, background: turned ? fg : bg, bold, italic, underline };
+        });
+        return { cells, key };
     }
 
     /** As if the user had typed [data]. */
