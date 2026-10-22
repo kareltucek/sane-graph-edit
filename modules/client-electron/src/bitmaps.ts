@@ -93,15 +93,15 @@ export class Bitmaps {
         const bitmap = { image: canvas.transferToImageBitmap(), scale };
         this.kept.set(key, { bitmap, pixels: pixelWidth * pixelHeight });
         this.pixels += pixelWidth * pixelHeight;
-        // the one just made stays, whatever it takes
-        [...this.kept.keys()].slice(0, -1).every((old) => {
-            const over = this.pixels > MAX_KEPT_PIXELS;
-            if (over) {
-                this.release(this.kept.get(old)!);
-                this.kept.delete(old);
-            }
-            return over;
-        });
+        // those used longest ago first, from the start and only as far as needed (a copy of all the keys for each drawing made
+        // took long with thousands kept); the one just made stays, whatever it takes
+        const oldest = this.kept.keys();
+        let old = oldest.next();
+        while (this.pixels > MAX_KEPT_PIXELS && !old.done && old.value !== key) {
+            this.release(this.kept.get(old.value)!);
+            this.kept.delete(old.value);
+            old = oldest.next();
+        }
         return bitmap;
     }
 

@@ -782,11 +782,11 @@ let inTerminal: { view: client.JsView; id: string; maximized: boolean } | null =
 let maximizedZoom: number | null = null;
 let keptZoom: (zoom: number) => void = () => {};
 
-/** How far a notch of the wheel turns in a DOM event, as the client core takes it too. */
-const WHEEL_NOTCH_PX = 100;
+/** How far a notch of the wheel turns in a DOM event (Chromium on Linux, as measured). */
+const WHEEL_NOTCH_PX = 120;
 
 /** How much bigger a notch of Ctrl+wheel makes the text of a maximized node. */
-const ZOOM_STEP = 1.1;
+const ZOOM_STEP = 1.05;
 
 /** Pixels of the window left free around a maximized node, as around a node being edited. */
 const MAXIMIZED_MARGIN = 40;
