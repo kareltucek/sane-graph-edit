@@ -262,6 +262,8 @@ with `Shift`. Entered with `Ctrl+Space`, a terminal, as any node
 edited so, is shown over the whole window but a margin, with as many
 columns and rows as fit there, until the keys go back to the graph;
 then it is the node's size again, and the graph never changed.
+`Ctrl+Space` in a node already entered maximizes it the same way (the
+key is then not the shell's or neovim's).
 `Ctrl`+wheel in it makes its text bigger or smaller; the zoom it was
 left at is yours for the next one, kept in
 `~/.config/sane-graph-edit/global.properties`. It ends when the

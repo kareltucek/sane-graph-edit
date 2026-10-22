@@ -1459,12 +1459,21 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     window.addEventListener("keydown", (e) => {
         if (e.metaKey || e.key === "Meta" || e.key === "OS") e.stopImmediatePropagation();
     }, true);
-    // before a terminal or neovim has the key: Shift+Escape gives the keys back to the graph, and is not theirs
+    // before a terminal or neovim has the key: Shift+Escape gives the keys back to the graph, and is not theirs; nor Ctrl+Space
     window.addEventListener("keydown", (e) => {
         if ((inTerminal !== null || editing !== null) && e.key === "Escape" && e.shiftKey) {
             e.stopPropagation();
             e.preventDefault();
             current((view) => inside(view, grid)?.leave());
+        }
+        // Ctrl+Space in a node entered maximizes it, as entering it with Ctrl+Space would have; it is not theirs either
+        if ((inTerminal !== null || editing !== null) && e.key === " " && e.ctrlKey) {
+            // not even to the listeners of the window: a key a test sends goes to it
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            if (inTerminal !== null) inTerminal = { ...inTerminal, maximized: true };
+            if (editing !== null) editing = { ...editing, maximized: true };
+            page.repaint();
         }
     }, true);
 
