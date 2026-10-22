@@ -264,7 +264,7 @@ there, until the keys go back to the graph; then it is the node's
 size again, and the graph never changed. Its text is as big as when
 you last gave the keys back from a terminal entered with `Space`, and
 `Ctrl`+wheel in it makes it bigger or smaller; that zoom is yours,
-kept in `~/.config/sane-graph-edit/terminal-zoom`. It ends when the
+kept in `~/.config/sane-graph-edit/global.properties`. It ends when the
 shell exits, the node is removed or the window closes. Nothing of it
 is saved, and opening a file starts nothing: the document only says
 that the node is a terminal. What the terminal shows is drawn in the

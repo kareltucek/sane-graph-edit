@@ -761,28 +761,16 @@ function editNode(view: client.JsView, grid: client.GridMetrics, id: string, cli
 const terminals = new Map<client.JsView, Map<string, TerminalNode>>();
 let inTerminal: { view: client.JsView; id: string; maximized: boolean } | null = null;
 
-/** Where the zoom a terminal is worked at is kept: the user's, for all graphs. */
-const TERMINAL_ZOOM_FILE = require("path").join(process.env.XDG_CONFIG_HOME || require("path").join(require("os").homedir(), ".config"), "sane-graph-edit", "terminal-zoom");
-
-/** The zoom a maximized terminal is shown at: as last left a terminal entered in the graph, or as set with Ctrl+wheel in a maximized one; null before either. */
+/**
+ * The zoom a maximized terminal is shown at: as last left a terminal entered in the graph, or as set with Ctrl+wheel in a
+ * maximized one; null before either. The user's whatever the workspace, kept by the client core ([client.JsApp.terminalZoom]).
+ */
 let terminalZoom: number | null = null;
-try {
-    const read = Number(require("fs").readFileSync(TERMINAL_ZOOM_FILE, "utf8").trim());
-    terminalZoom = Number.isFinite(read) && read > 0 ? read : null;
-} catch {
-    // none kept yet
-}
+let keptZoom: (zoom: number) => void = () => {};
 
 function keepTerminalZoom(zoom: number) {
-    const fs: typeof import("fs") = require("fs");
-    const changed = zoom !== terminalZoom;
+    if (zoom !== terminalZoom) keptZoom(zoom);
     terminalZoom = zoom;
-    try {
-        if (changed) fs.mkdirSync(require("path").dirname(TERMINAL_ZOOM_FILE), { recursive: true });
-        if (changed) fs.writeFileSync(TERMINAL_ZOOM_FILE, `${zoom}\n`);
-    } catch (e) {
-        console.error(`the terminal zoom could not be kept in ${TERMINAL_ZOOM_FILE}: ${e}`);
-    }
 }
 
 /** How much bigger a notch of Ctrl+wheel makes the text of a maximized terminal. */
@@ -1376,6 +1364,8 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
 
 function start(app: client.JsApp, grid: client.GridMetrics) {
     let scheduled = false;
+    terminalZoom = app.terminalZoom() ?? null;
+    keptZoom = (zoom) => app.keepTerminalZoom(zoom);
     /** Do [action] with the view the page shows now; there is none before the first tab. */
     const current = (action: (view: client.JsView) => void) => {
         const view = app.current();

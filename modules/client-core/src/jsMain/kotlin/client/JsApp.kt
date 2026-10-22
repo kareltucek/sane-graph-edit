@@ -187,6 +187,15 @@ class JsApp internal constructor(private val client: EditorClient, private val m
 
     /** The user asked to close the window; true if it may go (nothing unsaved, or the user agreed to lose it). */
     fun quit(): Boolean = tabs.quitAll(force = false)
+
+    private val global = GlobalState()
+
+    /** The zoom a maximized terminal is shown at, the user's whatever the workspace; null before one was kept. */
+    fun terminalZoom(): Double? = global.terminalZoom
+
+    fun keepTerminalZoom(zoom: Double) {
+        global.terminalZoom = zoom
+    }
 }
 
 /**
