@@ -787,6 +787,8 @@ const WHEEL_NOTCH_PX = 120;
 
 /** How much bigger a notch of Ctrl+wheel makes the text of a maximized node. */
 const ZOOM_STEP = 1.05;
+/** How low, in pixels, Ctrl+wheel makes the lines of a maximized node at most. */
+const MIN_MAXIMIZED_LINE_PX = 5;
 
 /** Pixels of the window left free around a maximized node, as around a node being edited. */
 const MAXIMIZED_MARGIN = 40;
@@ -1478,10 +1480,12 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             const cell = at?.cellAt(x(e), y(e)) ?? { row: 0, column: 0 };
             // while drawing is slow, several notches come as one event: as many steps as it has, and at least one
             const steps = e.deltaY === 0 ? 0 : Math.max(1, Math.round(Math.abs(e.deltaY) / WHEEL_NOTCH_PX));
-            // Ctrl+wheel in a maximized node makes its text bigger or smaller, and so its rows and columns fewer or more
+            // Ctrl+wheel in a maximized node makes its text bigger or smaller, and so its rows and columns fewer or more; its lines
+            // are not made lower than [MIN_MAXIMIZED_LINE_PX]
             const shown = lastScene?.nodes.find((n) => n.id === maximizedIn(view));
             if (e.ctrlKey && shown !== undefined && lastScene !== null) {
-                maximizedZoom = lastScene.scale * shown.depthScale * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP) ** steps;
+                const lowest = MIN_MAXIMIZED_LINE_PX / (grid.lineHeight * shown.fontSize);
+                maximizedZoom = Math.max(lowest, lastScene.scale * shown.depthScale * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP) ** steps);
                 page.repaint();
             } else if (at?.wheel) {
                 Array.from({ length: steps }, () => at.wheel?.(e.deltaY < 0 ? "up" : "down", cell));
