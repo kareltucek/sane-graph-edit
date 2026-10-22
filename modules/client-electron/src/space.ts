@@ -312,6 +312,42 @@ function rgb(colour: string): [number, number, number] {
 }
 
 /**
+ * The corners of the selected nodes that have a size of their own, by which they are resized; made anew each frame, as
+ * there are few.
+ */
+class Grips {
+    private readonly geometry = new THREE.BufferGeometry();
+    /** Squares of a size in pixels, however far the node is; what is in front of them hides them, as it hides the node. */
+    readonly points = new THREE.Points(this.geometry, new THREE.PointsMaterial({ size: 1, sizeAttenuation: false, vertexColors: true }));
+    private corners: number[] = [];
+    private colours: number[] = [];
+
+    /** A frame begins, its corners [pixels] wide. */
+    begin(pixels: number) {
+        this.corners = [];
+        this.colours = [];
+        this.points.material.size = pixels;
+    }
+
+    /** The corners of a rectangle around the middle [x], [y], half [hw] wide and [hh] high, at depth [z], in [ink]. */
+    grip(x: number, y: number, hw: number, hh: number, z: number, ink: string) {
+        const [r, g, b] = rgb(ink);
+        // a little in front of the node, as a ring; here y is up and z towards the viewer
+        const front = -z + 0.5;
+        [[x - hw, y - hh], [x + hw, y - hh], [x - hw, y + hh], [x + hw, y + hh]].forEach(([cx, cy]) => {
+            this.corners.push(cx, -cy, front);
+            this.colours.push(r, g, b);
+        });
+    }
+
+    end() {
+        this.geometry.setAttribute("position", new THREE.Float32BufferAttribute(this.corners, 3));
+        this.geometry.setAttribute("color", new THREE.Float32BufferAttribute(this.colours, 3));
+        this.points.visible = this.corners.length > 0;
+    }
+}
+
+/**
  * Rings around the selected nodes: lines, a pixel wide however far. One buffer for all, a slot of four segments for each
  * node that has a ring; each frame only a ring that changed (the node moved, was selected or no longer is) is written, and
  * only its slot is sent to the graphics card. A slot that is let go is drawn as nothing (all its ends at one point) and
@@ -551,6 +587,7 @@ export class SpaceRenderer<N extends SpaceNode> {
     private readonly walls = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: ROOM_COLOUR }));
     /** Rings around the selected nodes, drawn after them ([Rings]). */
     private readonly rings = new Rings();
+    private readonly grips = new Grips();
     private readonly shells = new Shells();
     /** For trying how fast it is without them (`SGE_NO_EDGES`): whether edges are drawn. */
     edgesShown = true;
@@ -576,6 +613,9 @@ export class SpaceRenderer<N extends SpaceNode> {
             line.renderOrder = 1e9 + 1;
             this.scene.add(line);
         });
+        this.grips.points.frustumCulled = false;
+        this.grips.points.renderOrder = 1e9 + 1;
+        this.scene.add(this.grips.points);
         this.scene.add(this.shells.lines);
     }
 
@@ -672,8 +712,12 @@ export class SpaceRenderer<N extends SpaceNode> {
         /** Whether [n] is to be ringed (it is selected), and in what colour. */
         ringed: (n: N) => boolean,
         inkOf: (n: N) => string,
+        /** Whether the corners [n] is resized by are shown, [gripPixels] wide. */
+        gripped: (n: N) => boolean,
+        gripPixels: number,
     ): boolean {
         this.rings.begin();
+        this.grips.begin(gripPixels);
         this.rings.pixels(pixelWidth, pixelHeight);
         this.frame++;
         // one pixel of the canvas for each of the screen's, as the flat canvas has it, or all of it is resampled
@@ -737,6 +781,7 @@ export class SpaceRenderer<N extends SpaceNode> {
             // a selected node is ringed with lines, a pixel wide however small it is seen (its outline in its picture would be
             // less); also when out of the view, so that its ring is not made again as the view moves
             if (ringed(n)) this.rings.ring(n.id, n.x, n.y, n.width / 2, n.height / 2, n.z, inkOf(n));
+            if (gripped(n)) this.grips.grip(n.x, n.y, n.width / 2, n.height / 2, n.z, inkOf(n));
             if (!inView) {
                 // not seen: nothing is worked out for it, and the picture of its own that it has is kept for when it is seen again
                 if (kept !== undefined) {
@@ -828,6 +873,7 @@ export class SpaceRenderer<N extends SpaceNode> {
         });
         this.small.end();
         this.rings.end();
+        this.grips.end();
         // e.g. after the colours changed: every picture is out of date at once
         if (behind && !this.filling) this.refill();
         this.pages.forEach((page) => {

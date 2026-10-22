@@ -614,19 +614,13 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
         contentsOf(n, grid).filter((it) => it.top <= seen.bottom && it.top + it.height >= seen.top).forEach((it) => drawContent(it, view, dpr));
         ctx.restore();
     }
-    if (n.manual && n.selected && !entered) drawGrips(n, scene, dpr);
+    if (n.manual && n.selected && !entered) {
+        // where it is taken to be resized
+        const grip = GRIP_PX / scale;
+        ctx.fillStyle = ink;
+        [[left, top], [left + n.width, top], [left, top + n.height], [left + n.width, top + n.height]].forEach(([x, y]) => ctx.fillRect(x - grip / 2, y - grip / 2, grip, grip));
+    }
     ctx.globalAlpha = 1;
-}
-
-/** The corners [n] is taken by to be resized, where it is seen ([viewOf]); in 3D mode, over the graph drawn with depth. */
-function drawGrips(n: SceneNode, scene: View, dpr: number) {
-    const view = viewOf(n, scene);
-    ctx.setTransform(dpr * view.scale, 0, 0, dpr * view.scale, dpr * view.offsetX, dpr * view.offsetY);
-    const grip = GRIP_PX / view.scale;
-    const left = n.x - n.width / 2;
-    const top = n.y - n.height / 2;
-    ctx.fillStyle = inkOf(n);
-    [[left, top], [left + n.width, top], [left, top + n.height], [left + n.width, top + n.height]].forEach(([x, y]) => ctx.fillRect(x - grip / 2, y - grip / 2, grip, grip));
 }
 
 /** A node of the graph drawn with depth: where the view sees it, and how far away. */
@@ -1329,6 +1323,9 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
             // a node entered as in the flat drawing: ringed, halfway to its background
             (n) => n.selected || n.id === entered,
             (n) => n.id === entered ? halfway(inkOf(n), n.bg ?? colours().background) : inkOf(n),
+            // the corners of the others, where they are with depth: what is in front of them hides them
+            (n) => n.manual && n.selected && n.id !== entered && n.id !== maximized,
+            GRIP_PX * dpr,
         );
         if (STAGE_TIMES !== undefined) {
             const s = spaceRenderer.spent;
@@ -1356,8 +1353,6 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
             return inView(scene, width, height, n.x - halfWidth, n.y - halfHeight, n.x + halfWidth, n.y + halfHeight, outline);
         })
         .forEach((n) => drawNode(n, grid, scene, dpr, false, n.id === entered));
-    // in 3D mode the corners of the others are laid over the graph drawn with depth
-    if (threeD) scene.nodes.filter((n) => n.manual && n.selected && n.id !== entered && n.id !== maximized).forEach((n) => drawGrips(n, scene, dpr));
     // each node set its own
     ctx.setTransform(dpr * scene.scale, 0, 0, dpr * scene.scale, dpr * scene.offsetX, dpr * scene.offsetY);
     if (!threeD && scene.shells.length > 0) {
