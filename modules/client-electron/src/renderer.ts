@@ -1320,8 +1320,9 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
             pictureKey, (n, pixelsPerUnit) => pictureOfNode(n, grid, pixelsPerUnit),
             // a selected node's outline stays visible however small it is
             (n, pixelsPerUnit) => ({ fill: n.bg ?? colours().background, ink: inkOf(n), outline: n.selected ? Math.max(2, 2.2 * dpr / pixelsPerUnit) : 1 }),
-            (n) => n.selected,
-            inkOf,
+            // a node entered as in the flat drawing: ringed, halfway to its background
+            (n) => n.selected || n.id === entered,
+            (n) => n.id === entered ? halfway(inkOf(n), n.bg ?? colours().background) : inkOf(n),
         );
         if (STAGE_TIMES !== undefined) {
             const s = spaceRenderer.spent;
