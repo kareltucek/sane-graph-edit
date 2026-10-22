@@ -34,7 +34,7 @@ internal class GridMeasurer(private val grid: GridMetrics) : TextMeasurer {
 }
 
 /** What a terminal node shows that has no text of its own while its shell is not running. */
-private const val TERMINAL_TEXT = "Terminal: click to activate, Ctrl+Space to maximize"
+private const val TERMINAL_TEXT = "Terminal: click or Space to activate, Ctrl+Space to maximize"
 
 /** One view of a document, for a renderer to draw and to feed the user's input to. */
 @JsExport
