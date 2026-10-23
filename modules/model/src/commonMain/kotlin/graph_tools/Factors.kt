@@ -19,6 +19,11 @@ object Factors {
 
     val ALL = 0..Int.MAX_VALUE
 
+    val NONE = IntRange.EMPTY
+
+    /** The levels that move at all; the others are not stepped (with `:set suns=<levels>`, those of both). */
+    val OPTIMIZED_LEVELS = ALL
+
     /** The edge spring. Not on systems: a path of them does not grow with its weight, and the graph shrank into a heap. */
     val EDGE_LEVELS = 0..0
 
@@ -45,14 +50,14 @@ object Factors {
 
     // ---- edge spring: pulls the two ends of an edge to a distance, and pushes them out to it -----------------------
     //
-    //   desiredDistance = (r_a + r_b) × s × degFactor(d) × 3D          (workspace units)
-    //   degFactor(d)    = 1 + PER_DEGREE × (d > 2 ? d + 1 : d)          (a plain number)
+    //   desiredDistance        = (r_a + r_b) × s × optimumLengthFactor(d) × 3D      (workspace units)
+    //   optimumLengthFactor(d) = max(COLLISION, COLLISION + PER_DEGREE × d)          (a plain number)
 
     /** How much longer an edge is for each edge of its busier end, in the plane: a part of (r_a + r_b) × s. */
     const val PER_DEGREE = 0.2
 
     /** The same in 3D mode. */
-    const val PER_DEGREE_IN_SPACE = 0.1
+    const val PER_DEGREE_IN_SPACE = PER_DEGREE
 
     // ---- rope (systems): pulls the suns of an edge's two systems back to its length, never pushes ---------------------
     //
@@ -83,7 +88,8 @@ object Factors {
     //     unrelated: none                                                                  → SEPARATION_UNRELATED
 
     /** How far apart nodes keep: in times (r_a + r_b), the distance at which they touch (at least 1: touching). */
-    const val COLLISION = 2.0
+    const val COLLISION = 1.4
+    const val COLLISION_STRENGTH = 2.0
 
     /** How far apart related ones keep: in times their collision distance (nodes) or (R_a + R_b) (systems). */
     const val SEPARATION_RELATED = 1.0
@@ -111,7 +117,7 @@ object Factors {
 
     // ---- systems ([Multilevel]): their size, and how many levels ----------------------------------------------------
     //
-    //   node:   ρ    = reach × max(max(COLLISION × s, 1), s × degFactor(own degree)) × 3D   (workspace units)
+    //   node:   ρ    = reach × max(max(COLLISION × s, 1), s × optimumLengthFactor(own degree)) × 3D   (workspace units)
     //           reach = √(w/2 × h/2); in 3D ∛(w/2 × h/2 × THICKNESS × min(w/2, h/2)), w, h the node's size
     //           room  = π ρ²; in 3D 4/3 π ρ³ (at least 1)                                       (square / cubic units)
     //   system: room  = PACKING × Σ rooms of its members
@@ -161,6 +167,12 @@ object Factors {
      * level's pace is also its say in the shape.
      */
     val LEVEL_PACE: (Int) -> Double = { level -> 1.0 / (level + 1) }
+
+    /**
+     * How long a step of the springs may take, in milliseconds (`o`: each level's step; settling after a drag): the nodes
+     * it does not get to wait for the next one. 0: no limit, every node every step.
+     */
+    const val STEP_BUDGET_MS = 0L
 
     /** Not `o` (Shift-drag, placing): the nodes rest when none moved further than this in a round, in workspace units. */
     const val SETTLED = 0.5

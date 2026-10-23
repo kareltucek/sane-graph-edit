@@ -86,14 +86,14 @@ object Multilevel {
     private fun mass(g: Graph, n: Node, depth: Boolean): Double {
         val reach = reach(n, depth)
         val degree = g.edgeMap[n].orEmpty().size.toDouble()
-        val spring = maxOf(LayoutOptimizer.impl.collisionReach(), LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(degree, depth))
+        val spring = maxOf(LayoutOptimizer.impl.collisionReach(), LayoutOptimizer.springScale * LayoutOptimizer.impl.optimumLengthFactor(degree, degree, depth))
         // a node not measured yet has no size: it still weighs something
         return roomOf(reach * spring * sparser(depth), depth).coerceAtLeast(1.0)
     }
 
-    /** How long the edge [e] of the nodes wants to be: (r_a + r_b) × s × degFactor × 3D, the way it lies left out. */
+    /** How long the edge [e] of the nodes wants to be: (r_a + r_b) × s × optimumLengthFactor × 3D, the way it lies left out. */
     private fun ideal(g: Graph, e: Edge, depth: Boolean): Double =
-        (reach(e.src, depth) + reach(e.dst, depth)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(g, e.src, e.dst, depth) * sparser(depth)
+        (reach(e.src, depth) + reach(e.dst, depth)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.optimumLengthFactor(g, e.src, e.dst, depth) * sparser(depth)
 
     /** Nodes by how far they are, the nearest first ([ropes]' searches); one pushed again nearer leaves its old entry, skipped. */
     private class Nearest {
@@ -405,8 +405,12 @@ object Multilevel {
             (1 until levels.size).forEach { i -> levels[i].nodes.forEach { n -> n.point = levels[i].sun.getValue(n).point } }
         }
 
-        /** The levels that move, the top first: [only] (`:set suns=<levels>`; for one higher than there are, the top one), or all. */
-        private val moving = (only?.map { it.coerceIn(0, levels.size - 1) }?.toSet() ?: levels.indices.toSet()).sortedDescending()
+        /**
+         * The levels that move, the top first: [only] (`:set suns=<levels>`; for one higher than there are, the top one), or all;
+         * of those, the ones in [Factors.OPTIMIZED_LEVELS].
+         */
+        private val moving = (only?.map { it.coerceIn(0, levels.size - 1) }?.toSet() ?: levels.indices.toSet())
+            .filter { it in Factors.OPTIMIZED_LEVELS }.sortedDescending()
 
         private val runs = moving.associateWith { runAt(it, past) }
 

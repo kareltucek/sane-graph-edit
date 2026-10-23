@@ -10,6 +10,9 @@ import utils.Utils.letIf
 import utils.Utils.orElse
 import utils.Vector2
 import utils.Vector2.Companion.Zero
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Please note that this implementation is very naive.
@@ -244,17 +247,28 @@ object LayoutOptimizer {
     }
 
     object impl {
-        fun degFactor(g: Graph, node: Node, other: Node, depth: Boolean = false): Double {
+        /* optimumCenterDistance = optimumEdgeLengthFactor * touchingDistance */
+        fun optimumLengthFactor(g: Graph, node: Node, other: Node, depth: Boolean = false): Double {
             val d1 = g.edgeMap[node]?.size.orElse(0).toDouble()
             val d2 = g.edgeMap[other]?.size.orElse(0).toDouble()
 
             // the busier end: a node with many children has them on a wider circle
-            return degFactor(kotlin.math.max(d1, d2), depth)
+            return optimumLengthFactor(max(d1, d2), min(d1, d2), depth)
         }
 
-        /** [degFactor] of an edge whose larger degree is [d] (of a node's mass: its own); in space with [depth]. */
-        fun degFactor(d: Double, depth: Boolean = false): Double =
-            1.0 + (if (depth) Factors.PER_DEGREE_IN_SPACE else Factors.PER_DEGREE) * (if (d > 2) d + 1 else d)
+        /** [optimumLengthFactor] of an edge whose larger degree is [maxDegree] (of a node's mass: its own); in space with [depth]. */
+        fun optimumLengthFactor(maxDegree: Double, minDegree: Double, depth: Boolean = false): Double {
+            val degreeFactor = if (depth) Factors.PER_DEGREE_IN_SPACE else Factors.PER_DEGREE
+
+            val squaredDegrees = (sqrt(maxDegree + 1) - 1 + sqrt(minDegree + 1) - 1)*1.5 
+            val minDegrees = if (minDegree <= 2.0) 0.0 else minDegree - 1.0
+            val maxDegrees = if (maxDegree <= 2.0) 0.0 else maxDegree - 1.0
+            val avgedDegrees = (minDegrees + maxDegrees) / 2.0
+
+            val appliedDegree = avgedDegrees
+
+            return max(Factors.COLLISION, Factors.COLLISION +  degreeFactor * avgedDegrees)
+        }
 
         fun computeBBSpring(g: Graph, node: Node, othr: Node, e: Edge, strength: Double = 1.0): Spring {
             val cn = (e.src == node).fold(e.cache.dstPt, e.cache.srcPt).let { +it - node.position }
@@ -262,11 +276,10 @@ object LayoutOptimizer {
             val c1 = listOf(cn, co).minBy { it.lengthSquared() }
             val c2 = listOf(cn, co).maxBy { it.lengthSquared() }
 
-            val f = degFactor(g, node, othr) // degree factor
+            val l = optimumLengthFactor(g, node, othr)
             val d = springScale // distance factor, tuneable via -/=
 
-            val desiredRelativeLocation =  - (c1 + c2) * d * f
-//            val desiredRelativeLocation =  - (c1 + c2)
+            val desiredRelativeLocation =  - (c1 + c2) * (d * l) 
             val desiredAbsoluteLocation = (node.position + othr.position + desiredRelativeLocation) / 2
             val diff = desiredAbsoluteLocation - node.position
 
@@ -417,12 +430,12 @@ object LayoutOptimizer {
             // together — edge attraction and unconnected-node
             // repulsion both change by the same factor.
             val distanceCf = collisionReach()
-            val desiredDistance = (c1 + c2).length() * distanceCf * strengthModulator
+            val desiredDistance = (c1 + c2).length() * distanceCf
 
             return if ((n - o).length() < desiredDistance) {
                 Spring(
                     n = node,
-                    v = (othr.position - (c1 + c2) * distanceCf * strengthModulator) - node.position
+                    v = ((othr.position - (c1 + c2) * distanceCf * strengthModulator) - node.position) * Factors.COLLISION_STRENGTH
                 )
             } else {
                 null

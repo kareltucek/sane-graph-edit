@@ -606,11 +606,8 @@ class GestureController(
         graphView.repaint()
     }
 
-    /**
-     * How long a step of the springs may take, in milliseconds ([Settling.Run]): with more nodes than fit, a part of them
-     * takes each step, moving for the others.
-     */
-    private val STEP_BUDGET = 50L
+    /** [graph_tools.Factors.STEP_BUDGET_MS] as [Settling.Run] takes it: null, no limit, for 0. */
+    private val stepBudget: Long? get() = graph_tools.Factors.STEP_BUDGET_MS.takeIf { it > 0 }
 
     /** Where the nodes seen were when the move in progress started ([captureMoveStart]); null outside one. */
     private var settleStart: Map<Node, Point3>? = null
@@ -655,7 +652,7 @@ class GestureController(
             // those that follow keep to where they were relative to the dragged nodes, however many generations down
             // in 3D mode in space: the springs may take nodes off the plane, and spread them across it
             Settling.Run(
-                g, shown, weight, close = true, firm = following, budget = STEP_BUDGET, clock = clock, depth = graphView.viewTransform.threeD,
+                g, shown, weight, close = true, firm = following, budget = stepBudget, clock = clock, depth = graphView.viewTransform.threeD,
                 gravity = true,
             ) { n ->
                 start[n]?.let { if (n in following) it + by() else it }
@@ -707,9 +704,15 @@ class GestureController(
         graphView.repaint()
     }
 
-    /** The systems to be drawn ([Multilevel.Systems.shells]), only with `:set suns`: while `o` lays out the whole graph by levels, those; else those made last. */
+    /**
+     * The systems to be drawn ([Multilevel.Systems.shells]), only with `:set suns`: while `o` lays out the whole graph by levels, those;
+     * else those made last. Of the levels `o` moves ([graph_tools.Factors.OPTIMIZED_LEVELS]) only.
+     */
     val shells: List<Multilevel.Shell>
-        get() = suns?.let { made -> ((laying as? Multilevel.Run)?.systems ?: made).shells().filter { sunsLevels?.contains(it.level) ?: true } }.orEmpty()
+        get() = suns?.let { made ->
+            ((laying as? Multilevel.Run)?.systems ?: made).shells()
+                .filter { (sunsLevels?.contains(it.level) ?: true) && it.level in graph_tools.Factors.OPTIMIZED_LEVELS }
+        }.orEmpty()
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null
@@ -740,8 +743,8 @@ class GestureController(
         val weight = { n: Node -> if (n in moving) importance(n) else Settling.FIXED }
         val depth = graphView.viewTransform.threeD
         // the whole graph by levels, all at once, or those of `:set suns=<levels>` alone
-        return if (whole) Multilevel.Run(g, shown, weight, importance, STEP_BUDGET, clock, depth, past, only = sunsLevels)
-        else Settling.Run(g, shown, weight, budget = STEP_BUDGET, clock = clock, depth = depth, rank = importance, adaptive = true).also { it.stir(moving, past) }
+        return if (whole) Multilevel.Run(g, shown, weight, importance, stepBudget, clock, depth, past, only = sunsLevels)
+        else Settling.Run(g, shown, weight, budget = stepBudget, clock = clock, depth = depth, rank = importance, adaptive = true).also { it.stir(moving, past) }
     }
 
     /**

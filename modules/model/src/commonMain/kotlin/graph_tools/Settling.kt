@@ -631,7 +631,7 @@ object Settling {
         /** [LayoutOptimizer.impl.computeBBSpring] in space: [n] to as far from [other] as the edge between them wants. */
         fun edge(g: Graph, n: Node, other: Node): Vector3 {
             val way = other.point - n.point
-            val wanted = (reach(n, way) + reach(other, -way)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.degFactor(g, n, other, depth = true) * Factors.SPARSER
+            val wanted = (reach(n, way) + reach(other, -way)) * LayoutOptimizer.springScale * LayoutOptimizer.impl.optimumLengthFactor(g, n, other, depth = true) * Factors.SPARSER
             return (way - way.toUnit() * wanted) / 2.0
         }
 
