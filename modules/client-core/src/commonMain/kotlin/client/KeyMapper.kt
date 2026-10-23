@@ -1227,7 +1227,7 @@ class KeyMapper(
             "cd <dir>                — switch the workspace (its own session of open tabs)",
             "cd                      — show the workspace directory",
             "e <path>                — open file, or a directory's file tree (new tab)",
-            "e                       — reload current file (asks if unsaved)",
+            "e                       — reload current file or file tree (asks if unsaved)",
             "e!                      — reload current file, discarding changes",
             "export <fmt> <path>     — write graph in <fmt> (svg|dot) to <path>",
             "export-selection <fmt> <path> — write selection in <fmt> (svg|dot)",

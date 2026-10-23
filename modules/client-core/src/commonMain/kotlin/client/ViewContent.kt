@@ -367,11 +367,15 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
      * it or another editor saved it. The reload is a step in the undo
      * history: undo brings back the graph as it was, unsaved changes
      * included. A changed graph still asks first unless [force] is
-     * set (`:e!`). The view keeps looking at the same spot.
+     * set (`:e!`). The view keeps looking at the same spot. A browse
+     * tab builds its [FileTree] anew.
      */
     fun reload(force: Boolean = false) {
         val path = currentFile
-        if (path == null) {
+        val dir = browseDir
+        if (path == null && dir != null) {
+            if (force || confirmDiscard("reload ${dir.name}")) rebrowse(dir)
+        } else if (path == null) {
             shell.alert("Reload", "This tab has no file to reload.", error = false)
         } else if (force || confirmDiscard("reload ${path.name}")) {
             try {
@@ -393,6 +397,17 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         val g = view.g
         g.commit(ReplaceContentCommand(g, g.content(), DotGraphLoader.loadFromFile(path.toString()).content()))
         dirty(false)
+    }
+
+    // the directory read again; the view stays where it was
+    private fun rebrowse(dir: Path) {
+        val transform = view.viewTransform.matrix.toList()
+        replaceGraph(FileTree.build(dir, view.size.takeIf { it.x > 0 && it.y > 0 } ?: FileTree.DEFAULT_SCREEN))
+        browseDir = dir
+        onceLoaded {
+            view.viewTransform.matrix = transform
+            view.repaint()
+        }
     }
 
     /** What the view shows: the file's full path, the browsed directory, the source lines, or its name. */

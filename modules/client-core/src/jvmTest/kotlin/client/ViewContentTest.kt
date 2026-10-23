@@ -65,6 +65,17 @@ class ViewContentTest {
     private fun EditorView.change() = g.commit(EditTextCommand(g, g.nodes.first(), g.nodes.first().attributes.text, "changed"))
 
     @Test
+    fun `e in a browse tab reads the directory again`() {
+        val view = viewOfA()
+        view.content.browseInPlace(dir)
+        dir.resolve("c.dot").writeText("digraph c {}\n")
+        view.content.reload()
+        assertTrue(view.g.nodes.any { it.attributes.text == "c.dot" }, view.g.nodes.map { it.attributes.text }.toString())
+        assertEquals(dir.toAbsolutePath().normalize(), view.content.browseDir)
+        assertEquals(emptyList(), shell.messages)
+    }
+
+    @Test
     fun `a link is followed without a question while nothing is unsaved`() {
         val view = viewOfA()
         assertTrue(view.content.followFileLink())
