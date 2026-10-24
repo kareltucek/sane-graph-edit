@@ -767,6 +767,12 @@ function editNode(view: client.JsView, grid: client.GridMetrics, id: string, cli
 
 // --- terminal nodes: a shell in a terminal over the node, started when the node is first entered, running on afterwards ---
 
+/** Whether the trigger of a headset on the node [id] goes into its terminal: of a terminal node already selected. */
+function entersTerminal(id: string): boolean {
+    const n = lastScene?.nodes.find((it) => it.id === id);
+    return n?.type === "terminal" && n.selected;
+}
+
 /**
  * The terminals of the nodes that were entered, by the view they are in and the node; and the one the keys go to, if any,
  * [maximized] when it is shown as big as the window lets it meanwhile.
@@ -899,6 +905,12 @@ let shownTerminals: Map<string, TerminalNode> | undefined;
  * shown at in headsets ([vrNodeScale]).
  */
 let tellLive: ((live: VrLive) => void) | null = null;
+
+/** Tells the headsets the editor closes ([startVr]); null while nothing serves them. */
+let vrExit: (() => void) | null = null;
+
+/** How long the window waits, closing, for the headsets to be told so. */
+const VR_EXIT_MS = 200;
 const LIVE_MS = 16;
 const liveWaiting = new Set<string>();
 let liveGrid: client.GridMetrics | null = null;
@@ -1358,12 +1370,11 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     if (!threeD && scene.shells.length > 0) {
         ctx.globalAlpha = SHELL_ALPHA;
         ctx.lineWidth = 1 / scene.scale;
-        const top = scene.shells.reduce((most, s) => Math.max(most, s.level), 0);
         const colourOf = shellColours(canvasColour(colours().background));
         scene.shells
             .filter((s) => inView(scene, width, height, s.x - s.radius, s.y - s.radius, s.x + s.radius, s.y + s.radius, 1))
             .forEach((s) => {
-                const [r, g, b] = colourOf(s, top);
+                const [r, g, b] = colourOf(s);
                 ctx.strokeStyle = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
                 ctx.beginPath();
                 ctx.arc(s.x, s.y, s.radius, 0, 2 * Math.PI);
@@ -1590,6 +1601,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     // `--vr <port>`: the graph of the tab shown, for a headset's browser ([vrServer])
     const vr = query.get("vr");
     if (vr !== null) {
+        client.setInVr(true);
         const token: string = require("crypto").randomBytes(16).toString("hex");
         // `--vr-lan` too: on the local network, for a headset without a cable
         const lan = query.get("vrLan") !== null;
@@ -1600,40 +1612,45 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             // what a headset says is only that: a node that is not there is not clicked
             click: (id: string, button: 0 | 2) => {
                 const view = app.current();
+                const entering = button === 0 && entersTerminal(id);
                 view?.clickNode(id, button);
-                // the trigger on a terminal node goes into it, as a click on the graph elsewhere leaves it: the keys are the window's
+                // the trigger on a terminal node selected goes into it (as the mouse does: the first click selects), as a click on
+                // the graph elsewhere leaves it: the keys are the window's
                 leaveTerminal();
-                if (view && button === 0 && lastScene?.nodes.find((it) => it.id === id)?.type === "terminal") enterTerminal(view, id);
+                if (view && entering) enterTerminal(view, id);
             },
-            move: (id: string, x: number, y: number, z: number) => app.current()?.dragNode(id, x, y, z),
+            move: (id: string, x: number, y: number, z: number, held: boolean) => app.current()?.dragNode(id, x, y, z, !held),
             follow: (id: string, letter: string) => app.current()?.followLink(id, letter),
             // as the keys of the window: Ctrl+O back, Ctrl+I forward
             jump: (back: boolean) => app.current()?.keyDown(back ? "o" : "i", true, false),
             explore: () => app.current()?.toggleExplore(),
+            walls: () => app.current()?.toggleWalls(),
             stand: (x: number, z: number, ax: number, az: number) => {
                 standing = [x, z, ax, az];
             },
             key: keyFromPage,
+            enters: entersTerminal,
         };
-        // what is typed in the headset: four digits, good for a few tries only. `--no-pin`: none is asked for, but only on this
-        // machine: on the local network anyone could come in
-        const asked = lan || query.get("vrNoPin") === null;
-        const pin = asked ? String(require("crypto").randomInt(10000)).padStart(4, "0") : null;
-        const give = pin === null ? "(no PIN is asked for)" : `and give the PIN ${pin}`;
-        const kept = lan && query.get("vrNoPin") !== null ? "\n--no-pin is not for the local network: the PIN is asked for." : "";
-        tellLive = startVr(Number(vr) || 0, token, pin, lan, source, (address, error) => {
+        // what is typed in the headset: four digits, good for a few tries only. `--no-pin`: none is asked for at the start; on the
+        // local network it is still asked for before a terminal node is gone into, which starts a shell
+        const atStart = query.get("vrNoPin") === null;
+        const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");
+        const give = atStart ? `and give the PIN ${pin}` : lan ? `(no PIN is asked for; to go into a terminal node: ${pin})` : "(no PIN is asked for)";
+        const served = startVr(Number(vr) || 0, token, pin, atStart, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
                 : lan
                     ? `VR: answering on the local network. With the headset on the same Wi-Fi, open in its browser\n    ${address}\n` +
-                        `go on past its warning about the certificate (this machine made it for itself), ${give}${kept}`
+                        `go on past its warning about the certificate (this machine made it for itself), ${give}`
                     : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\n` +
                         `open in the headset's browser\n    ${address}\n${give}`;
             // where the application was started from, and in the window
             process.stdout.write(`sane-graph-edit: ${text}\n`);
             showMessage(`${text}\n(Escape puts this away)`, false, true);
         });
+        tellLive = served.live;
+        vrExit = served.exit;
     }
 
     const play = query.get("play");
@@ -1763,7 +1780,11 @@ const page: {
     choose: (kind, name) => require("electron").ipcRenderer.sendSync("choose", kind, name),
     exit: () => {
         leaving = true;
-        window.close();
+        // the headsets are told first, and the message given the time to leave
+        if (vrExit !== null) {
+            vrExit();
+            setTimeout(() => window.close(), VR_EXIT_MS);
+        } else window.close();
     },
     status: (text) => {
         // a space keeps the line's height

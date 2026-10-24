@@ -108,7 +108,7 @@ object FileTree {
 
         val help = Node(FileLink.HELP_NODE, Vector2(0, 0)).also {
             it.attributes.bg = helpColor
-            it.attributes.other[FileLink.ATTRIBUTE] = FileLink.HELP
+            it.attributes.other[FileLink.ATTRIBUTE] = FileLink.helpLink
         }
         g.add(help)
         g.add(Edge(chain.last(), help))

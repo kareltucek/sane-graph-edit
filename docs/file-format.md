@@ -227,7 +227,9 @@ n4 [ label="docs"; link="/home/me/graphs/" ];
     the first that starts with it, else the first that has it; letter
     case does not matter.
   - `sge:help` is the built-in help, `sge:examples` the index of the
-    examples the application writes out when it starts.
+    examples the application writes out when it starts, `sge:vr-help`
+    what the controllers of a headset do (`--vr`; the help node of a
+    browsed directory leads there then).
 - Following, with exactly one node selected:
   - `g<letter>` follows `link-<letter>` in the current tab (a graph
     with unsaved changes is kept, `Ctrl+O` goes back to it; see the

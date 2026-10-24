@@ -80,6 +80,15 @@ object FileLink {
     /** Link value of the index of the examples the application carries ([HelpFiles]). */
     const val EXAMPLES = "sge:examples"
 
+    /** Link value of what the controllers of a headset do ([HelpFiles.vrControls]). */
+    const val VR_HELP = "sge:vr-help"
+
+    /** Whether a headset is served (`--vr`): the help nodes the application makes lead to [VR_HELP] instead of [HELP]. */
+    var inVr = false
+
+    /** Where a help node the application makes leads. */
+    val helpLink: String get() = if (inVr) VR_HELP else HELP
+
     /** Tab title of the help graph. */
     const val HELP_TITLE = "help"
 
@@ -131,7 +140,7 @@ object FileLink {
         val cut = anchorOf(link)?.first ?: listOf(link.lastIndexOf(':'), link.lastIndexOf('#')).filter(after).minOrNull() ?: link.length
         val path = link.substring(0, cut)
         val dir = { file: Path? -> file?.toAbsolutePath()?.getParent() ?: Workspace.dir }
-        val fixed = path.startsWith("/") || path == "~" || path.startsWith("~/") || link == HELP || link == EXAMPLES
+        val fixed = path.startsWith("/") || path == "~" || path.startsWith("~/") || link == HELP || link == EXAMPLES || link == VR_HELP
         val target = when {
             fixed -> null
             path.isEmpty() -> from?.takeIf { cut < link.length && link[cut] == ':' }
@@ -223,6 +232,7 @@ object FileLink {
         return when {
             link == HELP -> Target(null, null, help = true)
             link == EXAMPLES -> Target(HelpFiles.index, null)
+            link == VR_HELP -> Target(HelpFiles.vrControls, null)
             section != null -> resolvePath(link.substring(0, hash), baseDir).let { Target(it, null, Sections.find(it, section), section = section) }
             !split -> Target(whole, null)
             pathPart.isEmpty() -> Target(null, nodeId)

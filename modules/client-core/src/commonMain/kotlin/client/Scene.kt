@@ -63,9 +63,12 @@ data class Scene(
 /**
  * A system of nodes of [level] ([graph_tools.Multilevel.Shell]; 0: a node, [sun] if it is the sun of one of the lowest):
  * a ball, flat a circle, [radius] around [position] and [depth] away (for [SpaceScene]; in [Scene] as it appears); in
- * [SpaceScene] also a ring of its [reach], if any.
+ * [SpaceScene] also a ring of its [reach], if any; coloured among the levels up to [top] ([GestureController.shellsTop]).
  */
-data class SceneShell(val position: Vector2, val radius: Double, val level: Int, val depth: Double = 0.0, val sun: Boolean = false, val reach: Double? = null)
+data class SceneShell(
+    val position: Vector2, val radius: Double, val level: Int, val depth: Double = 0.0, val sun: Boolean = false, val reach: Double? = null,
+    val top: Int = level,
+)
 
 /**
  * What a view shows, not projected: for a renderer that has
@@ -107,7 +110,9 @@ fun EditorView.spaceScene(measurer: TextMeasurer, asSeen: Boolean = true): Space
         depth = viewTransform.depth,
         distance = viewTransform.distance,
         scale = viewTransform.scale,
-        shells = gestures.shells.map { s -> (if (asSeen) viewTransform.toView(s.at) else s.at).let { SceneShell(it.xy, s.radius, s.level, it.z, s.sun, s.reach) } },
+        shells = gestures.shells.map { s ->
+            (if (asSeen) viewTransform.toView(s.at) else s.at).let { SceneShell(it.xy, s.radius, s.level, it.z, s.sun, s.reach, gestures.shellsTop) }
+        },
     )
 }
 
@@ -143,7 +148,9 @@ fun EditorView.scene(measurer: TextMeasurer): Scene {
             }
         },
         selectionBox = gestures.selectionBoxFrom?.let { Vector2.computeCorners(gestures.lastPosition, it) },
-        shells = gestures.shells.mapNotNull { s -> apparentAt(viewTransform.toView(s.at))?.let { SceneShell(it.position, s.radius * it.scale, s.level, sun = s.sun) } },
+        shells = gestures.shells.mapNotNull { s ->
+            apparentAt(viewTransform.toView(s.at))?.let { SceneShell(it.position, s.radius * it.scale, s.level, sun = s.sun, top = gestures.shellsTop) }
+        },
     )
 }
 

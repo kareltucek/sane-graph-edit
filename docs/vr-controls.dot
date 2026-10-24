@@ -1,0 +1,22 @@
+digraph g {
+  // what the controllers of a headset do (`--vr`); its help node leads to the help of the editor, as that one's leads here
+  root [label="# VR controls\n\nTrigger: the left button\nGrip: the right button\n\nClick: let go within 0.3 s\nHold: longer"; pos="0,0!"; "content-type"="markdown"];
+  right [label="Right controller"; pos="-420,0!"; fillcolor="#C9DAF8"];
+  left [label="Left controller"; pos="420,0!"; fillcolor="#FCE5CD"];
+  rTrigger [label="# Trigger\n\n- click: select\n  - explore mode: unfold\n  - a terminal node selected: go into its shell\n- hold on a node: drag it\n  - explore mode: as Shift + drag, the others make way"; pos="-820,-260!"; "content-type"="markdown"];
+  rGrip [label="# Grip\n\n- click: deselect\n  - explore mode: fold\n- hold on a node: it goes to where a node was last\n  taken in hand (clicked, dragged, turned around, held)"; pos="-820,0!"; "content-type"="markdown"];
+  rStick [label="# Thumbstick\n\n- forward / back: zoom in / out\n- aside: turn the graph\n\naround the node the ray is on, or the nearest to it\n\nA, B: nothing"; pos="-820,260!"; "content-type"="markdown"];
+  lTrigger [label="# Trigger\n\n- click on a node with links: follow its link\n  - several links: a menu, the next click picks\n- hold: fly; across, the graph goes with the hand;\n  in and out, as fast as the hand is from where\n  it was pressed, times how hard"; pos="820,-260!"; "content-type"="markdown"];
+  lGrip [label="# Grip\n\n- click: back (Ctrl+O)\n- hold: the graph in the hand: it goes and turns\n  with it, in and out 4 times as far"; pos="820,0!"; "content-type"="markdown"];
+  lButtons [label="# Buttons\n\n- X: explore mode on / off\n- X twice: scan the room anew\n- Y: the graph on the walls or in space\n  (the status line says which)\n\nThumbstick: nothing"; pos="820,260!"; "content-type"="markdown"];
+  help [label="help\n(press gf)"; pos="0,-220!"; link="sge:help"; fillcolor="#F6EFC4"];
+  root -> right;
+  root -> left;
+  right -> rTrigger;
+  right -> rGrip;
+  right -> rStick;
+  left -> lTrigger;
+  left -> lGrip;
+  left -> lButtons;
+  root -> help;
+}

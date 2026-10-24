@@ -267,7 +267,7 @@ object Help {
                               - `graph.dot` / `graph.dot:{nodeid}` / `:{nodeid}`
                               - `dir/`
                               - `A.kt` / `A.kt:10-20` / `README.md#Heading`
-                              - `sge:help` / `sge:examples`
+                              - `sge:help` / `sge:examples` / `sge:vr-help`
                         """,
                     ),
                     Entry(
@@ -309,6 +309,7 @@ object Help {
                 listOf(
                     // a client writes the examples out when it starts and knows where
                     Entry("examples\n(press gf)", link = "sge:examples"),
+                    Entry("VR controls\n(press gf)", link = "sge:vr-help"),
                     Entry(
                         """
                             # Todo

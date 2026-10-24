@@ -8,6 +8,7 @@
 # Targets:
 #   make            - compile + test
 #   make run        - build + launch the editor (the Electron client); ARGS="file.dot" is passed on
+#   make run-vr     - as run, also for a headset on the same Wi-Fi: on the local network over TLS, the PIN only for terminals (VR_PORT, default 8765)
 #   make electron   - build the Electron client without launching it
 #   make run-swing  - launch the Swing client (via Gradle)
 #   make run-jar    - build fat jar + launch it directly (the Swing client, faster startup)
@@ -32,8 +33,9 @@ FAT_JAR    := build/libs/sane-graph-edit-*-all.jar
 ELECTRON   := modules/client-electron
 LAUNCHER   := build/sane-graph-edit-launcher
 ARGS       ?=
+VR_PORT    ?= 8765
 
-.PHONY: all compile run electron run-swing run-jar test jar package appimage deb rpm install install-swing uninstall release clean
+.PHONY: all compile run run-vr electron run-swing run-jar test jar package appimage deb rpm install install-swing uninstall release clean
 
 # --- primary targets ---
 
@@ -46,6 +48,10 @@ compile:
 # started from here, not from the client's directory: the working directory is the workspace
 run: electron
 	$(ELECTRON)/node_modules/.bin/electron --no-sandbox $(ELECTRON) $(ARGS)
+
+# opens the port to the local network; prints this machine's address there and the PIN a terminal node asks for
+run-vr: electron
+	$(ELECTRON)/node_modules/.bin/electron --no-sandbox $(ELECTRON) --vr $(VR_PORT) --vr-lan --no-pin $(ARGS)
 
 # the client core (Kotlin, built for Node) first: the client's packages include it
 electron:

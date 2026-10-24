@@ -10,6 +10,9 @@ package client
 object HelpFiles {
     val dir: Path get() = Fs.runtimeDir.resolve("sane-graph-edit").resolve("help")
 
+    /** What the controllers of a headset do ([FileLink.VR_HELP]). */
+    val vrControls: Path get() = dir.resolve("docs").resolve("vr-controls.dot")
+
     /** The graph that leads to all the others ([FileLink.EXAMPLES]). */
     val index: Path get() = dir.resolve("examples").resolve("index.dot")
 

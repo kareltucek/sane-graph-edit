@@ -2,6 +2,9 @@
 // else. Reloading it loses nothing. It works in an ordinary browser too, where the graph is turned with the mouse.
 
 import * as THREE from "three";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+import { Wireframe } from "three/examples/jsm/lines/Wireframe.js";
+import { WireframeGeometry2 } from "three/examples/jsm/lines/WireframeGeometry2.js";
 import { GRAPH_AT, METRES_PER_UNIT, ROOM_COLOUR } from "./room";
 import type { VrLive, VrNode, VrScene } from "./vrServer";
 
@@ -41,7 +44,7 @@ graph.add(plain, edges, heads);
  * mesh of the graph once more ([behind]), faint, and only where it is further than that; then the graph as ever, which
  * what is nearer hides. So an edge that goes into a table turns faint just where it enters it.
  */
-const BEHIND_OPACITY = 0.1;
+const BEHIND_OPACITY = 0.35;
 const ORDER_ROOM = -10;
 const ORDER_BEHIND = -5;
 const twins: { of: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>; twin: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> }[] = [];
@@ -52,6 +55,10 @@ function behind(of: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>) {
     material.blending = THREE.CustomBlending;
     material.blendSrc = THREE.SrcAlphaFactor;
     material.blendDst = THREE.OneMinusSrcAlphaFactor;
+    // what is drawn is as strong as [BEHIND_OPACITY] in the picture's alpha too: over the room seen through the headset, a
+    // blending of alpha by alpha would leave it at its square
+    material.blendSrcAlpha = THREE.OneFactor;
+    material.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
     material.opacity = BEHIND_OPACITY;
     material.alphaTest = of.material.alphaTest * BEHIND_OPACITY;
     material.depthFunc = THREE.GreaterDepth;
@@ -507,6 +514,9 @@ function connect() {
             const sent = JSON.parse(message.data);
             if (sent.type === "scene") show(sent as VrScene);
             else if (sent.type === "live") showLive(sent as VrLive);
+            else if (sent.type === "pin") askPin(null);
+            else if (sent.type === "exit") closed();
+            else if (sent.type === "pinned") pinAnswered(sent);
         } else {
             const data = message.data as ArrayBuffer;
             const page = new DataView(data).getUint32(0);
@@ -517,12 +527,25 @@ function connect() {
             });
         }
     };
-    // the window went away, or the cable: try again, what is shown stays meanwhile
+    // the window went away, or the cable: try again, what is shown stays meanwhile; not after the editor said it closes
     socket.onclose = () => {
         tell = null;
-        state.textContent = "not connected; trying again…";
-        setTimeout(connect, 2000);
+        if (!editorClosed) {
+            state.textContent = "not connected; trying again…";
+            setTimeout(connect, 2000);
+        }
     };
+}
+
+/** The editor said it closes: started again, it has another address. */
+let editorClosed = false;
+
+/** The editor closes: out of the headset's immersive session, and no more trying to connect. */
+function closed() {
+    editorClosed = true;
+    closeKeypad();
+    renderer.xr.getSession()?.end().catch(() => {});
+    state.textContent = "the editor was closed; open the address it prints when started again";
 }
 
 // --- in the headset: enter, and take the graph in the hand ---
@@ -579,7 +602,8 @@ function forget(shown: THREE.Group) {
     shown.traverse((it) => {
         const drawn = it as Partial<THREE.Line<THREE.BufferGeometry, THREE.Material>>;
         drawn.geometry?.dispose();
-        drawn.material?.dispose();
+        // the room's lines share theirs
+        if (drawn.material !== roomLinesMaterial) drawn.material?.dispose();
     });
 }
 
@@ -655,7 +679,25 @@ function report(planes: XRPlaneSet) {
     }
 }
 
-// --- the room's shape: what the headset has scanned of it (furniture too), as a net of faint lines. Shown only; the window is not told of it yet ---
+// --- the room's shape: what the headset has scanned of it (furniture too), as a net of lines. Shown only; the window is not told of it yet ---
+
+/** How wide the lines of the room's shape are, in pixels. */
+const ROOM_LINES_WIDTH = 4;
+
+/** What the lines of the room's shape are drawn with: one, as wide in pixels as the eyes' pictures are big ([sizeRoomLines]). */
+const roomLinesMaterial = new LineMaterial({ color: ROOM_COLOUR, linewidth: ROOM_LINES_WIDTH });
+
+/** [shape] as the net of lines it is shown by. */
+function roomLines(shape: THREE.BufferGeometry): Wireframe {
+    return new Wireframe(new WireframeGeometry2(shape), roomLinesMaterial);
+}
+
+/** The lines are as wide in pixels of the picture of one eye, in a headset; else of the page. */
+function sizeRoomLines() {
+    const layer = renderer.xr.isPresenting ? renderer.xr.getSession()?.renderState.baseLayer : undefined;
+    if (layer) roomLinesMaterial.resolution.set(layer.framebufferWidth / 2, layer.framebufferHeight);
+    else renderer.getDrawingBufferSize(roomLinesMaterial.resolution);
+}
 
 /** As WebXR gives a scanned shape; not in the types this is built with. */
 interface ScannedMesh {
@@ -665,7 +707,7 @@ interface ScannedMesh {
     lastChangedTime: number;
 }
 
-const scanned = new Map<ScannedMesh, { shown: THREE.LineSegments; changed: number }>();
+const scanned = new Map<ScannedMesh, { shown: Wireframe; changed: number }>();
 
 function showScanned(frame: XRFrame) {
     const meshes: Set<ScannedMesh> = (frame as unknown as { detectedMeshes?: Set<ScannedMesh> }).detectedMeshes ?? new Set();
@@ -681,7 +723,7 @@ function showScanned(frame: XRFrame) {
             const shape = new THREE.BufferGeometry();
             shape.setAttribute("position", new THREE.BufferAttribute(new Float32Array(mesh.vertices), 3));
             shape.setIndex(new THREE.BufferAttribute(new Uint32Array(mesh.indices), 1));
-            const shown = new THREE.LineSegments(new THREE.WireframeGeometry(shape), new THREE.LineBasicMaterial({ color: ROOM_COLOUR, transparent: true, opacity: 0.25 }));
+            const shown = roomLines(shape);
             shown.add(hides(shape));
             shown.matrixAutoUpdate = false;
             room.add(shown);
@@ -698,7 +740,7 @@ function showScanned(frame: XRFrame) {
 // asked for with `mock` in the page's address.
 if (new URL(window.location.href).searchParams.has("mock")) {
     const box = new THREE.BoxGeometry(0.12, 0.3, 0.12);
-    const shown = new THREE.LineSegments(new THREE.WireframeGeometry(box), new THREE.LineBasicMaterial({ color: ROOM_COLOUR, transparent: true, opacity: 0.25 }));
+    const shown = roomLines(box);
     shown.add(hides(box));
     shown.position.set(GRAPH_AT[0] + 0.1, GRAPH_AT[1], GRAPH_AT[2] + 0.2);
     room.add(shown);
@@ -715,9 +757,179 @@ const RAY_EXPLORING = 0xe0a030;
 const RAY_LENGTH = 0.5;
 /** How many times the pixels a headset draws with unless asked. */
 const FRAMEBUFFER_SCALE = 1.5;
-/** The button X of the left controller, as a headset numbers the buttons of one. */
+/** The buttons X and Y of the left controller, as a headset numbers the buttons of one. */
 const BUTTON_X = 4;
 const BUTTON_Y = 5;
+
+/** A press of the trigger or the grip is a click when let go of within this (ms), the hand moved less than [CLICK_MOVE] (metres). */
+const CLICK_MS = 300;
+const CLICK_MOVE = 0.03;
+/** Two presses of X within this (ms) are a double one. */
+const DOUBLE_MS = 300;
+
+/**
+ * A trigger or a grip held, once it is no click ([going]). Of the hand's way since it was pressed, across the way the eyes
+ * looked then ([inwards]) and along it: the grip takes the graph [along] as the hand moves and turns, along that way
+ * [DEPTH_MOVEMENT_FACTOR] times as far; the trigger flies ([against]): across, the graph goes as far as the hand, along it
+ * as fast as the hand is from where it was pressed. Or the node it was pressed on goes to where a node was last taken in
+ * hand ([looked]: [to]). When it was pressed ([at]), by which button of the gamepad, where and how the hand and the graph
+ * were then, and the node it was pressed on; how far the graph has flown since.
+ */
+type Hold = {
+    kind: "along" | "against" | "looked";
+    at: number;
+    button: number;
+    from: THREE.Vector3;
+    hand: THREE.Matrix4;
+    graph: THREE.Matrix4;
+    graphFrom: THREE.Vector3;
+    inwards: THREE.Vector3;
+    flown: THREE.Vector3;
+    on: VrNode | null;
+    to: THREE.Vector3;
+    going: boolean;
+};
+
+/** The trigger and the grip, as a gamepad numbers its buttons: how hard each is pressed is its value. */
+const GAMEPAD_TRIGGER = 0;
+const GAMEPAD_GRIP = 1;
+
+/**
+ * In and out, how much more the graph goes than the hand: taken along by the grip, this many times as far; flown by the
+ * trigger, this many metres a second for each metre the hand is from where it was pressed, fully pressed.
+ */
+const DEPTH_MOVEMENT_FACTOR = 4;
+
+/** The node a right grip holds goes this part of the way left a second; it is there when nearer than [THERE] (metres). */
+const LOOKED_RATE = 3;
+const THERE = 0.005;
+
+/** Where in the room a node was last taken in hand: clicked, dragged, turned around, held by the right grip. */
+let lastSpot: THREE.Vector3 | null = null;
+
+/** Where [n] is in the room. */
+function worldOf(n: VrNode): THREE.Vector3 {
+    return graph.localToWorld(new THREE.Vector3(n.x, n.y, n.z).add(offset));
+}
+
+/** The node [id] as it is shown now, if it is. */
+function nodeOf(id: string): VrNode | null {
+    return shown?.nodes.find((n) => n.id === id) ?? null;
+}
+
+/** The node [id] was taken in hand: where it is now is the spot a node the right grip holds goes to. */
+function tookInHand(id: string) {
+    const n = nodeOf(id);
+    if (n !== null) lastSpot = worldOf(n);
+}
+
+function holdOf(hand: THREE.Object3D, kind: Hold["kind"], on: VrNode | null, button: number): Hold {
+    hand.updateMatrixWorld();
+    graph.updateMatrix();
+    const eyes = renderer.xr.getCamera();
+    const head = new THREE.Vector3().setFromMatrixPosition(eyes.matrixWorld);
+    const from = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+    // where no node was taken in hand yet: before the eyes, as far as the node is
+    const ahead = head.clone().addScaledVector(new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld), on === null ? 0 : worldOf(on).distanceTo(head));
+    const inwards = new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld);
+    return {
+        // the hand and the graph as the eyes had them: who turns with the graph in hand still sees it as before
+        kind, at: performance.now(), button, from, hand: eyes.matrixWorld.clone().invert().multiply(hand.matrixWorld),
+        graph: eyes.matrixWorld.clone().invert().multiply(graph.matrix), graphFrom: graph.position.clone(),
+        inwards, flown: new THREE.Vector3(), on,
+        to: lastSpot?.clone() ?? ahead, going: false,
+    };
+}
+
+/** Whether [hold], let go of now, is a click. */
+function clicked(hold: Hold, hand: THREE.Object3D): boolean {
+    return !hold.going && performance.now() - hold.at < CLICK_MS && new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld).distanceTo(hold.from) < CLICK_MOVE;
+}
+
+/** When [carry] last moved the graph. */
+let carriedAt = performance.now();
+
+/** Of each trigger and grip held: the graph moved as far as the hold has it go since the last picture. */
+function carry() {
+    const now = performance.now();
+    const seconds = Math.min((now - carriedAt) / 1000, 0.1);
+    carriedAt = now;
+    hands.forEach((it) => [it.trigger, it.grip].forEach((hold) => {
+        if (hold !== null) {
+            hold.going = hold.going || !clicked(hold, it.hand);
+            const node = hold.on === null ? null : nodeOf(hold.on.id) ?? hold.on;
+            if (hold.going && hold.kind === "looked" && node !== null) {
+                const left = hold.to.clone().sub(worldOf(node));
+                if (left.length() > THERE) graph.position.addScaledVector(left, Math.min(1, LOOKED_RATE * seconds));
+            } else if (hold.going && hold.kind !== "looked") {
+                const away = new THREE.Vector3().setFromMatrixPosition(it.hand.matrixWorld).sub(hold.from);
+                const inOut = hold.inwards.clone().multiplyScalar(away.dot(hold.inwards));
+                const across = away.sub(inOut);
+                if (hold.kind === "along") take(hold, it.hand);
+                else {
+                    // in and out: as fast as the hand is from where it was pressed, times how hard
+                    const pressed = it.source?.gamepad?.buttons[hold.button]?.value ?? 1;
+                    hold.flown.addScaledVector(inOut, DEPTH_MOVEMENT_FACTOR * pressed * seconds);
+                    graph.position.copy(hold.graphFrom).add(across).add(hold.flown);
+                }
+            }
+        }
+    }));
+}
+
+/**
+ * The grip of the left controller holds the graph: it goes and turns as the hand did since it was pressed, as the eyes see
+ * the hand, but in and out (away from the eyes) [DEPTH_MOVEMENT_FACTOR] times as far. Turning around with it, the eyes
+ * and the hand together, it is seen as before.
+ */
+function take(hold: Hold, hand: THREE.Object3D) {
+    const eyes = renderer.xr.getCamera().matrixWorld;
+    const [was, wasTurned, now, nowTurned] = [new THREE.Vector3(), new THREE.Quaternion(), new THREE.Vector3(), new THREE.Quaternion()];
+    const size = new THREE.Vector3();
+    hold.hand.decompose(was, wasTurned, size);
+    eyes.clone().invert().multiply(hand.matrixWorld).decompose(now, nowTurned, size);
+    // the eyes look along their -z
+    const moved = now.clone().sub(was);
+    moved.z *= DEPTH_MOVEMENT_FACTOR;
+    const turned = nowTurned.multiply(wasTurned.invert());
+    // around where the hand was, turned as it turned, and on to where it is (in and out the farther)
+    const by = new THREE.Matrix4().makeTranslation(was.clone().add(moved))
+        .multiply(new THREE.Matrix4().makeRotationFromQuaternion(turned))
+        .multiply(new THREE.Matrix4().makeTranslation(was.clone().negate()));
+    eyes.clone().multiply(by).multiply(hold.graph).decompose(graph.position, graph.quaternion, graph.scale);
+}
+
+/** What the right thumbstick turns and zooms the graph around: the node its ray is on, else the one nearest to the ray. */
+function pivot(): THREE.Vector3 {
+    const right = hands.find((it) => it.side === "right");
+    const from = right === undefined ? null : new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld);
+    const towards = right === undefined ? null : new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld);
+    const nearest = pointed ?? (from === null || towards === null ? null : (shown?.nodes ?? []).reduce<{ n: VrNode; d: number } | null>((best, n) => {
+        const p = worldOf(n);
+        const along = p.clone().sub(from).dot(towards);
+        const d = p.distanceTo(from.clone().addScaledVector(towards, along));
+        return along > 0 && (best === null || d < best.d) ? { n, d } : best;
+    }, null)?.n ?? null);
+    return nearest === null ? graph.position.clone() : worldOf(nearest);
+}
+
+/** The right thumbstick: forward or back zooms, aside turns the graph about the upright, both around the [pivot]. */
+function steer(aside: number, forward: number) {
+    const zoom = Math.abs(forward) > 0.2 ? 1 - forward * 0.02 : 1;
+    const turn = Math.abs(aside) > 0.2 ? -aside * 0.03 : 0;
+    if (zoom !== 1 || turn !== 0) {
+        const around = pivot();
+        const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), turn);
+        graph.position.sub(around).multiplyScalar(zoom).applyQuaternion(q).add(around);
+        graph.scale.multiplyScalar(zoom);
+        graph.quaternion.premultiply(q);
+        // what it is turned around stays where it is: a node taken in hand
+        lastSpot = around;
+    }
+}
+
+/** X pressed once and not again soon: into explore mode or out of it; [DOUBLE_MS] waits for a second press. */
+let exploreLater: ReturnType<typeof setTimeout> | null = null;
 
 const hands = [0, 1].map((index) => {
     const hand = renderer.xr.getController(index);
@@ -736,7 +948,7 @@ const hands = [0, 1].map((index) => {
     graph.add(frame);
     const state = {
         hand, ray, frame, side: "none" as XRHandedness, source: null as XRInputSource | null, pointed: null as VrNode | null,
-        x: false, y: false, a: false, b: false,
+        x: false, xAt: -Infinity, y: false, trigger: null as Hold | null, grip: null as Hold | null,
     };
     hand.addEventListener("connected", (event) => {
         state.source = event.data as XRInputSource;
@@ -746,23 +958,26 @@ const hands = [0, 1].map((index) => {
         state.source = null;
         state.side = "none";
     });
-    const click = (button: 0 | 2) => {
-        if (state.side === "right" && pointed !== null) tell?.(JSON.stringify({ type: "click", id: pointed.id, button }));
-    };
-    // the trigger takes the node pointed at; let go where it was taken, that was a click, elsewhere, the node is put there
-    // The left trigger, on a node that has links: its one link is followed; of several, a menu is held open until it is let go of.
+    // The right trigger takes the node pointed at; let go where it was taken, that was a click (selects; in explore mode
+    // unfolds), elsewhere, the node is put there. The left one, clicked on a node that has links, follows its one link, or
+    // of several opens a menu, the next click choosing; held, it takes who looks through the graph (the graph the other way).
     hand.addEventListener("selectstart", () => {
-        const on = state.pointed;
-        const links = on?.links ?? [];
-        if (state.side === "right" && pointed !== null && pointedAt !== null) {
+        // the keypad, while it is open, takes the right trigger; a menu, while it is open, the left one
+        if (state.side === "right" && keypad !== null) pressKeypad();
+        else if (state.side === "right" && pointed !== null && pointedAt !== null) {
             const middle = new THREE.Vector3(pointed.x, pointed.y, pointed.z);
             held = { id: pointed.id, along: pointedAt.along, grip: pointedAt.at.clone().sub(middle), from: middle, moved: false };
-        } else if (state.side === "left" && on !== null && links.length === 1) tell?.(JSON.stringify({ type: "follow", id: on.id, letter: links[0][0] }));
-        else if (state.side === "left" && on !== null && links.length > 1) openMenu(on, links);
+        } else if (state.side === "left" && menu !== null) closeMenu(true);
+        else if (state.side === "left") state.trigger = holdOf(hand, "against", state.pointed, GAMEPAD_TRIGGER);
     });
     hand.addEventListener("selectend", () => {
-        if (state.side === "left") closeMenu(true);
-        else {
+        if (state.side === "left") {
+            const was = state.trigger;
+            state.trigger = null;
+            const links = was?.on?.links ?? [];
+            if (was !== null && was.on !== null && clicked(was, hand) && links.length === 1) tell?.(JSON.stringify({ type: "follow", id: was.on.id, letter: links[0][0] }));
+            else if (was !== null && was.on !== null && clicked(was, hand) && links.length > 1) openMenu(was.on, links);
+        } else {
             const was = held;
             held = null;
             const place = was === null ? undefined : placed.get(was.id);
@@ -770,19 +985,27 @@ const hands = [0, 1].map((index) => {
                 place.until = performance.now() + KEPT_AFTER_MS;
                 tell?.(JSON.stringify({ type: "move", id: was.id, ...place.at }));
             } else if (was !== null && state.side === "right") tell?.(JSON.stringify({ type: "click", id: was.id, button: 0 }));
+            if (was !== null && state.side === "right") tookInHand(was.id);
         }
     });
+    // The grip, clicked: of the right controller on a node a right click (deselects; in explore mode folds), of the left one
+    // back to where a link was followed from. Held: the left one takes the graph in its hand, the right one keeps the node it
+    // was pressed on before the eyes.
     hand.addEventListener("squeezestart", () => {
-        if (state.side === "left") hand.attach(graph);
-        else click(2);
+        if (state.side === "left") state.grip = holdOf(hand, "along", null, GAMEPAD_GRIP);
+        else if (state.side === "right") state.grip = holdOf(hand, "looked", pointed, GAMEPAD_GRIP);
     });
     hand.addEventListener("squeezeend", () => {
-        if (state.side === "left") scene.attach(graph);
+        const was = state.grip;
+        state.grip = null;
+        if (was !== null && clicked(was, hand) && state.side === "left") tell?.(JSON.stringify({ type: "jump", back: true }));
+        else if (was !== null && was.on !== null && clicked(was, hand)) tell?.(JSON.stringify({ type: "click", id: was.on.id, button: 2 }));
+        if (state.side === "right" && was?.on) tookInHand(was.on.id);
     });
     return state;
 });
 
-// --- the links of a node, as a menu around it: open while the right grip is held, and what the ray points at when it is let go of is followed ---
+// --- the links of a node, as a menu around it: opened by a click of the left trigger, and what its ray points at on the next click is followed ---
 
 const MENU_ITEM = [0.24, 0.045];
 /** How far from the node's middle the links are put, sideways and up or down, in metres. */
@@ -862,6 +1085,139 @@ function pointInMenu() {
     }
 }
 
+// --- the PIN, asked for when a terminal node is to be entered and this headset has not given it: a keypad before the eyes ---
+
+/** The keys, row by row; ⌫ takes the last digit back, OK gives the four. */
+const KEYPAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "⌫", "0", "OK"];
+/** A key's size and the room between keys, and the strip above them that shows what is typed, in metres; how far before the eyes. */
+const KEYPAD_KEY = 0.06;
+const KEYPAD_GAP = 0.012;
+const KEYPAD_STRIP = [0.3, 0.045];
+const KEYPAD_AWAY = 0.6;
+const KEYPAD_PIXELS = 128;
+const PIN_LENGTH = 4;
+
+let keypad: {
+    keys: { key: string; shown: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> }[];
+    strip: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
+    typed: string;
+    chosen: number;
+} | null = null;
+
+/** [text] on a canvas of [width] × [height] pixels, as a texture. */
+function textTexture(text: string, width: number, height: number, font: string): THREE.CanvasTexture {
+    const picture = document.createElement("canvas");
+    [picture.width, picture.height] = [width, height];
+    const pen = picture.getContext("2d")!;
+    pen.fillStyle = "#202020";
+    pen.fillRect(0, 0, width, height);
+    pen.font = font;
+    pen.textAlign = "center";
+    pen.textBaseline = "middle";
+    pen.fillStyle = "#dddddd";
+    pen.fillText(text, width / 2, height / 2);
+    const texture = new THREE.CanvasTexture(picture);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+}
+
+/** The strip shows what is typed (as dots), or [note]. */
+function writeKeypad(note: string | null = null) {
+    const now = keypad;
+    if (now !== null) {
+        const typed = "•".repeat(now.typed.length) + "_".repeat(PIN_LENGTH - now.typed.length);
+        now.strip.material.map?.dispose();
+        now.strip.material.map = textTexture(note ?? `PIN ${typed}`, 4 * KEYPAD_PIXELS, KEYPAD_PIXELS / 2 + 24, "40px sans-serif");
+        now.strip.material.needsUpdate = true;
+    }
+}
+
+/** The window asks for the PIN: out of a headset in a prompt of the browser, in one on a keypad before the eyes; [note] says why again. */
+function askPin(note: string | null) {
+    if (!renderer.xr.isPresenting) {
+        const given = window.prompt(note ?? "PIN, to go into a terminal");
+        if (given !== null) tell?.(JSON.stringify({ type: "pin", pin: given }));
+    } else {
+        if (keypad === null) openKeypad();
+        if (keypad !== null) keypad.typed = "";
+        writeKeypad(note);
+    }
+}
+
+function openKeypad() {
+    const eyes = renderer.xr.getCamera();
+    const head = new THREE.Vector3().setFromMatrixPosition(eyes.matrixWorld);
+    const ahead = new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld).setY(0).normalize();
+    const middle = head.clone().addScaledVector(ahead, KEYPAD_AWAY);
+    const right = new THREE.Vector3(0, 1, 0).cross(ahead.clone().negate()).normalize();
+    const place = (mesh: THREE.Mesh, across: number, up: number) => {
+        mesh.position.copy(middle).addScaledVector(right, across).add(new THREE.Vector3(0, up, 0));
+        mesh.lookAt(head.x, mesh.position.y, head.z);
+        mesh.renderOrder = 9;
+        scene.add(mesh);
+    };
+    const step = KEYPAD_KEY + KEYPAD_GAP;
+    const keys = KEYPAD_KEYS.map((key, k) => {
+        const shown = new THREE.Mesh(new THREE.PlaneGeometry(KEYPAD_KEY, KEYPAD_KEY),
+            new THREE.MeshBasicMaterial({ map: textTexture(key, KEYPAD_PIXELS, KEYPAD_PIXELS, "64px sans-serif"), depthTest: false }));
+        place(shown, ((k % 3) - 1) * step, -Math.floor(k / 3) * step);
+        return { key, shown };
+    });
+    const strip = new THREE.Mesh(new THREE.PlaneGeometry(KEYPAD_STRIP[0], KEYPAD_STRIP[1]), new THREE.MeshBasicMaterial({ depthTest: false }));
+    place(strip, 0, step);
+    keypad = { keys, strip, typed: "", chosen: -1 };
+}
+
+function closeKeypad() {
+    const was = keypad;
+    keypad = null;
+    [...(was?.keys.map((it) => it.shown) ?? []), ...(was === null ? [] : [was.strip])].forEach((shown) => {
+        scene.remove(shown);
+        shown.material.map?.dispose();
+        shown.material.dispose();
+        shown.geometry.dispose();
+    });
+}
+
+/** Which key the right controller's ray points at: that one is shown brighter. */
+function pointInKeypad() {
+    const now = keypad;
+    const right = hands.find((it) => it.side === "right");
+    if (now !== null && right !== undefined) {
+        const from = new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld);
+        const ray = new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld);
+        now.chosen = now.keys.findIndex((it) => {
+            const facing = new THREE.Vector3(0, 0, 1).transformDirection(it.shown.matrixWorld);
+            const closing = ray.dot(facing);
+            const along = closing === 0 ? -1 : it.shown.position.clone().sub(from).dot(facing) / closing;
+            const on = it.shown.worldToLocal(from.clone().addScaledVector(ray, along));
+            return along > 0 && Math.abs(on.x) <= KEYPAD_KEY / 2 && Math.abs(on.y) <= KEYPAD_KEY / 2;
+        });
+        now.keys.forEach((it, k) => it.shown.material.color.set(k === now.chosen ? 0xffffff : 0x999999));
+    }
+}
+
+/** The right trigger on the keypad: the key pointed at is pressed. */
+function pressKeypad() {
+    const now = keypad;
+    const key = now === null || now.chosen < 0 ? null : now.keys[now.chosen].key;
+    if (now !== null && key === "⌫") now.typed = now.typed.slice(0, -1);
+    else if (now !== null && key === "OK" && now.typed.length === PIN_LENGTH) tell?.(JSON.stringify({ type: "pin", pin: now.typed }));
+    else if (now !== null && key !== null && key !== "OK" && now.typed.length < PIN_LENGTH) now.typed += key;
+    if (key !== "OK") writeKeypad();
+}
+
+/** What the window says of the PIN given: right (the keypad goes away), wrong (with how many tries are left), or none is taken any more. */
+function pinAnswered(sent: { right?: boolean; left?: number }) {
+    if (sent.right === true) closeKeypad();
+    else if ((sent.left ?? 0) > 0) askPin(`Wrong PIN; ${sent.left} more tries`);
+    else {
+        if (renderer.xr.isPresenting) writeKeypad("Too many wrong PINs");
+        else window.alert("Too many wrong PINs. Start the application again.");
+        setTimeout(closeKeypad, 3000);
+    }
+}
+
 /** The node the right controller points at, where on it (in the graph) and how far along the ray that is (metres); and a frame around it. */
 let pointed: VrNode | null = null;
 let pointedAt: { at: THREE.Vector3; along: number } | null = null;
@@ -874,6 +1230,18 @@ let held: { id: string; along: number; grip: THREE.Vector3; from: THREE.Vector3;
 const MOVED_FROM = 8;
 /** A node let go of is shown where it was put for this long: until the window says so too. */
 const KEPT_AFTER_MS = 800;
+/** While a node is held and moved, the window is told where it is this often (ms): in explore mode the others make way as it goes. */
+const HELD_EVERY_MS = 50;
+let heldToldAt = 0;
+
+/** The node [id] is still held, at [at]: told to the window, no oftener than [HELD_EVERY_MS]. */
+function tellHeld(id: string, at: { x: number; y: number; z: number }) {
+    const now = performance.now();
+    if (now - heldToldAt >= HELD_EVERY_MS) {
+        heldToldAt = now;
+        tell?.(JSON.stringify({ type: "move", id, ...at, held: true }));
+    }
+}
 /** The frame: a band around the node, [FRAME_WIDTH] of the graph's units wide and [FRAME_AWAY] from it; its corners, the outer four and then the inner four. */
 const FRAME_WIDTH = 2;
 const FRAME_AWAY = 3;
@@ -900,6 +1268,7 @@ function pointWith(right: typeof hands[number]) {
             if (holding.moved && received !== null) {
                 placed.set(holding.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
                 show(received);
+                tellHeld(holding.id, { x: middle.x, y: middle.y, z: middle.z });
             }
             const node = shown.nodes.find((n) => n.id === holding.id);
             if (node !== undefined) nearest = { node, along: holding.along };
@@ -952,26 +1321,30 @@ function point() {
     hands.forEach(pointWith);
 }
 
-/** A thumbstick pushed forward or back makes the graph bigger or smaller, where it is; X of the left controller, when it goes down, asks into explore mode or out of it. */
+/** The right thumbstick turns and zooms the graph ([steer]); X of the left controller asks into explore mode or out of it, twice soon the room scanned anew; Y onto the walls or off them. */
 function buttons() {
     hands.forEach((it) => {
         const pad = it.source?.gamepad;
-        const push = pad?.axes[3] ?? 0;
-        if (Math.abs(push) > 0.2) graph.scale.multiplyScalar(1 - push * 0.02);
+        if (it.side === "right") steer(pad?.axes[2] ?? 0, pad?.axes[3] ?? 0);
         const x = it.side === "left" && pad?.buttons[BUTTON_X]?.pressed === true;
-        if (x && !it.x) tell?.(JSON.stringify({ type: "explore" }));
+        if (x && !it.x && performance.now() - it.xAt < DOUBLE_MS) {
+            if (exploreLater !== null) clearTimeout(exploreLater);
+            exploreLater = null;
+            it.xAt = -Infinity;
+            // the headset's own scan of the room, anew, where its browser can start that (once in a session)
+            (renderer.xr.getSession() as unknown as { initiateRoomCapture?: () => Promise<void> } | null)?.initiateRoomCapture?.().catch(() => {});
+        } else if (x && !it.x) {
+            it.xAt = performance.now();
+            exploreLater = setTimeout(() => {
+                exploreLater = null;
+                tell?.(JSON.stringify({ type: "explore" }));
+            }, DOUBLE_MS);
+        }
         it.x = x;
-        // Y: the headset's own scan of the room, anew, where its browser can start that (once in a session)
+        // Y: the graph on the walls of the room, or in the space of it
         const y = it.side === "left" && pad?.buttons[BUTTON_Y]?.pressed === true;
-        if (y && !it.y) (renderer.xr.getSession() as unknown as { initiateRoomCapture?: () => Promise<void> } | null)?.initiateRoomCapture?.().catch(() => {});
+        if (y && !it.y) tell?.(JSON.stringify({ type: "walls" }));
         it.y = y;
-        // of the right controller, where those two buttons are A and B: A forward again, B back to where a link was followed from
-        const a = it.side === "right" && pad?.buttons[BUTTON_X]?.pressed === true;
-        const b = it.side === "right" && pad?.buttons[BUTTON_Y]?.pressed === true;
-        if (a && !it.a) tell?.(JSON.stringify({ type: "jump", back: false }));
-        if (b && !it.b) tell?.(JSON.stringify({ type: "jump", back: true }));
-        it.a = a;
-        it.b = b;
     });
 }
 
@@ -1117,6 +1490,7 @@ canvas.addEventListener("pointermove", (e) => {
             const middle = from.addScaledVector(towards, taken.along).sub(taken.grip);
             placed.set(taken.node.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
             show(received);
+            tellHeld(taken.node.id, { x: middle.x, y: middle.y, z: middle.z });
         } else if (held.moved && held.button === 0 && !e.shiftKey) {
             // as in the window: the left button on nothing takes the view along. What the eyes go around goes with them
             const perPixel = 2 * around.away * Math.tan(camera.fov * Math.PI / 360) / canvas.clientHeight;
@@ -1197,9 +1571,12 @@ renderer.setAnimationLoop((_time, frame) => {
         scene.background = shown !== null ? new THREE.Color(shown.background) : null;
     }
     buttons();
+    carry();
     face();
     point();
     pointInMenu();
+    pointInKeypad();
+    sizeRoomLines();
     placeStatus();
     renderer.render(scene, camera);
 });

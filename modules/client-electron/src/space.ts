@@ -25,6 +25,8 @@ export interface Shell {
     sun: boolean;
     /** How far it reaches at most, laid straight: a ring around it. */
     reach?: number | null;
+    /** The highest level of those `o` moves: the hues go up to it. */
+    top: number;
 }
 
 export interface SpaceScene<N extends SpaceNode> {
@@ -490,8 +492,8 @@ const SHELL_HUES = [30 / 360, 225 / 360] as const;
 /** Their lightness on a dark background, and on a light one. */
 const SHELL_LIGHTNESS = { dark: 0.6, light: 0.4 } as const;
 
-/** On [background], the colour of a shell ([Shell]) among levels up to a top one: red, green and blue, 0 to 1. */
-export function shellColours(background: string): (shell: Shell, top: number) => [number, number, number] {
+/** On [background], the colour of a shell ([Shell]) among levels up to its top one: red, green and blue, 0 to 1. */
+export function shellColours(background: string): (shell: Shell) => [number, number, number] {
     const bg = new THREE.Color(background);
     const lightness = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b > 0.5 ? SHELL_LIGHTNESS.light : SHELL_LIGHTNESS.dark;
     // full saturation: of the hue's three channels, as far below and above the lightness as it allows
@@ -500,8 +502,8 @@ export function shellColours(background: string): (shell: Shell, top: number) =>
         const k = (n + hue * 12) % 12;
         return lightness - spread * Math.max(-1, Math.min(k - 3, 9 - k, 1));
     };
-    return (shell, top) => {
-        const hue = SHELL_HUES[0] + (SHELL_HUES[1] - SHELL_HUES[0]) * (top > 0 ? shell.level / top : 0);
+    return (shell) => {
+        const hue = SHELL_HUES[0] + (SHELL_HUES[1] - SHELL_HUES[0]) * (shell.top > 0 ? shell.level / shell.top : 0);
         return shell.level === 0 && !shell.sun ? [0, 0, 0] : [channel(hue, 0), channel(hue, 8), channel(hue, 4)];
     };
 }
@@ -552,10 +554,9 @@ class Shells {
         }
         const positions = this.positions;
         const colours = this.colours;
-        const top = shells.reduce((most, s) => Math.max(most, s.level), 0);
         const colourOf = shellColours(background);
         pieces.reduce((at, { s, unit, radius }) => {
-            const [r, g, b] = colourOf(s, top);
+            const [r, g, b] = colourOf(s);
             for (let k = 0; k < unit.length; k += 3) {
                 // here y is up and z towards the viewer
                 positions[at + k] = s.x + unit[k] * radius;

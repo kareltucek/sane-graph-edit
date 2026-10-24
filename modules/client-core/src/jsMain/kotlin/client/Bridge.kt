@@ -249,6 +249,7 @@ class JsView internal constructor(
         j.level = s.level
         j.sun = s.sun
         j.reach = s.reach
+        j.top = s.top
         j
     }.toTypedArray()
 
@@ -463,16 +464,16 @@ class JsView internal constructor(
     /**
      * The node [id] taken and put at x, y, z of the graph, by what holds nodes in space (a headset's controller). With the
      * graph on the walls ([worldOnWalls]) that is a place in the room, as the nodes were given: the node is then put on the
-     * wall nearest to it.
+     * wall nearest to it. Not [done]: it is still held ([PointerInput.dragged]).
      */
-    fun dragNode(id: String, x: Double, y: Double, z: Double) {
+    fun dragNode(id: String, x: Double, y: Double, z: Double, done: Boolean = true) {
         val on = onWalls?.second
         val node = view.g.node(id)
         val to = if (on == null || node == null) Point3(x, y, z) else {
             val m = OnWalls.METRES_PER_UNIT
             on.unplace(x * m, -y * m, -z * m, Point3(node.position, graph_tools.Depth.of(node)))
         }
-        view.pointer.dragged(id, to)
+        view.pointer.dragged(id, to, done)
     }
 
     /** The links of the nodes shown that have any: by the node's id, each link as its letter and, after a space, where it leads. */
@@ -504,6 +505,14 @@ class JsView internal constructor(
     }
 
     val exploring: Boolean get() = Explore.isOn(view)
+
+    /** The graph on the walls of the room, or off them (`:set walls`). */
+    fun toggleWalls() {
+        keys.activeView = view
+        graph_tools.ViewModes.walls = !graph_tools.ViewModes.walls
+        view.refreshStatus()
+        view.repaint()
+    }
 
     fun pointerUp(x: Double, y: Double, domButton: Int, control: Boolean) {
         button(domButton)?.let { view.pointer.released(Vector2(x, y), Vector2(x, y), it, control) }

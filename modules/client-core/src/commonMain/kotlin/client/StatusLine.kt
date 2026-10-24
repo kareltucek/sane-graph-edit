@@ -33,6 +33,8 @@ object StatusLine {
             "[show-children]".takeIf { graph_tools.ViewModes.showChildren },
             "[dynamic]".takeIf { graph_tools.ViewModes.dynamic },
             "[walls]".takeIf { graph_tools.ViewModes.walls },
+            // with a headset, which of the two the graph is in
+            "[space]".takeIf { FileLink.inVr && !graph_tools.ViewModes.walls },
             "[discard]".takeIf { graph_tools.ViewModes.discard },
             "[3d]".takeIf { view.viewTransform.threeD },
             // somebody else is attached to this document too

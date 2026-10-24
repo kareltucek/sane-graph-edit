@@ -197,7 +197,7 @@ Flags:
 | `D`       | Delete selected nodes but reconnect predecessors to successors  |
 | `o`       | Layout optimiser while held: the selected nodes (all seen, with one or none selected) move a spring pass a picture until the key is let go; one undo step |
 | `O`       | The same, around one selected node: it stays where it is and its children are laid out around it (several selected: as `o`) |
-| `:set suns` / `:set nosuns` | Show (made anew now and whenever `o` is let go) / stop showing the systems the whole graph is settled by: a ring (3D: a wire dodecahedron, and a ring as far as it reaches laid straight) around each, as big as the room it wants, coloured by level, and the own room of each sun of the lowest systems (level 0); `:set suns=<levels>` (e.g. `0,1,2`) only those of these levels, also while `o` runs, and `o` on the whole graph moves those levels only |
+| `:set suns` / `:set nosuns` | Show / stop showing, while `o` settles the whole graph, the systems of the levels that move: a ring (3D: a wire dodecahedron, and a ring as far as it reaches laid straight) around each, as big as the room it wants, coloured by level, and the own room of each sun of the lowest systems (level 0); `:set suns=<levels>` (e.g. `0,1,2`): `o` on the whole graph moves those levels only |
 | `g`       | Toggle "grab" mode — move the selection without holding a button |
 
 ### Keyboard — selection & navigation
@@ -273,7 +273,7 @@ shell exits, the node is removed or the window closes. Nothing of it
 is saved, and opening a file starts nothing: the document only says
 that the node is a terminal. What the terminal shows is drawn in the
 node, in the node's colours, wherever nodes are drawn: in 3D mode and
-in a headset too, where the trigger on the node enters it (the keys
+in a headset too, where the trigger on the node selected enters it (the keys
 are still the window's: the keyboard of the computer the editor runs
 on). A headset is told what a terminal shows as it changes, as text
 (up to some 60 times a second), and draws it over the node in its
@@ -632,27 +632,44 @@ and then the address it prints, in the headset's browser, and there
 the four-digit PIN it prints with it. The page
 shows the graph of the tab that is shown in the window, as that
 changes, and offers to enter with the room visible (passthrough) or
-hidden. The grip of the left controller takes the graph in that
-hand; a thumbstick pushed forward or back makes it bigger or
-smaller. The right controller points: on the node it points at, its
-trigger is the left button of a mouse and its grip the right one,
-so a node is selected with the trigger, and in explore mode opened
-with the trigger and folded with the grip. A node the trigger is
-held on goes where the controller points until it is let go of: it
-is put there, with the other selected nodes if it is one of them.
-The nodes face whoever looks, from wherever. The left controller
-points too: its trigger on a node that has links follows its link,
-into a new tab; of several links it holds a menu open around the
-node, and the one pointed at when it is let go of is followed. B
-(on the right controller) goes back to
-where a link was followed from, A forward again (Ctrl+O, Ctrl+I).
-X on the left controller
-goes into explore mode (from the node selected, or from the roots
-of the graph) and out of it. The window's status line is shown on a
+hidden. Of each controller the trigger is its left button and the
+grip its right one; a press let go of within 0.3 s (the hand still)
+is a click, a longer one a hold.
+
+The right controller points. Trigger click on a node: selects it
+(explore mode: unfolds it); on a terminal node already selected, goes
+into its shell;
+held on a node, takes it along where the ray goes (explore mode: as
+a Shift-drag, the others making way). Grip click on a node: takes it
+out of the selection (explore mode: folds it); held, the node it was
+pressed on goes, until let go of, to where a node was last taken in
+hand (clicked, dragged, turned around or held so). The
+thumbstick makes the graph bigger or smaller (forward, back) and turns
+it about the upright (aside), both around the node the ray is on, or
+the one nearest to the ray. A and B do nothing.
+
+The left controller points too. Trigger click on a node that has
+links: follows its link, into a new tab; of several, a menu opens
+around the node, and the next click follows the one pointed at.
+Grip click: back to where a link was followed from (Ctrl+O). Held,
+the grip takes the graph in the hand: it goes and turns as the hand
+does, as the eyes see the hand, but in and out (away from the eyes)
+4 times as far; turning around with it, the graph is seen as before. The trigger held flies one through the
+graph: across, the graph goes as far as the hand; in and out, as fast
+as the hand is from where it was pressed (4 metres a second for each
+metre), times how hard the trigger is pressed. X goes into
+explore mode (from the node selected, or from the roots of the graph)
+and out of it; X twice quickly asks the headset to scan the room
+anew. Y puts the graph on the walls of the room or off them into its
+space (`:set walls`; the status line says `[walls]` or `[space]`).
+The thumbstick does nothing. The nodes face whoever looks,
+from wherever. The window's status line is shown on a
 strip before and below the eyes: it stays where it is in the room,
 and comes along when one turns or walks away from it. The
 headset only places pictures the window makes of the nodes: it holds
-nothing, and reloading its page loses nothing.
+nothing, and reloading its page loses nothing. When the editor is
+quit, the headset leaves its immersive session and stops trying to
+connect: started again, the editor prints a new address.
 
 It is off unless asked for, answers on this machine only and only
 to who gives the PIN (which sends the browser on to an address with
@@ -677,16 +694,20 @@ shell), but only when the page is served on this machine alone: with
 The browser keeps its own (F-keys, Ctrl+R/L/T/W/N, Alt). Only the
 page this serves is let in, not another site's.
 
-`--no-pin` (with `--vr`, on this machine only) asks for no PIN: for
-trying things, when typing it at every start is a nuisance. Whatever
-runs on this machine can then open the page; on the local network
-the PIN is asked for all the same.
+`--no-pin` (with `--vr`) asks for no PIN at the start: for trying
+things, when typing it at every start is a nuisance. Whatever runs on
+this machine can then open the page, and with `--vr-lan` anyone on the
+local network who finds the port, and sees the graph. There a headset
+is still asked for the PIN (printed at the start) before it goes into
+a terminal node, which starts a shell: on a keypad before the eyes,
+pressed with the right trigger (in a desktop browser, a prompt). The
+same five wrong ones in all count.
 
 Without a cable: `--vr 8765 --vr-lan` answers on the local network
 instead, for a headset on the same Wi-Fi. This does open a port to
 that network: on the one address this machine has there, over TLS
 (`https://192.168.…:8765`, as it prints), and still only to
-who gives the PIN. The certificate is one the application makes
+who gives the PIN (unless `--no-pin`: see above). The certificate is one the application makes
 for itself with `openssl` and keeps in its configuration directory
 (`vr-cert.pem`, `vr-key.pem`), so the headset's browser warns about
 it once and has to be told to go on.
@@ -697,9 +718,9 @@ the page outlines them with what they are (`wall`, `floor`, `desk`…)
 and tells the window of them: `:room` lists them, with their sizes
 and where they are. Nothing is laid out by them yet. Where it has
 the scanned shape of the room too (furniture and all), the page
-shows that as a faint net; the window is not told of it yet. Y on
-the left controller asks the headset to scan the room anew, where
-its browser can (once after entering).
+shows that as a net of lines; the window is not told of it yet. X twice
+quickly on the left controller asks the headset to scan the room
+anew, where its browser can (once after entering).
 
 The window draws that room too, in 3D mode, as outlines around the
 graph (a unit of the graph is a millimetre; the middle of the graph

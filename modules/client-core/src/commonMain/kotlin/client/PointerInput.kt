@@ -60,8 +60,8 @@ class PointerInput(private val view: EditorView) {
      * [button] was clicked on the node [id] by something that points
      * at nodes and not at places of the view (a headset's
      * controller): what the button is mapped to, as [mapped]; if
-     * nothing, the left one selects the node and the right one does
-     * nothing. A node that is not shown is not clicked.
+     * nothing, the left one selects the node and the right one takes
+     * it out of the selection. A node that is not shown is not clicked.
      */
     fun clicked(id: String, button: Button) {
         val under = view.g.visibleNodes().filter { it.id == id }
@@ -69,7 +69,10 @@ class PointerInput(private val view: EditorView) {
         if (under.isNotEmpty() && button != Button.Middle && !view.content.isBusy && gestures.state == null) {
             view.endNodeEdit()
             view.endStylePicker()
-            if (!mouseKey(key) { view.g.cleanSelect(under) } && button == Button.Left) view.g.cleanSelect(under)
+            // unmapped: the left button selects the node, the right one takes it out of the selection
+            val mapped = mouseKey(key) { view.g.cleanSelect(under) }
+            if (!mapped && button == Button.Left) view.g.cleanSelect(under)
+            else if (!mapped && button == Button.Right) view.g.unselectAll(under)
             view.repaint()
         }
     }
@@ -78,11 +81,21 @@ class PointerInput(private val view: EditorView) {
      * The node [id] was taken and put at [to] (in the graph, not as
      * the view sees it) by something that holds nodes in space (a
      * headset's controller). If it is one of several selected nodes,
-     * they all go along. One undo step.
+     * they all go along. One undo step. Not [done]: it is still held,
+     * which only explore mode takes, as a Shift-drag
+     * ([GestureController.headsetDrag]); else it is put when let go.
      */
-    fun dragged(id: String, to: Point3) {
+    fun dragged(id: String, to: Point3, done: Boolean = true) {
         val held = view.g.visibleNodes().firstOrNull { it.id == id }
-        if (held != null && !view.content.isBusy && gestures.state == null) {
+        // in explore mode as a Shift-drag: told while it is held, the others making way
+        if (held != null && !view.content.isBusy && Explore.isOn(view)) {
+            if (gestures.state == null || gestures.state == GestureController.States.MovingNodes) {
+                view.endNodeEdit()
+                view.endStylePicker()
+                gestures.headsetDrag(held, to)
+            }
+            if (done) gestures.headsetDrop()
+        } else if (held != null && done && !view.content.isBusy && gestures.state == null) {
             view.endNodeEdit()
             view.endStylePicker()
             val all = view.g.selectedNodes.toList().takeIf { held in it } ?: listOf(held)

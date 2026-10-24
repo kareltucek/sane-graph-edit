@@ -238,6 +238,12 @@ fun openApp(url: String, path: String?, grid: GridMetrics, page: dynamic, done: 
  * show [path] as [openApp] does. [done] gets the window's tabs, or
  * the reason there are none: nobody has a session there.
  */
+/** A headset is served (`--vr`): the help nodes made lead to what its controllers do ([FileLink.inVr]). */
+@JsExport
+fun setInVr(on: Boolean) {
+    FileLink.inVr = on
+}
+
 @JsExport
 fun attachApp(path: String?, grid: GridMetrics, page: dynamic, done: (app: JsApp?, error: String?) -> Unit) {
     UnixSocketConnection.connect(SessionSocket.pathFor(Workspace.dir).toString()) { connection ->

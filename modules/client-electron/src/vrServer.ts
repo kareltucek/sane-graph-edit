@@ -112,9 +112,13 @@ function surfacesOf(text: string): VrSurface[] | null {
 const MAX_ID = 64;
 
 /** What a headset did with a controller: a button clicked on a node (0 the left one, 2 the right one), or explore mode asked into or out of. */
-type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "move"; id: string; x: number; y: number; z: number } |
+type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "walls" } |
+    { type: "move"; id: string; x: number; y: number; z: number; held: boolean } |
     { type: "follow"; id: string; letter: string } | { type: "jump"; back: boolean } | { type: "stand"; x: number; z: number; ax: number; az: number } |
-    { type: "key"; key: string; ctrl: boolean; shift: boolean };
+    { type: "key"; key: string; ctrl: boolean; shift: boolean } | { type: "pin"; pin: string };
+
+/** A PIN given is no longer than this; the right one is four digits. */
+const MAX_PIN = 16;
 
 /** A key's name is no longer than this (`ArrowRight`, `F12`…). */
 const MAX_KEY = 24;
@@ -131,19 +135,23 @@ function doneOf(text: string): VrDone | null {
         const sent = JSON.parse(text);
         const click = sent?.type === "click" && typeof sent.id === "string" && sent.id.length <= MAX_ID && (sent.button === 0 || sent.button === 2);
         const place = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= MAX_PLACE;
-        const move = sent?.type === "move" && typeof sent.id === "string" && sent.id.length <= MAX_ID && place(sent.x) && place(sent.y) && place(sent.z);
+        const move = sent?.type === "move" && typeof sent.id === "string" && sent.id.length <= MAX_ID && place(sent.x) && place(sent.y) && place(sent.z) &&
+            (sent.held === undefined || typeof sent.held === "boolean");
         const follow = sent?.type === "follow" && typeof sent.id === "string" && sent.id.length <= MAX_ID && typeof sent.letter === "string" && /^[A-Za-z]$/.test(sent.letter);
         const metres = (n: unknown) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= MAX_STAND;
         const stand = sent?.type === "stand" && metres(sent.x) && metres(sent.z) && metres(sent.ax) && metres(sent.az);
         const key = sent?.type === "key" && typeof sent.key === "string" && sent.key.length >= 1 && sent.key.length <= MAX_KEY &&
             typeof sent.ctrl === "boolean" && typeof sent.shift === "boolean";
+        const pin = sent?.type === "pin" && typeof sent.pin === "string" && sent.pin.length <= MAX_PIN;
         return key ? { type: "key", key: sent.key, ctrl: sent.ctrl, shift: sent.shift }
+            : pin ? { type: "pin", pin: sent.pin }
             : stand ? { type: "stand", x: sent.x, z: sent.z, ax: sent.ax, az: sent.az }
             : sent?.type === "jump" && typeof sent.back === "boolean" ? { type: "jump", back: sent.back }
             : follow ? { type: "follow", id: sent.id, letter: sent.letter }
             : click ? { type: "click", id: sent.id, button: sent.button }
-            : move ? { type: "move", id: sent.id, x: sent.x, y: sent.y, z: sent.z }
-            : sent?.type === "explore" ? { type: "explore" } : null;
+            : move ? { type: "move", id: sent.id, x: sent.x, y: sent.y, z: sent.z, held: sent.held === true }
+            : sent?.type === "explore" ? { type: "explore" }
+            : sent?.type === "walls" ? { type: "walls" } : null;
     } catch {
         return null;
     }
@@ -153,16 +161,20 @@ function doneOf(text: string): VrDone | null {
 export interface VrSource {
     /** A button was clicked on the node [id] in a headset (0 the left one, 2 the right one); the id is whatever the headset said. */
     click: (id: string, button: 0 | 2) => void;
-    /** The node [id] was taken in a headset and put at x, y, z of the graph. */
-    move: (id: string, x: number, y: number, z: number) => void;
+    /** The node [id] was taken in a headset and put at x, y, z of the graph; [held]: it is still held there, not let go of yet. */
+    move: (id: string, x: number, y: number, z: number, held: boolean) => void;
     /** A headset asks to follow the link [letter] of the node [id]. */
     follow: (id: string, letter: string) => void;
     /** A headset asks to go back to where a link was followed from, or forward again. */
     jump: (back: boolean) => void;
     /** A headset asks into explore mode, or out of it. */
     explore: () => void;
+    /** A headset asks for the graph on the walls of the room, or off them into its space (`:set walls`). */
+    walls: () => void;
     /** Where who wears a headset stands in the room and which way they look, seen from above (metres; x and z); the last to say so is believed. */
     stand: (x: number, z: number, ax: number, az: number) => void;
+    /** Whether the trigger on the node [id] goes into its terminal, which starts a shell: a headset on the local network may only with the PIN. */
+    enters: (id: string) => boolean;
     /** A key was pressed in the headset's page ([key] as a DOM event names it): it is the window's, as if pressed there. Only asked on this machine. */
     key: (key: string, ctrl: boolean, shift: boolean) => void;
     /** A headset told of the room it is in: the last to do so is believed. */
@@ -237,14 +249,20 @@ const PIN_TRIES = 5;
 
 /**
  * Start answering at [port] (0: any free one) for headsets that know
- * [token], which one that is given the [pin] is told (with no [pin],
- * anyone who asks: for trying things on this machine): on this machine
- * only, or with [lan] on the local network, over TLS. [told] gets the
+ * [token], which one that is given the [pin] is told (not [atStart]:
+ * anyone who asks): on this machine only, or with [lan] on the local
+ * network, over TLS. There a headset that was not asked for the [pin]
+ * at the start is asked for it when it would go into a terminal node,
+ * and goes in only once it has given it. [told] gets the
  * address to open in the headset once the server listens, or what
  * went wrong. What is given back tells the headsets at once what a
- * node that changes fast shows ([VrLive]).
+ * node that changes fast shows ([VrLive]), and that the editor is
+ * closing ([exit]).
  */
-export function startVr(port: number, token: string, pin: string | null, lan: boolean, source: VrSource, told: (address: string | null, error: string | null) => void) {
+export function startVr(
+    port: number, token: string, pin: string, atStart: boolean, lan: boolean, source: VrSource,
+    told: (address: string | null, error: string | null) => void,
+): VrServed {
     // loaded here, not bundled: Node's own, and a module of Node's kind
     const http: typeof import("http") = require("http");
     const https: typeof import("https") = require("https");
@@ -268,7 +286,7 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
     const pinOf = (request: IncomingMessage) => new URL(request.url ?? "/", "http://localhost").searchParams.get("pin");
     const pinRight = (given: string) => {
         const a = Buffer.from(given);
-        const b = Buffer.from(pin ?? "");
+        const b = Buffer.from(pin);
         const right = triesLeft > 0 && a.length === b.length && crypto.timingSafeEqual(a, b);
         if (!right && triesLeft > 0) triesLeft -= 1;
         return right;
@@ -282,7 +300,7 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
             : `<p>Too many wrong PINs. Start the application again.</p>`);
 
     // what is given back when no headset is served after all: tells nobody
-    const unserved = (_: VrLive) => {};
+    const unserved: VrServed = { live: () => {}, exit: () => {} };
     const host = lan ? lanAddress() : "127.0.0.1";
     if (host === null) {
         told(null, "this machine has no address on a local network");
@@ -303,7 +321,7 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
         } else if (!asked.open && !knows(request)) {
             const given = pinOf(request);
             // no PIN is asked for (`--no-pin`): whoever asks is told the token
-            if (pin === null || (given !== null && pinRight(given))) response.writeHead(302, { Location: `/?token=${token}`, "Cache-Control": "no-store" }).end();
+            if (!atStart || (given !== null && pinRight(given))) response.writeHead(302, { Location: `/?token=${token}`, "Cache-Control": "no-store" }).end();
             else response.writeHead(given === null ? 200 : 403, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" }).end(pinPage(given !== null));
         } else {
             // only these two files, by name: nothing of what is asked is made into a path
@@ -313,8 +331,11 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
     };
     const server: Server = secured === null ? http.createServer(answer) : https.createServer(secured, answer);
 
-    /** Each headset, with what it was last sent: the scene as text, and the version of each page. */
-    const headsets = new Map<WebSocket, { scene: string; pages: number[]; sending: boolean }>();
+    /**
+     * Each headset, with what it was last sent: the scene as text, and the version of each page; whether it may go into
+     * terminal nodes (it gave the PIN, or that is not asked for), and the click into one that waits for the PIN.
+     */
+    const headsets = new Map<WebSocket, { scene: string; pages: number[]; sending: boolean; trusted: boolean; waiting: string | null }>();
     /** What the nodes that change fast show now ([VrLive]), as it was last sent, by node. */
     const lives = new Map<string, string>();
     const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
@@ -325,7 +346,8 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
     };
     server.on("upgrade", (request, socket, head) => {
         if (knows(request) && ownPage(request)) sockets.handleUpgrade(request, socket, head, (ws) => {
-            headsets.set(ws, { scene: "", pages: [], sending: false });
+            const sent = { scene: "", pages: [] as number[], sending: false, trusted: atStart || !lan, waiting: null as string | null };
+            headsets.set(ws, sent);
             lives.forEach((text) => ws.send(text));
             ws.on("close", () => headsets.delete(ws));
             ws.on("error", () => headsets.delete(ws));
@@ -334,11 +356,23 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
                 const surfaces = surfacesOf(text);
                 const done = surfaces === null ? doneOf(text) : null;
                 if (surfaces !== null) source.room(surfaces);
-                else if (done?.type === "click") source.click(done.id, done.button);
-                else if (done?.type === "move") source.move(done.id, done.x, done.y, done.z);
+                // the trigger on a terminal node goes into it: on the local network only with the PIN, which is asked for then
+                else if (done?.type === "click" && done.button === 0 && !sent.trusted && source.enters(done.id)) {
+                    sent.waiting = done.id;
+                    ws.send(JSON.stringify({ type: "pin" }));
+                } else if (done?.type === "click") source.click(done.id, done.button);
+                else if (done?.type === "pin" && !sent.trusted) {
+                    sent.trusted = pinRight(done.pin);
+                    ws.send(JSON.stringify({ type: "pinned", right: sent.trusted, left: triesLeft }));
+                    // given wrong, the click still waits: the headset asks again
+                    if (sent.trusted && sent.waiting !== null) source.click(sent.waiting, 0);
+                    if (sent.trusted) sent.waiting = null;
+                }
+                else if (done?.type === "move") source.move(done.id, done.x, done.y, done.z, done.held);
                 else if (done?.type === "follow") source.follow(done.id, done.letter);
                 else if (done?.type === "jump") source.jump(done.back);
                 else if (done?.type === "explore") source.explore();
+                else if (done?.type === "walls") source.walls();
                 else if (done?.type === "stand") source.stand(done.x, done.z, done.ax, done.az);
                 // keys can do all the editor can: taken from this machine only, never from the local network
                 else if (done?.type === "key" && !lan) source.key(done.key, done.ctrl, done.shift);
@@ -396,5 +430,15 @@ export function startVr(port: number, token: string, pin: string | null, lan: bo
         const where = lan ? `https://${host}` : "http://localhost";
         told(typeof at === "object" && at !== null ? `${where}:${at.port}` : null, null);
     });
-    return live;
+    // the editor closes: the headsets leave their immersive sessions, and do not come back to what is gone
+    const exit = () => headsets.forEach((_, ws) => {
+        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "exit" }));
+    });
+    return { live, exit };
+}
+
+/** What [startVr] gives back: tell the headsets what a node that changes fast shows, and that the editor is closing. */
+export interface VrServed {
+    live: (now: VrLive) => void;
+    exit: () => void;
 }

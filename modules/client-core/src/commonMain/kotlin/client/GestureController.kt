@@ -606,8 +606,8 @@ class GestureController(
         graphView.repaint()
     }
 
-    /** [graph_tools.Factors.STEP_BUDGET_MS] as [Settling.Run] takes it: null, no limit, for 0. */
-    private val stepBudget: Long? get() = graph_tools.Factors.STEP_BUDGET_MS.takeIf { it > 0 }
+    /** [graph_tools.Factors.Steps.STEP_BUDGET_MS] as [Settling.Run] takes it: null, no limit, for 0. */
+    private val stepBudget: Long? get() = graph_tools.Factors.Steps.STEP_BUDGET_MS.takeIf { it > 0 }
 
     /** Where the nodes seen were when the move in progress started ([captureMoveStart]); null outside one. */
     private var settleStart: Map<Node, Point3>? = null
@@ -665,6 +665,35 @@ class GestureController(
         run.stir(following + inTheWay)
     }
 
+    /**
+     * A headset holds [held] and has it at [to] (in space), as a Shift-drag: with the selection if it is one of it, the others
+     * making way ([settleAround]). The first call starts the move, [headsetDrop] ends it.
+     */
+    fun headsetDrag(held: Node, to: Point3) {
+        val g = graphView.g
+        if (state != States.MovingNodes) {
+            finishSettling()
+            if (held !in g.selectedNodes) g.cleanSelect(mutableSetOf(held))
+            state = States.MovingNodes
+            captureMoveStart()
+        }
+        val by = to - held.point
+        g.movable(g.selectedNodes).forEach {
+            it.point = it.point + by
+            g.needsRecomputing(it)
+        }
+        settleAround()
+        graphView.repaint()
+    }
+
+    /** The headset let go of what [headsetDrag] moved: one undo step, when the nodes on their way rest. */
+    fun headsetDrop() {
+        if (state == States.MovingNodes) {
+            commitMoveIfAny()
+            state = null
+        }
+    }
+
     /** Besides the dragged nodes, the others [settleAround] moved: where they were, in space. */
     private fun settledBefore(dragged: Map<Node, Vector2>): Map<Node, Point3> =
         settleStart.orEmpty().filter { (n, p) -> n !in dragged && n.point != p }
@@ -678,41 +707,35 @@ class GestureController(
     /** `o` / `O` held: the nodes it lays out, a step for each picture ([frame]); null while neither is held. */
     private var laying: Stepping? = null
 
-    /** The systems shown when `o` does not run (`:set suns`): made anew when `o` is let go; null when they are not shown (`:set nosuns`). */
-    private var suns: Multilevel.Systems? = null
+    /** `:set suns`: the systems are drawn while `o` lays out the whole graph by levels. */
+    var sunsShown = false
+        private set
 
-    /** The levels of the systems drawn (`:set suns=<levels>`), also while `o` runs, and those `o` on the whole graph moves; null: all. */
+    /** The levels `o` on the whole graph moves (`:set suns=<levels>`); null: all. */
     private var sunsLevels: Set<Int>? = null
 
-    val sunsShown: Boolean get() = suns != null
-
-    private fun makeSuns() {
-        suns = Multilevel.Systems(graphView.g, graphView.g.visibleNodes(), graphView.viewTransform.threeD)
-    }
-
-    /** `:set suns` / `:set suns=<levels>`: the systems of the nodes shown are made anew and shown, those of [levels] only or all. */
+    /** `:set suns` / `:set suns=<levels>`: the systems are drawn while `o` runs, and it moves those of [levels] only or all. */
     fun showSuns(levels: Set<Int>?) {
+        sunsShown = true
         sunsLevels = levels
-        makeSuns()
         graphView.repaint()
     }
 
     /** `:set nosuns`. */
     fun hideSuns() {
-        suns = null
+        sunsShown = false
         sunsLevels = null
         graphView.repaint()
     }
 
-    /**
-     * The systems to be drawn ([Multilevel.Systems.shells]), only with `:set suns`: while `o` lays out the whole graph by levels, those;
-     * else those made last. Of the levels `o` moves ([graph_tools.Factors.OPTIMIZED_LEVELS]) only.
-     */
+    /** The systems to be drawn ([Multilevel.Systems.shells]), only with `:set suns` and while `o` lays out the whole graph: of the levels that step. */
     val shells: List<Multilevel.Shell>
-        get() = suns?.let { made ->
-            ((laying as? Multilevel.Run)?.systems ?: made).shells()
-                .filter { (sunsLevels?.contains(it.level) ?: true) && it.level in graph_tools.Factors.OPTIMIZED_LEVELS }
-        }.orEmpty()
+        get() = (laying as? Multilevel.Run)?.takeIf { sunsShown }?.let { run -> run.systems.shells().filter { it.level in run.stepping } }.orEmpty()
+
+    /** The highest level of [graph_tools.Factors.Levels.OPTIMIZED_LEVELS] there is: [shells] are coloured among those, whichever are drawn. */
+    val shellsTop: Int
+        get() = (laying as? Multilevel.Run)?.systems
+            ?.let { s -> (0 until s.levelCount).lastOrNull { it in graph_tools.Factors.Levels.OPTIMIZED_LEVELS } } ?: 0
 
     /** Where all nodes were when `o` / `O` was pressed: the undo step of the hold is made from it when it is let go. */
     private var layingFrom: Map<Node, Point3>? = null
@@ -742,7 +765,7 @@ class GestureController(
         val importance = { n: Node -> (g.findOutEdges(n).size + 1) * n.cache.shapeBounds.length().coerceAtLeast(1.0) }
         val weight = { n: Node -> if (n in moving) importance(n) else Settling.FIXED }
         val depth = graphView.viewTransform.threeD
-        // the whole graph by levels, all at once, or those of `:set suns=<levels>` alone
+        // the whole graph by levels, one at a time or all at once, or those of `:set suns=<levels>` alone
         return if (whole) Multilevel.Run(g, shown, weight, importance, stepBudget, clock, depth, past, only = sunsLevels)
         else Settling.Run(g, shown, weight, budget = stepBudget, clock = clock, depth = depth, rank = importance, adaptive = true).also { it.stir(moving, past) }
     }
@@ -770,10 +793,7 @@ class GestureController(
         laying = null
         layingFrom = null
         if (before != null) commitPoints(before)
-        if (suns != null) {
-            makeSuns()
-            graphView.repaint()
-        }
+        if (sunsShown) graphView.repaint()
     }
 
     /** The nodes of [before] that moved since, as one undo step: their positions and their depths. */
