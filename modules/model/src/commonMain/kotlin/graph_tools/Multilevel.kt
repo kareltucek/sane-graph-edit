@@ -15,7 +15,7 @@ import kotlin.math.sqrt
  * systems carried down a level at a time, each node going as the systems whose suns are near it, the nearest most.
  *
  * A node's mass is the room it wants: the disc (in 3D the ball) as far as its springs keep others from its middle,
- * by area (volume). A system weighs [Factors.PACKING] times its members together and stands as one round node that wants as much.
+ * by area (volume). A system weighs [Factors.Levels.PACKING] times its members together and stands as one round node that wants as much.
  * An edge from a system to another pulls as many times as there are edges that way between the nodes they hold
  * ([Level.count]). Nodes and systems alike are kept apart by the separation spring, which pushes two until they are as
  * many times as far apart as they reach (systems: their rooms) as [Level.separation] says, by how they are joined; nodes
@@ -53,11 +53,11 @@ object Multilevel {
         /** A path of at most two edges joins [a] and [b], whichever way its edges go. */
         fun kin(a: Node, b: Node) = b in around[a].orEmpty()
 
-        /** How far apart the separation spring keeps [a] and [b] ([Factors.SEPARATION_KIN]). */
+        /** How far apart the separation spring keeps [a] and [b] ([Factors.AllLevels.SEPARATION_KIN]). */
         fun separation(a: Node, b: Node): Double = when {
-            related(a, b) -> Factors.SEPARATION_RELATED
-            kin(a, b) -> Factors.SEPARATION_KIN
-            else -> Factors.SEPARATION_UNRELATED
+            related(a, b) -> Factors.AllLevels.SEPARATION_RELATED
+            kin(a, b) -> Factors.AllLevels.SEPARATION_KIN
+            else -> Factors.AllLevels.SEPARATION_UNRELATED
         }
     }
 
@@ -73,7 +73,7 @@ object Multilevel {
     /** The room of a ball (in 3D) or a disc that reaches [radius]. */
     private fun roomOf(radius: Double, depth: Boolean) = if (depth) 4 * PI / 3 * radius.pow(3) else PI * radius * radius
 
-    private fun sparser(depth: Boolean) = if (depth) Factors.SPARSER else 1.0
+    private fun sparser(depth: Boolean) = if (depth) Factors.Nodes.SPARSER else 1.0
 
     /** How far [n] reaches from its middle: as a square (in 3D a card) of its area. */
     private fun reach(n: Node, depth: Boolean): Double {
@@ -129,7 +129,7 @@ object Multilevel {
     }
 
     /**
-     * Of each edge of the levels of systems, how long its rope is ([Factors.ROPE_LEVELS]): how far apart the two suns get
+     * Of each edge of the levels of systems, how long its rope is ([Factors.Levels.ROPE_LEVELS]): how far apart the two suns get
      * at most, the path between them laid straight. Of each system, the shortest ways from its sun to its members, among
      * them only, on the level below; of two systems, the shortest of these to the two ends of an edge between them, and the
      * edge. The edges of the nodes as long as their springs want ([ideal]), of the systems as their ropes. A path through
@@ -235,7 +235,7 @@ object Multilevel {
         val systems = sunOf.entries.groupBy({ it.value }, { it.key })
         val upper = Graph()
         val stand = systems.mapValues { (sun, members) ->
-            val mass = Factors.PACKING * held.getValue(sun)
+            val mass = Factors.Levels.PACKING * held.getValue(sun)
             // its springs keep others as far as its room reaches: the reach that, times the collision spring's, is that
             val reach = radiusOf(mass, depth) / (LayoutOptimizer.impl.collisionReach() * sparser(depth))
             Node(Vector2.Zero).apply {
@@ -274,14 +274,33 @@ object Multilevel {
     class Systems(g: Graph, shown: Set<Node>, private val depth: Boolean) {
         internal val levels: List<Level> = run {
             val nodes = Level(g, shown.toList(), shown.associateWith { mass(g, it, depth) }, emptyMap(), emptyMap())
-            generateSequence(nodes) { below -> if (below.nodes.size <= Factors.SMALL) null else contract(below, depth) }
+            generateSequence(nodes) { below -> if (below.nodes.size <= Factors.Levels.SMALL) null else contract(below, depth) }
                 .zipWithNext()
-                .takeWhile { (below, above) -> above.nodes.size <= below.nodes.size * Factors.SHRINKS }
+                .takeWhile { (below, above) -> above.nodes.size <= below.nodes.size * Factors.Levels.SHRINKS }
                 .fold(listOf(nodes)) { made, (_, above) -> made + above }
         }
 
+        /** How many levels there are, the nodes' own (0) among them. */
+        val levelCount: Int get() = levels.size
+
         /** The ropes and reaches, of the nodes' sizes and the spring scale when first asked for. */
         internal val measured: Measured by lazy { measure(levels, depth) }
+
+        /** How far [n] of level [i] reaches: the radius of its room; of a system no further than its reach laid straight ([measure]). */
+        internal fun radius(i: Int, n: Node): Double {
+            val room = radiusOf(levels[i].mass.getValue(n), depth)
+            return if (i == 0) room else minOf(room, measured.reaches[n] ?: room)
+        }
+
+        // a stand-in as big as its system reaches, which its springs keep others from (see [contract])
+        init {
+            (1 until levels.size).forEach { i ->
+                levels[i].nodes.forEach { n ->
+                    val reach = radius(i, n) / (LayoutOptimizer.impl.collisionReach() * sparser(depth))
+                    n.cache.shapeBounds = Vector2(2 * reach, 2 * reach)
+                }
+            }
+        }
 
         /**
          * For seeing them: each of every level as a ball with its room and its reach, around its sun as that is now; each
@@ -292,7 +311,7 @@ object Multilevel {
                 levels[i].nodes.associateWith { n -> below.getValue(levels[i].sun.getValue(n)) }
             }
             val systems = (1 until levels.size).flatMap { i ->
-                levels[i].nodes.map { n -> Shell(middles[i].getValue(n), radiusOf(levels[i].mass.getValue(n), depth), i, reach = measured.reaches[n]) }
+                levels[i].nodes.map { n -> Shell(middles[i].getValue(n), radius(i, n), i, reach = measured.reaches[n]) }
             }
             val suns = levels.getOrNull(1)?.sun?.values.orEmpty().toSet()
             val nodes = levels[0].nodes.filter { it in suns }.map { n -> Shell(n.point, radiusOf(levels[0].mass.getValue(n), depth), 0, true) }
@@ -301,7 +320,7 @@ object Multilevel {
     }
 
     /**
-     * `o` on the whole graph: [shown] of [g] by levels, all of them at each step, until all rest; the nodes' own level with
+     * `o` on the whole graph: [shown] of [g] by levels, one at a time or all at once ([Factors.Levels.LEVELS_AT_ONCE]); the nodes' own level with
      * [weight] and [rank], the levels above by their masses; with [only] those levels alone. As [Settling.Run] for [budget],
      * [clock], [depth] and [past].
      * How long each level took goes to [LayoutTimes].
@@ -328,28 +347,31 @@ object Multilevel {
         private fun runAt(i: Int, past: Double): Settling.Run {
             val level = levels[i]
             val among = level.nodes.toSet()
-            // the springs of this level ([Factors.EDGE_LEVELS] and the rest)
-            val collision = if (i in Factors.COLLISION_LEVELS) 1.0 else 0.0
-            val separating = i in Factors.SEPARATION_LEVELS
-            val furthest = maxOf(collision, if (separating) maxOf(Factors.SEPARATION_RELATED, Factors.SEPARATION_KIN, Factors.SEPARATION_UNRELATED) else 0.0)
+            // the springs of this level ([Factors.Levels.EDGE_LEVELS] and the rest)
+            val collision = if (i in Factors.Levels.COLLISION_LEVELS) 1.0 else 0.0
+            val separating = i in Factors.Levels.SEPARATION_LEVELS
+            val furthest = with(Factors.AllLevels) {
+                maxOf(collision, if (separating) maxOf(SEPARATION_RELATED, SEPARATION_KIN, SEPARATION_UNRELATED) else 0.0)
+            }
             val apart = { a: Node, b: Node -> maxOf(collision, if (separating) level.separation(a, b) else 0.0).takeIf { it > 0 } }
             // each held to the sun of the system it is in, a level up, as far as that system's room reaches
-            val held = levels.getOrNull(i + 1)?.takeIf { i in Factors.COHESION_LEVELS }?.let { up ->
-                up.nodes.flatMap { s -> up.members.getValue(s).map { it to (up.sun.getValue(s) to radiusOf(up.mass.getValue(s), depth)) } }.toMap()
+            val held = levels.getOrNull(i + 1)?.takeIf { i in Factors.Levels.COHESION_LEVELS }?.let { up ->
+                up.nodes.flatMap { s -> up.members.getValue(s).map { it to (up.sun.getValue(s) to systems.radius(i + 1, s)) } }.toMap()
             }.orEmpty()
-            val edges = i in Factors.EDGE_LEVELS
-            val siblings = i in Factors.SIBLINGS_LEVELS
-            val antigravity = i in Factors.ANTIGRAVITY_LEVELS
-            val rope = if (i in Factors.ROPE_LEVELS) ropes::get else { _: Edge -> null }
-            val rooted = i in Factors.ROOT_LEVELS
-            val pace = Factors.LEVEL_PACE(i)
+            val edges = i in Factors.Levels.EDGE_LEVELS
+            val siblings = i in Factors.Levels.SIBLINGS_LEVELS
+            val antigravity = i in Factors.Levels.ANTIGRAVITY_LEVELS
+            val rope = if (i in Factors.Levels.ROPE_LEVELS) ropes::get else { _: Edge -> null }
+            val rooted = i in Factors.Levels.ROOT_LEVELS
+            val pace = Factors.Levels.LEVEL_PACE(i)
+            val reach = { n: Node -> systems.radius(i, n).coerceAtLeast(1.0) }
             // on every level a node gives way by its mass, so that what the levels carry down leaves the middle of the masses
             val run = if (i == 0) level.mass.let { m ->
                 val mass = { n: Node -> if (weight(n).isFinite()) m.getValue(n) else Settling.FIXED }
                 Settling.Run(
                     g, among, mass, budget = budget, clock = clock, depth = depth, rank = rank, balanced = true, adaptive = true,
                     separation = maxOf(furthest, 1.0), separatedBy = apart, cohesion = held::get, edges = edges, siblings = siblings, antigravity = antigravity,
-                    rope = rope, rooted = rooted, pace = pace,
+                    rope = rope, rooted = rooted, pace = pace, reach = reach,
                 )
             }
             else level.mass.let { m ->
@@ -358,30 +380,73 @@ object Multilevel {
                     level.g, among, m::getValue, budget = budget, clock = clock, depth = depth, rank = { degree(it) * m.getValue(it) },
                     balanced = true, adaptive = true, pulls = { e -> level.count(e).toDouble() }, separation = maxOf(furthest, 1.0), separatedBy = apart,
                     cohesion = held::get, edges = edges, siblings = siblings, antigravity = antigravity, rope = rope,
-                    rooted = rooted, pace = pace,
+                    rooted = rooted, pace = pace, reach = reach,
                 )
             }
             return run.also { it.stir(among, past) }
         }
 
-        /** Of each node of level i, the system a level up it is in. */
-        private val systemOf: List<Map<Node, Node>> = (0 until levels.size - 1).map { i ->
-            levels[i + 1].let { up -> up.nodes.flatMap { s -> up.members.getValue(s).map { it to s } }.toMap() }
-        }
-
         /** The ropes of the systems' edges, when a level that moves has them. */
         private val ropes: Map<Edge, Double> by lazy { systems.measured.ropes }
 
-        /** Of each node of level i, the systems a level up whose suns are no more than two edges from it, its own among them. */
-        private val nearSuns: List<Map<Node, List<Node>>> = (0 until levels.size - 1).map { i ->
-            val up = levels[i + 1]
-            val next = { n: Node -> levels[i].g.edgeMap[n].orEmpty().map { if (it.src == n) it.dst else it.src } }
-            val found = mutableMapOf<Node, MutableSet<Node>>()
-            up.nodes.forEach { s ->
-                val sun = up.sun.getValue(s)
-                (next(sun).flatMap { listOf(it) + next(it) } + up.members.getValue(s)).forEach { found.getOrPut(it) { mutableSetOf() } += s }
+        /** [n] of level [i] moved [by]: so does all it holds, down to the nodes. */
+        private fun carry(i: Int, n: Node, by: Vector3) {
+            levels[i].members[n].orEmpty().forEach { m ->
+                m.point = m.point + by
+                if (i > 1) carry(i - 1, m, by)
             }
-            found.mapValues { it.value.toList() }
+        }
+
+        /** Each stand-in back on its sun, as the levels below moved that: the lowest first. */
+        private fun recentre() {
+            (1 until levels.size).forEach { i -> levels[i].nodes.forEach { n -> n.point = levels[i].sun.getValue(n).point } }
+        }
+
+        /**
+         * The levels that move, the top first: [only] (`:set suns=<levels>`; for one higher than there are, the top one), or all;
+         * of those, the ones in [Factors.Levels.OPTIMIZED_LEVELS].
+         */
+        private val moving = (only?.map { it.coerceIn(0, levels.size - 1) }?.toSet() ?: levels.indices.toSet())
+            .filter { it in Factors.Levels.OPTIMIZED_LEVELS }.sortedDescending()
+
+        /** Which of [moving] steps now, and its run; the stand-ins start on their suns. Once at the lowest, it stays there. */
+        private var at = 0
+        private var run: Settling.Run
+
+        /** With [Factors.Levels.LEVELS_AT_ONCE], the runs of all of [moving]. */
+        private val runs: Map<Int, Settling.Run>
+
+        /** The levels that step now: all of [moving] at once, else the one [at]. */
+        val stepping: List<Int> get() = if (Factors.Levels.LEVELS_AT_ONCE) moving else listOf(moving[at])
+
+        /** When the level [at] began to step, in real time. */
+        private var since = Platform.clockMillis()
+
+        init {
+            LayoutTimes.time(Part.Recentre) { recentre() }
+            runs = if (Factors.Levels.LEVELS_AT_ONCE) moving.associateWith { runAt(it, past) } else emptyMap()
+            run = runs[moving[at]] ?: runAt(moving[at], past)
+        }
+
+        /** Of each node of level i, the system a level up it is in. */
+        private val systemOf: List<Map<Node, Node>> by lazy {
+            (0 until levels.size - 1).map { i ->
+                levels[i + 1].let { up -> up.nodes.flatMap { s -> up.members.getValue(s).map { it to s } }.toMap() }
+            }
+        }
+
+        /** Of each node of level i, the systems a level up whose suns are no more than two edges from it, its own among them. */
+        private val nearSuns: List<Map<Node, List<Node>>> by lazy {
+            (0 until levels.size - 1).map { i ->
+                val up = levels[i + 1]
+                val next = { n: Node -> levels[i].g.edgeMap[n].orEmpty().map { if (it.src == n) it.dst else it.src } }
+                val found = mutableMapOf<Node, MutableSet<Node>>()
+                up.nodes.forEach { s ->
+                    val sun = up.sun.getValue(s)
+                    (next(sun).flatMap { listOf(it) + next(it) } + up.members.getValue(s)).forEach { found.getOrPut(it) { mutableSetOf() } += s }
+                }
+                found.mapValues { it.value.toList() }
+            }
         }
 
         /**
@@ -399,20 +464,6 @@ object Multilevel {
                 if (near.isEmpty() || by == Vector3.Zero) null else m to by
             }.toMap()
         }
-
-        /** Each stand-in back on its sun, as the levels below moved that: the lowest first. */
-        private fun recentre() {
-            (1 until levels.size).forEach { i -> levels[i].nodes.forEach { n -> n.point = levels[i].sun.getValue(n).point } }
-        }
-
-        /**
-         * The levels that move, the top first: [only] (`:set suns=<levels>`; for one higher than there are, the top one), or all;
-         * of those, the ones in [Factors.OPTIMIZED_LEVELS].
-         */
-        private val moving = (only?.map { it.coerceIn(0, levels.size - 1) }?.toSet() ?: levels.indices.toSet())
-            .filter { it in Factors.OPTIMIZED_LEVELS }.sortedDescending()
-
-        private val runs = moving.associateWith { runAt(it, past) }
 
         /**
          * The highest level that moves, in the parts of it that hang together, each with the one of it that stays where it
@@ -441,11 +492,13 @@ object Multilevel {
             }
         }
 
+        override fun step(): Boolean = if (Factors.Levels.LEVELS_AT_ONCE) stepAll() else stepOne()
+
         /**
          * A step of every level that moves, the top first: a node goes its own way plus what the systems near it carry down
          * ([blend]), a level at a time.
          */
-        override fun step(): Boolean {
+        private fun stepAll(): Boolean {
             LayoutTimes.level = moving.last()
             LayoutTimes.time(Part.Recentre) { recentre() }
             // what the nodes of the level above moved in all, carried from above and their own
@@ -466,6 +519,32 @@ object Multilevel {
                 }
             }
             return more.any { it }
+        }
+
+        /**
+         * A step of one level, the top first: what a system moves, all it holds moves too. A level that has settled, or stepped
+         * for [Factors.Levels.LEVEL_MS], stays where it is; the next one down steps.
+         */
+        private fun stepOne(): Boolean {
+            val i = moving[at]
+            LayoutTimes.level = i
+            val level = levels[i]
+            val before = if (i > 0 || at == 0) level.nodes.associateWith { it.point } else emptyMap()
+            val more = run.step()
+            if (at == 0) pin(before)
+            if (i > 0) {
+                LayoutTimes.time(Part.Carry) {
+                    level.nodes.forEach { n -> (n.point - before.getValue(n)).takeIf { it != Vector3.Zero }?.let { carry(i, n, it) } }
+                }
+                if (g.attachmentOwners.isNotEmpty()) LayoutTimes.time(Part.Reglue) { Attachments.reglue(g) }
+            }
+            val down = (run.settled || Platform.clockMillis() - since >= Factors.Levels.LEVEL_MS || !more) && at < moving.size - 1
+            if (down) {
+                at += 1
+                since = Platform.clockMillis()
+                run = runAt(moving[at], LayoutOptimizer.WINDOW_MS)
+            }
+            return more || down
         }
     }
 }

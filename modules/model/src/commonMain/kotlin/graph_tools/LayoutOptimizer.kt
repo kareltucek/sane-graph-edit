@@ -258,7 +258,7 @@ object LayoutOptimizer {
 
         /** [optimumLengthFactor] of an edge whose larger degree is [maxDegree] (of a node's mass: its own); in space with [depth]. */
         fun optimumLengthFactor(maxDegree: Double, minDegree: Double, depth: Boolean = false): Double {
-            val degreeFactor = if (depth) Factors.PER_DEGREE_IN_SPACE else Factors.PER_DEGREE
+            val degreeFactor = if (depth) Factors.Nodes.PER_DEGREE_IN_SPACE else Factors.Nodes.PER_DEGREE
 
             val squaredDegrees = (sqrt(maxDegree + 1) - 1 + sqrt(minDegree + 1) - 1)*1.5 
             val minDegrees = if (minDegree <= 2.0) 0.0 else minDegree - 1.0
@@ -267,7 +267,9 @@ object LayoutOptimizer {
 
             val appliedDegree = avgedDegrees
 
-            return max(Factors.COLLISION, Factors.COLLISION +  degreeFactor * avgedDegrees)
+            val defanifiedDegree = if (appliedDegree < 3.0) 0.0 else appliedDegree
+
+            return max(Factors.Nodes.COLLISION, Factors.Nodes.COLLISION +  degreeFactor * appliedDegree)
         }
 
         fun computeBBSpring(g: Graph, node: Node, othr: Node, e: Edge, strength: Double = 1.0): Spring {
@@ -435,7 +437,7 @@ object LayoutOptimizer {
             return if ((n - o).length() < desiredDistance) {
                 Spring(
                     n = node,
-                    v = ((othr.position - (c1 + c2) * distanceCf * strengthModulator) - node.position) * Factors.COLLISION_STRENGTH
+                    v = ((othr.position - (c1 + c2) * distanceCf * strengthModulator) - node.position) * Factors.Nodes.COLLISION_STRENGTH
                 )
             } else {
                 null
@@ -444,7 +446,7 @@ object LayoutOptimizer {
 
 
         /** How far apart, in times the distance at which they touch, two nodes may be and still push each other ([computeCollisionSpring]). */
-        fun collisionReach(strengthModulator: Double = 1.0): Double = (Factors.COLLISION * springScale).coerceAtLeast(1.0) * strengthModulator
+        fun collisionReach(strengthModulator: Double = 1.0): Double = (Factors.Nodes.COLLISION * springScale).coerceAtLeast(1.0) * strengthModulator
 
         /**
          * The nodes that may be near enough to a node to push it

@@ -43,7 +43,7 @@ changes.
 | **collision** | two nodes nearer than a distance push apart | distance = touching × reach; reach 2 × `spring-scale` (optimizer, explore), 1.15 (Shift-drag: "only off each other") |
 | **edge** | the two ends of an edge to a length | length = both reaches toward each other × `spring-scale` × degree factor (1 + 0.2 × larger degree, +1 above 2; the smaller one until Karel 2026-10-16: a hub's leaves crowded it; its own constant in 3D mode, also 0.2: 0.0 was tried, Karel 2026-10-15, and put back; it is in the mass too) |
 | **equal siblings** | the edges out of one parent to the same length | half the difference |
-| **root** (Karel 2026-10-17) | a root (≥ 3 children, no parent, among those shown; on every level) is to be in its children's middle: v = shortest child edge × mean of the unit ways to the children; the root moves v × 0.1 / window × M / (m_root + M), each child −v × 0.1 × m_root / (m_root + M), M the children's masses (balanced; until Karel 2026-10-17: the root stayed, the children took all, and the pin made the root move instead) | `Factors.ROOT`, `ROOT_LEVELS` |
+| **root** (Karel 2026-10-17) | a root (≥ 3 children, no parent, among those shown; on every level) is to be in its children's middle: v = shortest child edge × mean of the unit ways to the children; the root moves v × 0.1 / window × M / (m_root + M), each child −v × 0.1 × m_root / (m_root + M), M the children's masses (balanced; until Karel 2026-10-17: the root stayed, the children took all, and the pin made the root move instead) | `Factors.AllLevels.ROOT`, `Levels.ROOT_LEVELS` |
 | **rope** (systems) | an edge's two suns back to no further apart than the path between them laid straight; never pushes | §7 |
 | **antigravity** (Karel's original "gravity") | a child pushed on along the way its parent came, kept at its distance | 10 units / window; only for parents with < 3 children; settling: both modes |
 | **gravity** | a child pulled to lie from its parent the way the graph's edges go on average | 0.1 of the way / window *(guess)*; Shift-drag only (Karel 2026-10-16: elsewhere it laid all children out one way, in fans) |
@@ -231,7 +231,7 @@ part of a decomposed graph is unclear).
   14.9 → 13.6, overlapping pairs 29 → 18; 3D jitter median 5.98 → 6.51,
   99 % 36.3 → 48.9.
 - **Level pace** (Karel 2026-10-17): a level's steps, all its springs
-  together, times `Factors.LEVEL_PACE(level)` = 1 / (level + 1): upper
+  together, times `Factors.Levels.LEVEL_PACE(level)` = 1 / (level + 1): upper
   levels settle slower, the lower ones under them. At rest the levels'
   moves add up to none (a system pushed on by its springs each step, its
   sun pushed back by its own), so a level's pace is also its say in the
