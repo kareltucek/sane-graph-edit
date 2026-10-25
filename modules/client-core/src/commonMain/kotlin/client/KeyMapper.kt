@@ -780,9 +780,7 @@ class KeyMapper(
         when (cmd) {
             "w" -> {
                 if (args != null) {
-                    gv.content.saveCopy(resolvePath(args).toAbsolutePath().normalize()) { written ->
-                        written.onFailure { utils.Platform.warn("sane-graph-edit: :w failed: ${it.message}") }
-                    }
+                    gv.content.saveAs(resolvePath(args).toAbsolutePath().normalize())
                 } else {
                     commandExecutor?.invoke("save", gv)
                 }

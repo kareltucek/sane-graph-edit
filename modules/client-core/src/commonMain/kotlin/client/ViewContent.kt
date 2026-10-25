@@ -273,10 +273,9 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         shell.chooseSave(currentFile?.name ?: "untitled.dot")?.let { writeTo(it, then) } ?: then(false)
     }
 
-    /** Write the graph to [path] without making it the view's file; [then] is told when it is done, or why it failed. */
-    fun saveCopy(path: Path, then: (Result<Unit>) -> Unit = {}) {
-        val doc = document
-        if (doc != null) doc.save(path.toString(), copy = true, then = then) else then(runCatching { DotGraphLoader.saveToFile(view.g, path.toString()) })
+    /** Save to [path], which is the view's file from then on; [then] as for [save]. */
+    fun saveAs(path: Path, then: (Boolean) -> Unit = {}) {
+        if (FileContent.save(view)) writeTo(path, then) else then(false)
     }
 
     private fun writeTo(path: Path, then: (Boolean) -> Unit) {
