@@ -1675,14 +1675,14 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         const atStart = query.get("vrNoPin") === null;
         const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");
         // `no-pin`: asked for only before a terminal node is gone into, and on this machine not at all
-        const give = atStart ? `PIN ${pin}` : lan ? `no-pin, PIN ${pin}` : "no-pin";
+        const give = atStart ? `pin ${pin}` : lan ? `no-pin ${pin}` : "no-pin";
         const served = startVr(Number(vr) || 0, token, pin, atStart, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
                 : lan
-                    ? `VR: answering on the local network.\nWith the headset on the same Wi-Fi, open in its browser\n    ${address}\n` +
-                        `go on past its warning about the certificate\n(this machine made it for itself)\n    ${give}`
+                    ? `VR: answering on the local network.\nWith the headset on the same Wi-Fi, open in its browser\n    ${address}\n    ${give}\n` +
+                        "    go on past its warning about the certificate (this machine made it for itself)"
                     : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\n` +
                         `open in the headset's browser\n    ${address}\n    ${give}`;
             // where the application was started from, and in the window
