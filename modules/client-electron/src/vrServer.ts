@@ -25,6 +25,10 @@ export interface VrNode {
     ink: string;
     /** The links the node has: each as its letter and, after a space, where it leads. */
     links?: string[];
+    /** It is selected: its picture is drawn as if it were not, the headset draws a band around it. */
+    selected?: boolean;
+    /** It has a size of its own: selected, it is resized by its corners. */
+    manual?: boolean;
     page?: number;
     /** The picture's rectangle on the page, in pixels, how many pixels a unit of the node is in it, and where in it the node's middle is. */
     px?: number;
@@ -45,6 +49,10 @@ export interface VrScene {
     ink: string;
     /** The view is in explore mode. */
     exploring: boolean;
+    /** The node that is active: a terminal gone into, or a node being edited; null when none is. */
+    active: string | null;
+    /** The room is shown: the outlines of its surfaces and its scanned shape as lines (`:set room`). */
+    room: boolean;
     /** The window's status line. */
     status: string;
     /** The nodes are where they are in the room (the graph's units, y down from the floor): the graph is not put before the eyes. */
@@ -112,10 +120,15 @@ function surfacesOf(text: string): VrSurface[] | null {
 const MAX_ID = 64;
 
 /** What a headset did with a controller: a button clicked on a node (0 the left one, 2 the right one), or explore mode asked into or out of. */
-type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "walls" } |
+type VrDone = { type: "click"; id: string; button: 0 | 2 } | { type: "explore" } | { type: "walls" } | { type: "optimize"; on: boolean } |
     { type: "move"; id: string; x: number; y: number; z: number; held: boolean } |
+    { type: "create"; x: number; y: number; z: number; near: string | null } | ({ type: "beside" } & Beside) |
+    { type: "resize"; id: string; width: number; height: number; held: boolean } | { type: "text"; bigger: boolean } |
     { type: "follow"; id: string; letter: string } | { type: "jump"; back: boolean } | { type: "stand"; x: number; z: number; ax: number; az: number } |
     { type: "key"; key: string; ctrl: boolean; shift: boolean } | { type: "pin"; pin: string };
+
+/** The node selected alone in a headset ([id]), and the node it sees next to it on each side, if any. */
+export type Beside = { id: string | null; left: string | null; right: string | null; up: string | null; down: string | null };
 
 /** A PIN given is no longer than this; the right one is four digits. */
 const MAX_PIN = 16;
@@ -143,15 +156,26 @@ function doneOf(text: string): VrDone | null {
         const key = sent?.type === "key" && typeof sent.key === "string" && sent.key.length >= 1 && sent.key.length <= MAX_KEY &&
             typeof sent.ctrl === "boolean" && typeof sent.shift === "boolean";
         const pin = sent?.type === "pin" && typeof sent.pin === "string" && sent.pin.length <= MAX_PIN;
+        const create = sent?.type === "create" && place(sent.x) && place(sent.y) && place(sent.z) &&
+            (sent.near === null || (typeof sent.near === "string" && sent.near.length <= MAX_ID));
+        const idOrNull = (it: unknown) => it === null || (typeof it === "string" && it.length <= MAX_ID);
+        const beside = sent?.type === "beside" && [sent.id, sent.left, sent.right, sent.up, sent.down].every(idOrNull);
+        const resize = sent?.type === "resize" && typeof sent.id === "string" && sent.id.length <= MAX_ID && place(sent.width) && place(sent.height) &&
+            typeof sent.held === "boolean";
         return key ? { type: "key", key: sent.key, ctrl: sent.ctrl, shift: sent.shift }
             : pin ? { type: "pin", pin: sent.pin }
+            : beside ? { type: "beside", id: sent.id, left: sent.left, right: sent.right, up: sent.up, down: sent.down }
+            : create ? { type: "create", x: sent.x, y: sent.y, z: sent.z, near: sent.near }
+            : resize ? { type: "resize", id: sent.id, width: sent.width, height: sent.height, held: sent.held }
+            : sent?.type === "text" && typeof sent.bigger === "boolean" ? { type: "text", bigger: sent.bigger }
             : stand ? { type: "stand", x: sent.x, z: sent.z, ax: sent.ax, az: sent.az }
             : sent?.type === "jump" && typeof sent.back === "boolean" ? { type: "jump", back: sent.back }
             : follow ? { type: "follow", id: sent.id, letter: sent.letter }
             : click ? { type: "click", id: sent.id, button: sent.button }
             : move ? { type: "move", id: sent.id, x: sent.x, y: sent.y, z: sent.z, held: sent.held === true }
             : sent?.type === "explore" ? { type: "explore" }
-            : sent?.type === "walls" ? { type: "walls" } : null;
+            : sent?.type === "walls" ? { type: "walls" }
+            : sent?.type === "optimize" && typeof sent.on === "boolean" ? { type: "optimize", on: sent.on } : null;
     } catch {
         return null;
     }
@@ -163,6 +187,14 @@ export interface VrSource {
     click: (id: string, button: 0 | 2) => void;
     /** The node [id] was taken in a headset and put at x, y, z of the graph; [held]: it is still held there, not let go of yet. */
     move: (id: string, x: number, y: number, z: number, held: boolean) => void;
+    /** What a headset sees beside the node selected alone ([Beside]); null when no headset says (it went away). */
+    beside: (now: Beside | null) => void;
+    /** A headset clicked into free space: a new node at x, y, z of the graph; [near]: the node nearest to the ray, if any. */
+    create: (x: number, y: number, z: number, near: string | null) => void;
+    /** The node [id] is resized in a headset by a corner, to [width] × [height] as the headset has it; [held]: not let go of yet. */
+    resize: (id: string, width: number, height: number, held: boolean) => void;
+    /** A headset asks for the text of the node that is active a step bigger, or smaller. */
+    text: (bigger: boolean) => void;
     /** A headset asks to follow the link [letter] of the node [id]. */
     follow: (id: string, letter: string) => void;
     /** A headset asks to go back to where a link was followed from, or forward again. */
@@ -171,6 +203,8 @@ export interface VrSource {
     explore: () => void;
     /** A headset asks for the graph on the walls of the room, or off them into its space (`:set walls`). */
     walls: () => void;
+    /** A headset holds `o` ([on]) or lets go of it: the springs move the nodes while it is held. */
+    optimize: (on: boolean) => void;
     /** Where who wears a headset stands in the room and which way they look, seen from above (metres; x and z); the last to say so is believed. */
     stand: (x: number, z: number, ax: number, az: number) => void;
     /** Whether the trigger on the node [id] goes into its terminal, which starts a shell: a headset on the local network may only with the PIN. */
@@ -190,6 +224,14 @@ const LIVE_BEHIND_BYTES = 64 * 1024;
 
 /** How often what the headsets show is compared with what there is. */
 const TICK_MS = 250;
+
+/**
+ * The editor and each headset tell each other they are there this often (ms), whether or not there is anything else to say;
+ * one that has heard nothing from the other for [LOST_MS] takes it to be gone: the editor drops the headset (what it held is
+ * let go of), the headset leaves its immersive session.
+ */
+const BEAT_MS = 1000;
+const LOST_MS = 6000;
 
 /**
  * The files a headset's browser may ask for, by the path it asks
@@ -335,7 +377,7 @@ export function startVr(
      * Each headset, with what it was last sent: the scene as text, and the version of each page; whether it may go into
      * terminal nodes (it gave the PIN, or that is not asked for), and the click into one that waits for the PIN.
      */
-    const headsets = new Map<WebSocket, { scene: string; pages: number[]; sending: boolean; trusted: boolean; waiting: string | null }>();
+    const headsets = new Map<WebSocket, { scene: string; pages: number[]; sending: boolean; trusted: boolean; waiting: string | null; optimizing: boolean }>();
     /** What the nodes that change fast show now ([VrLive]), as it was last sent, by node. */
     const lives = new Map<string, string>();
     const sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_MESSAGE_BYTES });
@@ -346,12 +388,27 @@ export function startVr(
     };
     server.on("upgrade", (request, socket, head) => {
         if (knows(request) && ownPage(request)) sockets.handleUpgrade(request, socket, head, (ws) => {
-            const sent = { scene: "", pages: [] as number[], sending: false, trusted: atStart || !lan, waiting: null as string | null };
+            const sent = {
+                scene: "", pages: [] as number[], sending: false, trusted: atStart || !lan, waiting: null as string | null, optimizing: false,
+                heardAt: Date.now(),
+            };
             headsets.set(ws, sent);
             lives.forEach((text) => ws.send(text));
-            ws.on("close", () => headsets.delete(ws));
-            ws.on("error", () => headsets.delete(ws));
+            // a headset that goes away while it holds `o` lets go of it
+            const gone = () => {
+                if (sent.optimizing) source.optimize(false);
+                source.beside(null);
+                headsets.delete(ws);
+            };
+            ws.on("close", gone);
+            ws.on("error", gone);
+            const beat = setInterval(() => {
+                if (Date.now() - sent.heardAt > LOST_MS) ws.terminate();
+                else if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "beat" }));
+            }, BEAT_MS);
+            ws.on("close", () => clearInterval(beat));
             ws.on("message", (data, binary) => {
+                sent.heardAt = Date.now();
                 const text = binary ? "" : data.toString();
                 const surfaces = surfacesOf(text);
                 const done = surfaces === null ? doneOf(text) : null;
@@ -369,10 +426,18 @@ export function startVr(
                     if (sent.trusted) sent.waiting = null;
                 }
                 else if (done?.type === "move") source.move(done.id, done.x, done.y, done.z, done.held);
+                else if (done?.type === "beside") source.beside({ id: done.id, left: done.left, right: done.right, up: done.up, down: done.down });
+                else if (done?.type === "create") source.create(done.x, done.y, done.z, done.near);
+                else if (done?.type === "resize") source.resize(done.id, done.width, done.height, done.held);
+                else if (done?.type === "text") source.text(done.bigger);
                 else if (done?.type === "follow") source.follow(done.id, done.letter);
                 else if (done?.type === "jump") source.jump(done.back);
                 else if (done?.type === "explore") source.explore();
                 else if (done?.type === "walls") source.walls();
+                else if (done?.type === "optimize") {
+                    sent.optimizing = done.on;
+                    source.optimize(done.on);
+                }
                 else if (done?.type === "stand") source.stand(done.x, done.z, done.ax, done.az);
                 // keys can do all the editor can: taken from this machine only, never from the local network
                 else if (done?.type === "key" && !lan) source.key(done.key, done.ctrl, done.shift);

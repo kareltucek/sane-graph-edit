@@ -740,6 +740,24 @@ object Actions {
         graphView.repaint()
     }
 
+    /**
+     * A new node at [at] of the graph, made from afar (a headset's click into free space), selected: a terminal, of the usual
+     * size, when every node shown is one.
+     */
+    fun spawnFromAfar(graphView: EditorView, at: Point3) {
+        val g = graphView.g
+        val shown = g.visibleNodes()
+        val newNode = Node(label = Constants.defaultNodeText, pos = at.xy, style = graphView.defaultNodeStyle)
+        Depth.set(newNode, at.z)
+        if (shown.isNotEmpty() && shown.all { NodeType.of(it).kind == NodeType.Kind.Terminal }) {
+            newNode.attributes.other[NodeType.ATTRIBUTE] = NodeType(NodeType.Kind.Terminal).attribute
+            newNode.attributes.other[graph_tools.ManualSize.ATTRIBUTE] = graph_tools.ManualSize.write(terminalSize(newNode))
+        }
+        g.commit(AddNodeCommand(g, newNode))
+        g.cleanSelect(mutableSetOf(newNode))
+        graphView.repaint()
+    }
+
     fun drawNodeWithEdge(graphView: EditorView, forwardEdge: Boolean, append: Boolean) {
         val g = graphView.g
         val pos = graphView.lastCursorPosition

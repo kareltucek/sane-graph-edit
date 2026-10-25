@@ -300,8 +300,8 @@ class JsView internal constructor(
      */
     fun world(): dynamic = spaceOf(view.spaceScene(measurer, asSeen = false))
 
-    /** How the graph is on the walls now, and of what that was made: the walls, and whether the view was in explore mode. */
-    private var onWalls: Pair<Any, OnWalls>? = null
+    /** How the graph is on the walls now, and the wall scale it was made with. */
+    private var onWalls: Pair<Double, OnWalls>? = null
 
     /**
      * [world] with the graph on the walls of a room (`:set walls`, [OnWalls]); null when that is not asked for or there are no
@@ -310,19 +310,24 @@ class JsView internal constructor(
      * whoever looks as anywhere; `nodeScale` is how many times its size a node is. The middle of the graph is
      * on the wall that who is at [standing] looks at (where they stand and which way they look, x and z of each).
      *
-     * Where the graph is on the walls and how big is decided when it is first asked for, and again when explore mode is
-     * entered or left: so what is unfolded, moved or added later does not shift all the rest along the wall.
+     * Only in explore mode, for now: out of it the graph is not on the walls. Where it is on them and how big is decided
+     * once, when explore mode is entered (or when walls are first known there, or the wall scale changes), and stays so:
+     * the walls a headset tells of change a little all the time, and what is unfolded or moved later goes where the walls
+     * have it without shifting all the rest along them.
      */
     fun worldOnWalls(walls: DoubleArray, standing: DoubleArray): dynamic {
         val scene = view.spaceScene(measurer, asSeen = false)
-        val made = Triple(walls.toList(), Explore.isOn(view), graph_tools.ViewModes.wallScale)
-        val strip = if (!graph_tools.ViewModes.walls || scene.nodes.isEmpty()) null else
-            WallStrip.of(walls.asList().chunked(4).map { (x1, z1, x2, z2) -> Wall(Vector2(x1, z1), Vector2(x2, z2)) }, Vector2(standing[0], standing[1]), Vector2(standing[2], standing[3]))
-        if (strip == null) onWalls = null
-        else if (onWalls?.first != made) {
+        val scale = graph_tools.ViewModes.wallScale
+        val asked = graph_tools.ViewModes.walls && Explore.isOn(view) && scene.nodes.isNotEmpty() && walls.isNotEmpty()
+        if (!asked) onWalls = null
+        else if (onWalls?.first != scale) {
+            val strip = WallStrip.of(
+                walls.asList().chunked(4).map { (x1, z1, x2, z2) -> Wall(Vector2(x1, z1), Vector2(x2, z2)) },
+                Vector2(standing[0], standing[1]), Vector2(standing[2], standing[3]),
+            )
             val from = Vector2(scene.nodes.minOf { it.position.x - it.shapeBounds.x / 2 }, scene.nodes.minOf { it.position.y - it.shapeBounds.y / 2 })
             val to = Vector2(scene.nodes.maxOf { it.position.x + it.shapeBounds.x / 2 }, scene.nodes.maxOf { it.position.y + it.shapeBounds.y / 2 })
-            onWalls = made to OnWalls.of(strip, from, to, fitted = !Explore.isOn(view), atMost = graph_tools.ViewModes.wallScale)
+            onWalls = strip?.let { scale to OnWalls.of(it, from, to, fitted = false, atMost = scale) }
         }
         return onWalls?.second?.let { on ->
             val o = spaceOf(scene)
@@ -457,6 +462,17 @@ class JsView internal constructor(
     }
 
     /** A button clicked on the node [id], by what points at nodes (a headset's controller). */
+    /** The id of the node selected, when it is the only one and no node is being edited; else null. */
+    fun selectedAlone(): String? = view.g.selectedNodes.singleOrNull()?.takeIf { view.editing == null }?.id
+
+    /** Select the node [id] alone, if it is shown: what an arrow key does with what a headset sees beside the one selected. */
+    fun selectAlone(id: String) {
+        view.g.visibleNodes().firstOrNull { it.id == id }?.let {
+            view.g.cleanSelect(mutableSetOf(it))
+            view.repaint()
+        }
+    }
+
     fun clickNode(id: String, domButton: Int) {
         button(domButton)?.let { view.pointer.clicked(id, it) }
     }
@@ -476,6 +492,20 @@ class JsView internal constructor(
         view.pointer.dragged(id, to, done)
     }
 
+    /**
+     * A new node at x, y, z of the graph, by a headset's click into free space ([Actions.spawnFromAfar]). With the graph on the
+     * walls, a place in the room, put on the wall as [near] (the node nearest to the ray) would be.
+     */
+    fun createNode(x: Double, y: Double, z: Double, near: String?) {
+        val on = onWalls?.second
+        val node = near?.let { view.g.node(it) }
+        val at = if (on == null || node == null) Point3(x, y, z) else {
+            val m = OnWalls.METRES_PER_UNIT
+            on.unplace(x * m, -y * m, -z * m, Point3(node.position, graph_tools.Depth.of(node)))
+        }
+        Actions.spawnFromAfar(view, at)
+    }
+
     /** The links of the nodes shown that have any: by the node's id, each link as its letter and, after a space, where it leads. */
     fun links(): dynamic {
         val o: dynamic = js("({})")
@@ -484,6 +514,11 @@ class JsView internal constructor(
             if (letters.isNotEmpty()) o[n.id] = letters.map { "$it ${FileLink.of(n, it).orEmpty()}" }.toTypedArray()
         }
         return o
+    }
+
+    /** A headset resizes the node [id] by a corner, to [width] × [height] (graph units) around its middle; [done]: let go of. */
+    fun resizeNode(id: String, width: Double, height: Double, done: Boolean) {
+        view.pointer.resizedFromAfar(id, width, height, done)
     }
 
     /** Follow the link [letter] of the node [id], into a new tab: nothing of this one is lost, and nothing is asked. */
@@ -505,6 +540,16 @@ class JsView internal constructor(
     }
 
     val exploring: Boolean get() = Explore.isOn(view)
+
+    /** Whether a headset shows its room: the outlines of its surfaces and its scanned shape (`:set room`). */
+    val room: Boolean get() = graph_tools.ViewModes.room
+
+    /** A headset holds what `o` is ([on]) or let go of it: the springs move the nodes while it is held, as `o` held does. */
+    fun optimize(on: Boolean) {
+        keys.activeView = view
+        if (on) view.gestures.startOptimizing(false) else view.gestures.stopOptimizing()
+        view.repaint()
+    }
 
     /** The graph on the walls of the room, or off them (`:set walls`). */
     fun toggleWalls() {

@@ -179,6 +179,9 @@ function show(got: VrScene) {
         resetEyes();
     }
     showWalls(sent.walls ?? []);
+    // the room's surfaces and shape only when asked for (`:set room`); what they hide is hidden all the same
+    roomLinesMaterial.visible = sent.room === true;
+    outlineMaterial.visible = sent.room === true;
     if (inRoom) {
         offset.set(0, 0, 0);
         [plain, edges, heads].forEach((it) => it.position.set(0, 0, 0));
@@ -297,7 +300,7 @@ const offset = new THREE.Vector3();
 let laid: { index: Map<VrNode, number>; pages: Map<number, VrNode[]>; plain: VrNode[]; axes: Float32Array } | null = null;
 
 /**
- * Turn every node to whoever looks, as the window does: upright, its face to the eyes, so that it is read from anywhere and
+ * Turn every node to whoever looks, about the upright only: it stands upright, its face to where the eyes are, so that it is read from anywhere and
  * never from behind. The edges, strips and not lines (a line is a pixel wide however near it is), go from border to border of
  * the nodes as they are turned, and show their width to the eyes too.
  */
@@ -316,11 +319,13 @@ function face() {
         const up = new THREE.Vector3();
         const axes = now.axes;
         sent.nodes.forEach((n, i) => {
-            towards.set(head.x - n.x, head.y - n.y, head.z - n.z).normalize();
-            right.crossVectors(upright, towards);
+            // turned only about the upright: the eyes' height does not tilt it
+            towards.set(head.x - n.x, head.y - n.y, head.z - n.z);
+            towards.addScaledVector(upright, -towards.dot(upright));
             // seen from right above or below: any way is upright
-            if (right.lengthSq() < 1e-6) right.set(1, 0, 0);
-            right.normalize();
+            if (towards.lengthSq() < 1e-12) towards.crossVectors(new THREE.Vector3(1, 0, 0), upright);
+            towards.normalize();
+            right.crossVectors(upright, towards).normalize();
             up.crossVectors(towards, right);
             axes.set([right.x, right.y, right.z, up.x, up.y, up.z, towards.x, towards.y, towards.z], i * 9);
         });
@@ -507,9 +512,13 @@ function connect() {
         // the window may be a new one: it is told of the room again
         toldOfRoom = "";
         stood = null;
+        besideTold = "";
+        heardAt = performance.now();
+        connection = socket;
         tell = (text) => socket.send(text);
     };
     socket.onmessage = (message) => {
+        heardAt = performance.now();
         if (typeof message.data === "string") {
             const sent = JSON.parse(message.data);
             if (sent.type === "scene") show(sent as VrScene);
@@ -529,6 +538,7 @@ function connect() {
     };
     // the window went away, or the cable: try again, what is shown stays meanwhile; not after the editor said it closes
     socket.onclose = () => {
+        if (connection === socket) connection = null;
         tell = null;
         if (!editorClosed) {
             state.textContent = "not connected; trying again…";
@@ -536,6 +546,28 @@ function connect() {
         }
     };
 }
+
+/** As the editor has them (vrServer.ts): it beats this often (ms), and is taken to be gone when not heard from for [LOST_MS]. */
+const BEAT_MS = 1000;
+const LOST_MS = 6000;
+
+/** When the editor was last heard from: anything it sends, a beat at least every [BEAT_MS]; and the connection to it. */
+let heardAt = performance.now();
+let connection: WebSocket | null = null;
+
+// the headset beats too. The editor not heard from: out of the immersive session, and the connection, which may never say it
+// broke, is closed, to connect anew
+setInterval(() => {
+    tell?.(JSON.stringify({ type: "beat" }));
+    if (connection !== null && performance.now() - heardAt > LOST_MS) {
+        closeKeypad();
+        renderer.xr.getSession()?.end().catch(() => {});
+        state.textContent = "the editor stopped answering; trying again…";
+        connection.close();
+        connection = null;
+        tell = null;
+    }
+}, BEAT_MS);
 
 /** The editor said it closes: started again, it has another address. */
 let editorClosed = false;
@@ -581,29 +613,13 @@ const surfaces = new Map<XRPlane, { shown: THREE.Group; changed: number }>();
 const room = new THREE.Group();
 scene.add(room);
 
-/** A word, as a small picture that faces whoever looks. */
-function word(text: string): THREE.Sprite {
-    const picture = document.createElement("canvas");
-    picture.width = 512;
-    picture.height = 128;
-    const pen = picture.getContext("2d")!;
-    pen.font = "64px sans-serif";
-    pen.textAlign = "center";
-    pen.textBaseline = "middle";
-    pen.fillStyle = `#${ROOM_COLOUR.toString(16).padStart(6, "0")}`;
-    pen.fillText(text, 256, 64);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(picture), transparent: true, depthTest: false }));
-    sprite.scale.set(0.4, 0.1, 1);
-    return sprite;
-}
-
 function forget(shown: THREE.Group) {
     room.remove(shown);
     shown.traverse((it) => {
         const drawn = it as Partial<THREE.Line<THREE.BufferGeometry, THREE.Material>>;
         drawn.geometry?.dispose();
-        // the room's lines share theirs
-        if (drawn.material !== roomLinesMaterial) drawn.material?.dispose();
+        // the room's lines and outlines share theirs
+        if (drawn.material !== roomLinesMaterial && drawn.material !== outlineMaterial) drawn.material?.dispose();
     });
 }
 
@@ -611,7 +627,10 @@ function forget(shown: THREE.Group) {
 const OUTLINE_WIDTH = 0.01;
 const RAY_WIDTH = 0.003;
 
-/** The outline of a surface in its own space, where it lies flat (y is its normal), and its name in the middle. */
+/** What the outlines of the surfaces are drawn with: one, shown with `:set room` only. */
+const outlineMaterial = new THREE.MeshBasicMaterial({ color: ROOM_COLOUR, side: THREE.DoubleSide });
+
+/** The outline of a surface in its own space, where it lies flat (y is its normal). */
 function outline(plane: XRPlane): THREE.Group {
     const shown = new THREE.Group();
     shown.matrixAutoUpdate = false;
@@ -623,10 +642,7 @@ function outline(plane: XRPlane): THREE.Group {
         const [a, b, c, d] = [from.clone().sub(side), from.clone().add(side), to.clone().sub(side), to.clone().add(side)];
         return [a, b, c, b, d, c];
     });
-    shown.add(new THREE.Mesh(new THREE.BufferGeometry().setFromPoints(strips), new THREE.MeshBasicMaterial({ color: ROOM_COLOUR, side: THREE.DoubleSide })));
-    const name = word(plane.semanticLabel ?? plane.orientation);
-    name.position.copy(new THREE.Box3().setFromPoints(corners).getCenter(new THREE.Vector3()));
-    shown.add(name);
+    shown.add(new THREE.Mesh(new THREE.BufferGeometry().setFromPoints(strips), outlineMaterial));
     return shown;
 }
 
@@ -761,25 +777,46 @@ const FRAMEBUFFER_SCALE = 1.5;
 const BUTTON_X = 4;
 const BUTTON_Y = 5;
 
-/** A press of the trigger or the grip is a click when let go of within this (ms), the hand moved less than [CLICK_MOVE] (metres). */
+/**
+ * A press of the trigger or the grip is a click when let go of within this (ms), the controller moved less than [CLICK_MOVE]
+ * (metres) and turned less than [CLICK_TURN] (radians): a hand is never quite still. The right trigger has no time limit.
+ */
 const CLICK_MS = 300;
 const CLICK_MOVE = 0.03;
+const CLICK_TURN = 6 * Math.PI / 180;
+
+/** Whether [hand] is still where it was, [from], and turned as it was, [turn], but for what a hand cannot help. */
+function still(hand: THREE.Object3D, from: THREE.Vector3, turn: THREE.Quaternion): boolean {
+    const now = new THREE.Vector3();
+    const turned = new THREE.Quaternion();
+    hand.matrixWorld.decompose(now, turned, new THREE.Vector3());
+    return now.distanceTo(from) < CLICK_MOVE && turned.angleTo(turn) < CLICK_TURN;
+}
+
+/** Where [hand] is and how it is turned, in the room. */
+function poseOf(hand: THREE.Object3D): { from: THREE.Vector3; turn: THREE.Quaternion } {
+    const from = new THREE.Vector3();
+    const turn = new THREE.Quaternion();
+    hand.updateMatrixWorld();
+    hand.matrixWorld.decompose(from, turn, new THREE.Vector3());
+    return { from, turn };
+}
 /** Two presses of X within this (ms) are a double one. */
 const DOUBLE_MS = 300;
 
 /**
- * A trigger or a grip held, once it is no click ([going]). Of the hand's way since it was pressed, across the way the eyes
- * looked then ([inwards]) and along it: the grip takes the graph [along] as the hand moves and turns, along that way
- * [DEPTH_MOVEMENT_FACTOR] times as far; the trigger flies ([against]): across, the graph goes as far as the hand, along it
- * as fast as the hand is from where it was pressed. Or the node it was pressed on goes to where a node was last taken in
- * hand ([looked]: [to]). When it was pressed ([at]), by which button of the gamepad, where and how the hand and the graph
- * were then, and the node it was pressed on; how far the graph has flown since.
+ * A trigger or a grip held, once it is no click ([going]): the grip takes the graph [along] as the hand moves and turns
+ * ([take]), in and out [DEPTH_MOVEMENT_FACTOR] times as far; the trigger flies ([against], [fly]): in the room, not turned.
+ * Or the node it was pressed on goes to where a node was last taken in hand ([looked]: [to]). When it was pressed ([at]), by
+ * which button of the gamepad, where and how the hand was then, where the hand and the graph were as the eyes saw them, and
+ * where the graph was and which way the eyes looked, in the room; the node it was pressed on; how far the graph has flown.
  */
 type Hold = {
     kind: "along" | "against" | "looked";
     at: number;
     button: number;
     from: THREE.Vector3;
+    turn: THREE.Quaternion;
     hand: THREE.Matrix4;
     graph: THREE.Matrix4;
     graphFrom: THREE.Vector3;
@@ -788,6 +825,8 @@ type Hold = {
     on: VrNode | null;
     to: THREE.Vector3;
     going: boolean;
+    /** How much further from the eyes (metres, the eyes' -z the less) a thumbstick has taken the graph held. */
+    pushed: number;
 };
 
 /** The trigger and the grip, as a gamepad numbers its buttons: how hard each is pressed is its value. */
@@ -831,19 +870,18 @@ function holdOf(hand: THREE.Object3D, kind: Hold["kind"], on: VrNode | null, but
     const from = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
     // where no node was taken in hand yet: before the eyes, as far as the node is
     const ahead = head.clone().addScaledVector(new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld), on === null ? 0 : worldOf(on).distanceTo(head));
-    const inwards = new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld);
     return {
         // the hand and the graph as the eyes had them: who turns with the graph in hand still sees it as before
-        kind, at: performance.now(), button, from, hand: eyes.matrixWorld.clone().invert().multiply(hand.matrixWorld),
+        kind, at: performance.now(), button, from, turn: poseOf(hand).turn, hand: eyes.matrixWorld.clone().invert().multiply(hand.matrixWorld),
         graph: eyes.matrixWorld.clone().invert().multiply(graph.matrix), graphFrom: graph.position.clone(),
-        inwards, flown: new THREE.Vector3(), on,
-        to: lastSpot?.clone() ?? ahead, going: false,
+        inwards: new THREE.Vector3(0, 0, -1).transformDirection(eyes.matrixWorld), flown: new THREE.Vector3(), on,
+        to: lastSpot?.clone() ?? ahead, going: false, pushed: 0,
     };
 }
 
 /** Whether [hold], let go of now, is a click. */
 function clicked(hold: Hold, hand: THREE.Object3D): boolean {
-    return !hold.going && performance.now() - hold.at < CLICK_MS && new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld).distanceTo(hold.from) < CLICK_MOVE;
+    return !hold.going && performance.now() - hold.at < CLICK_MS && still(hand, hold.from, hold.turn);
 }
 
 /** When [carry] last moved the graph. */
@@ -861,28 +899,30 @@ function carry() {
             if (hold.going && hold.kind === "looked" && node !== null) {
                 const left = hold.to.clone().sub(worldOf(node));
                 if (left.length() > THERE) graph.position.addScaledVector(left, Math.min(1, LOOKED_RATE * seconds));
-            } else if (hold.going && hold.kind !== "looked") {
-                const away = new THREE.Vector3().setFromMatrixPosition(it.hand.matrixWorld).sub(hold.from);
-                const inOut = hold.inwards.clone().multiplyScalar(away.dot(hold.inwards));
-                const across = away.sub(inOut);
-                if (hold.kind === "along") take(hold, it.hand);
-                else {
-                    // in and out: as fast as the hand is from where it was pressed, times how hard
-                    const pressed = it.source?.gamepad?.buttons[hold.button]?.value ?? 1;
-                    hold.flown.addScaledVector(inOut, DEPTH_MOVEMENT_FACTOR * pressed * seconds);
-                    graph.position.copy(hold.graphFrom).add(across).add(hold.flown);
-                }
-            }
+            } else if (hold.going && hold.kind === "along") take(hold, it.hand, (inOut) => inOut * DEPTH_MOVEMENT_FACTOR);
+            else if (hold.going) fly(hold, it.hand, (it.source?.gamepad?.buttons[hold.button]?.value ?? 1) * seconds);
         }
     }));
 }
 
 /**
- * The grip of the left controller holds the graph: it goes and turns as the hand did since it was pressed, as the eyes see
- * the hand, but in and out (away from the eyes) [DEPTH_MOVEMENT_FACTOR] times as far. Turning around with it, the eyes
- * and the hand together, it is seen as before.
+ * Flying ([hold] of the left trigger), for [pressedSeconds] (how hard it is pressed, times how long since the last picture):
+ * in the room, not turned. Across the way the eyes looked when it was pressed, the graph goes as far as the hand went; along
+ * it, the other way, as fast as the hand is from where it was pressed ([DEPTH_MOVEMENT_FACTOR]).
  */
-function take(hold: Hold, hand: THREE.Object3D) {
+function fly(hold: Hold, hand: THREE.Object3D, pressedSeconds: number) {
+    const away = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld).sub(hold.from);
+    const inOut = away.dot(hold.inwards);
+    hold.flown.addScaledVector(hold.inwards, -inOut * DEPTH_MOVEMENT_FACTOR * pressedSeconds);
+    graph.position.copy(hold.graphFrom).add(away.addScaledVector(hold.inwards, -inOut)).add(hold.flown);
+}
+
+/**
+ * The grip of the left controller holds the graph ([hold]): it goes and turns as the hand did since it was pressed, as the
+ * eyes see the hand, but in and out (away from the eyes) as far as [depth] makes of how far the hand went so. Turning
+ * around with it, the eyes and the hand together, it is seen as before.
+ */
+function take(hold: Hold, hand: THREE.Object3D, depth: (inOut: number) => number) {
     const eyes = renderer.xr.getCamera().matrixWorld;
     const [was, wasTurned, now, nowTurned] = [new THREE.Vector3(), new THREE.Quaternion(), new THREE.Vector3(), new THREE.Quaternion()];
     const size = new THREE.Vector3();
@@ -890,32 +930,61 @@ function take(hold: Hold, hand: THREE.Object3D) {
     eyes.clone().invert().multiply(hand.matrixWorld).decompose(now, nowTurned, size);
     // the eyes look along their -z
     const moved = now.clone().sub(was);
-    moved.z *= DEPTH_MOVEMENT_FACTOR;
+    moved.z = depth(moved.z) + hold.pushed;
     const turned = nowTurned.multiply(wasTurned.invert());
     // around where the hand was, turned as it turned, and on to where it is (in and out the farther)
     const by = new THREE.Matrix4().makeTranslation(was.clone().add(moved))
         .multiply(new THREE.Matrix4().makeRotationFromQuaternion(turned))
         .multiply(new THREE.Matrix4().makeTranslation(was.clone().negate()));
     eyes.clone().multiply(by).multiply(hold.graph).decompose(graph.position, graph.quaternion, graph.scale);
+    // about the graph's middle: it goes where it would turned, the hand's turns swinging it as before, only not tilted
+    upright(graph.position.clone());
+}
+
+/** The graph's own down (its y, which is down in the graph) as the room's, turned so around [around]: it turns only about the upright. */
+function upright(around: THREE.Vector3) {
+    graph.updateMatrix();
+    const down = new THREE.Vector3().setFromMatrixColumn(graph.matrix, 1).normalize();
+    const back = new THREE.Quaternion().setFromUnitVectors(down, new THREE.Vector3(0, -1, 0));
+    graph.position.sub(around).applyQuaternion(back).add(around);
+    graph.quaternion.premultiply(back);
 }
 
 /** What the right thumbstick turns and zooms the graph around: the node its ray is on, else the one nearest to the ray. */
 function pivot(): THREE.Vector3 {
     const right = hands.find((it) => it.side === "right");
-    const from = right === undefined ? null : new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld);
-    const towards = right === undefined ? null : new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld);
-    const nearest = pointed ?? (from === null || towards === null ? null : (shown?.nodes ?? []).reduce<{ n: VrNode; d: number } | null>((best, n) => {
+    const nearest = pointed ?? (right === undefined ? null : nearestToRay(right.hand));
+    return nearest === null ? graph.position.clone() : worldOf(nearest);
+}
+
+/** Of the nodes shown before [hand], the one nearest to its ray. */
+function nearestToRay(hand: THREE.Object3D): VrNode | null {
+    const from = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+    const towards = new THREE.Vector3(0, 0, -1).transformDirection(hand.matrixWorld);
+    return (shown?.nodes ?? []).reduce<{ n: VrNode; d: number } | null>((best, n) => {
         const p = worldOf(n);
         const along = p.clone().sub(from).dot(towards);
         const d = p.distanceTo(from.clone().addScaledVector(towards, along));
         return along > 0 && (best === null || d < best.d) ? { n, d } : best;
-    }, null)?.n ?? null);
-    return nearest === null ? graph.position.clone() : worldOf(nearest);
+    }, null)?.n ?? null;
 }
 
-/** The right thumbstick: forward or back zooms, aside turns the graph about the upright, both around the [pivot]. */
-function steer(aside: number, forward: number) {
-    const zoom = Math.abs(forward) > 0.2 ? 1 - forward * 0.02 : 1;
+/** While a node is active, the right thumbstick forward or back asks for its text bigger or smaller this often at most (ms). */
+const TEXT_EVERY_MS = 150;
+let textToldAt = 0;
+
+/**
+ * Either thumbstick: forward or back what [reach] makes of it while something is held; else it zooms (while a node is active, a
+ * terminal gone into: makes its text bigger or smaller instead). Aside it turns the graph about the upright. Both around the [pivot].
+ */
+function steer(aside: number, along: number) {
+    const forward = reach(along) ? 0 : along;
+    const active = shown?.active ?? null;
+    if (active !== null && Math.abs(forward) > 0.5 && performance.now() - textToldAt >= TEXT_EVERY_MS) {
+        textToldAt = performance.now();
+        tell?.(JSON.stringify({ type: "text", bigger: forward < 0 }));
+    }
+    const zoom = Math.abs(forward) > 0.2 && active === null ? 1 - forward * 0.02 : 1;
     const turn = Math.abs(aside) > 0.2 ? -aside * 0.03 : 0;
     if (zoom !== 1 || turn !== 0) {
         const around = pivot();
@@ -948,7 +1017,7 @@ const hands = [0, 1].map((index) => {
     graph.add(frame);
     const state = {
         hand, ray, frame, side: "none" as XRHandedness, source: null as XRInputSource | null, pointed: null as VrNode | null,
-        x: false, xAt: -Infinity, y: false, trigger: null as Hold | null, grip: null as Hold | null,
+        x: false, xAt: -Infinity, y: false, yAt: 0, yHolding: false, trigger: null as Hold | null, grip: null as Hold | null,
     };
     hand.addEventListener("connected", (event) => {
         state.source = event.data as XRInputSource;
@@ -964,10 +1033,12 @@ const hands = [0, 1].map((index) => {
     hand.addEventListener("selectstart", () => {
         // the keypad, while it is open, takes the right trigger; a menu, while it is open, the left one
         if (state.side === "right" && keypad !== null) pressKeypad();
+        else if (state.side === "right" && pointedCorner !== null) sizing = { id: pointedCorner.id, width: 0, height: 0 };
         else if (state.side === "right" && pointed !== null && pointedAt !== null) {
             const middle = new THREE.Vector3(pointed.x, pointed.y, pointed.z);
-            held = { id: pointed.id, along: pointedAt.along, grip: pointedAt.at.clone().sub(middle), from: middle, moved: false };
-        } else if (state.side === "left" && menu !== null) closeMenu(true);
+            held = { id: pointed.id, along: pointedAt.along, grip: pointedAt.at.clone().sub(middle), ...poseOf(hand), moved: false };
+        } else if (state.side === "right") freeClick = { at: performance.now(), ...poseOf(hand) };
+        else if (state.side === "left" && menu !== null) closeMenu(true);
         else if (state.side === "left") state.trigger = holdOf(hand, "against", state.pointed, GAMEPAD_TRIGGER);
     });
     hand.addEventListener("selectend", () => {
@@ -977,7 +1048,13 @@ const hands = [0, 1].map((index) => {
             const links = was?.on?.links ?? [];
             if (was !== null && was.on !== null && clicked(was, hand) && links.length === 1) tell?.(JSON.stringify({ type: "follow", id: was.on.id, letter: links[0][0] }));
             else if (was !== null && was.on !== null && clicked(was, hand) && links.length > 1) openMenu(was.on, links);
+        } else if (sizing !== null) {
+            tellSize(sizing);
+            sizing = null;
         } else {
+            const free = freeClick;
+            freeClick = null;
+            if (free !== null && performance.now() - free.at < CLICK_MS && still(hand, free.from, free.turn)) create(hand);
             const was = held;
             held = null;
             const place = was === null ? undefined : placed.get(was.id);
@@ -1218,16 +1295,67 @@ function pinAnswered(sent: { right?: boolean; left?: number }) {
     }
 }
 
+/** A pixel of the headset's screen, as an angle (radians): a Quest 3 has about 25 to a degree. */
+const PIXEL = Math.PI / 180 / 25;
+/** How far from a corner of a node (in or out, either way) the ray takes that corner, and half of how big a corner is drawn: angles from the eyes. */
+const CORNER_REACH = 1.2 * Math.PI / 180;
+const CORNER_DRAWN = 0.4 * Math.PI / 180;
+
+/** Where the eyes are in the graph's own space, as the nodes are. */
+function eyesInGraph(): THREE.Vector3 {
+    graph.updateMatrixWorld();
+    const eyes = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+    return new THREE.Vector3().setFromMatrixPosition(eyes.matrixWorld).applyMatrix4(graph.matrixWorld.clone().invert()).sub(offset);
+}
+
+/** How far across (the graph's units) what is seen from [eyes] [angle] across is, at the node [n]. */
+function seenAcross(eyes: THREE.Vector3, n: VrNode, angle: number): number {
+    return Math.hypot(n.x - eyes.x, n.y - eyes.y, n.z - eyes.z) * Math.tan(angle);
+}
+
+/** The corner of a node the right controller points at, if any, and how far along the ray; the one its trigger holds: the node, and how big it is to be. */
+let pointedCorner: { id: string; along: number } | null = null;
+let sizing: { id: string; width: number; height: number } | null = null;
+
+/**
+ * How big the node held by a corner is to be: told to the window when let go of only. While it is held only its frames are
+ * drawn so big ([sizeOf]): the window making its pictures anew at each step is slow.
+ */
+function tellSize(now: { id: string; width: number; height: number }) {
+    if (now.width > 0 && now.height > 0) tell?.(JSON.stringify({ type: "resize", ...now, held: false }));
+}
+
+/** How big [n] is drawn framed: as the corner held has it while it is resized. */
+function sizeOf(n: VrNode): { width: number; height: number } {
+    const resized = sizing !== null && sizing.id === n.id && sizing.width > 0 && sizing.height > 0 ? sizing : null;
+    return resized ?? { width: n.width, height: n.height };
+}
+
 /** The node the right controller points at, where on it (in the graph) and how far along the ray that is (metres); and a frame around it. */
 let pointed: VrNode | null = null;
 let pointedAt: { at: THREE.Vector3; along: number } | null = null;
 /**
- * The node the trigger holds: how far along the ray, where on it it was taken (from its middle), where its middle was then, and
- * whether it has been moved since, which is what tells a node that is put somewhere from one that is clicked.
+ * The node the trigger holds: how far along the ray, where on it it was taken (from its middle), where the controller was and
+ * how it was turned then, and whether it has been moved since: once the controller is not [still], which is what tells a node
+ * that is put somewhere from one that is clicked.
  */
-let held: { id: string; along: number; grip: THREE.Vector3; from: THREE.Vector3; moved: boolean } | null = null;
-/** A node held is moved once it is this far from where it was, in the graph's units. */
-const MOVED_FROM = 8;
+let held: { id: string; along: number; grip: THREE.Vector3; from: THREE.Vector3; turn: THREE.Quaternion; moved: boolean } | null = null;
+/** The right trigger pressed with its ray on no node and no corner: when, and how the controller was; a click so makes a node ([create]). */
+let freeClick: { at: number; from: THREE.Vector3; turn: THREE.Quaternion } | null = null;
+
+/** Ask the window for a new node on the ray of [hand], as far along it as the node nearest to the ray is (on the walls: where it meets one). */
+function create(hand: THREE.Object3D) {
+    hand.updateMatrixWorld();
+    graph.updateMatrixWorld();
+    const from = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+    const towards = new THREE.Vector3(0, 0, -1).transformDirection(hand.matrixWorld);
+    const near = nearestToRay(hand);
+    // with no node to go by, a metre ahead
+    const along = (inRoom ? wallAlong(hand) : null) ?? (near === null ? 1 : Math.max(0.05, worldOf(near).sub(from).dot(towards)));
+    const at = graph.worldToLocal(from.addScaledVector(towards, along)).sub(offset);
+    tell?.(JSON.stringify({ type: "create", x: at.x, y: at.y, z: at.z, near: near?.id ?? null }));
+}
+
 /** A node let go of is shown where it was put for this long: until the window says so too. */
 const KEPT_AFTER_MS = 800;
 /** While a node is held and moved, the window is told where it is this often (ms): in explore mode the others make way as it goes. */
@@ -1242,8 +1370,8 @@ function tellHeld(id: string, at: { x: number; y: number; z: number }) {
         tell?.(JSON.stringify({ type: "move", id, ...at, held: true }));
     }
 }
-/** The frame: a band around the node, [FRAME_WIDTH] of the graph's units wide and [FRAME_AWAY] from it; its corners, the outer four and then the inner four. */
-const FRAME_WIDTH = 2;
+/** The frame: a band around the node, [FRAME_PIXELS] wide as seen and [FRAME_AWAY] of the graph's units from it; its corners, the outer four and then the inner four. */
+const FRAME_PIXELS = 4;
 const FRAME_AWAY = 3;
 
 /** Find what the controller [right] points at (either of them: the name is of the one that also holds nodes): of the nodes its ray goes through, the nearest. The ray is drawn up to it. */
@@ -1251,6 +1379,7 @@ function pointWith(right: typeof hands[number]) {
     const frameAround = right.frame;
     let nearest: { node: VrNode; along: number } | null = null;
     let at: { at: THREE.Vector3; along: number } | null = null;
+    let corner: { id: string; along: number; node: VrNode } | null = null;
     if (right.side !== "none" && shown !== null) {
         // the ray in the graph's own space, where a node is a rectangle at its depth
         graph.updateMatrixWorld();
@@ -1259,12 +1388,29 @@ function pointWith(right: typeof hands[number]) {
         const from = new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld).applyMatrix4(into).sub(offset);
         const towards = new THREE.Vector3(0, 0, -1).transformDirection(right.hand.matrixWorld).add(new THREE.Vector3().setFromMatrixPosition(right.hand.matrixWorld))
             .applyMatrix4(into).sub(offset).sub(from);
+        const eyes = eyesInGraph();
         const holding = right.side === "right" ? held : null;
+        const resizing = right.side === "right" ? sizing : null;
         const axes = laid?.axes;
-        if (holding !== null) {
-            // the node held stays as far along the ray as it was taken, and goes where the ray goes
+        const resized = resizing === null || laid === null ? null : shown.nodes.find((n) => n.id === resizing.id) ?? null;
+        const r = resized === null ? undefined : laid?.index.get(resized);
+        if (resizing !== null && resized !== null && r !== undefined && axes !== undefined) {
+            // where the ray meets the plane the node is turned into: the corner held is there, the node as big around its middle
+            const [rx, ry, rz, ux, uy, uz, fx, fy, fz] = axes.subarray(r * 9, r * 9 + 9);
+            const closing = towards.x * fx + towards.y * fy + towards.z * fz;
+            const along = closing === 0 ? -1 : ((resized.x - from.x) * fx + (resized.y - from.y) * fy + (resized.z - from.z) * fz) / closing;
+            if (along > 0) {
+                const [dx, dy, dz] = [from.x + towards.x * along - resized.x, from.y + towards.y * along - resized.y, from.z + towards.z * along - resized.z];
+                resizing.width = 2 * Math.abs(dx * rx + dy * ry + dz * rz);
+                resizing.height = 2 * Math.abs(dx * ux + dy * uy + dz * uz);
+                nearest = { node: resized, along };
+            }
+        } else if (holding !== null) {
+            // the node held stays as far along the ray as it was taken (the left thumbstick takes it nearer or further), and
+            // goes where the ray goes; on the walls, it is where the ray meets one
+            holding.along = (inRoom ? wallAlong(right.hand) : null) ?? holding.along;
             const middle = from.clone().addScaledVector(towards, holding.along).sub(holding.grip);
-            holding.moved = holding.moved || middle.distanceTo(holding.from) > MOVED_FROM;
+            holding.moved = holding.moved || !still(right.hand, holding.from, holding.turn);
             if (holding.moved && received !== null) {
                 placed.set(holding.id, { at: { x: middle.x, y: middle.y, z: middle.z }, until: Infinity });
                 show(received);
@@ -1278,9 +1424,14 @@ function pointWith(right: typeof hands[number]) {
             const closing = towards.x * fx + towards.y * fy + towards.z * fz;
             const along = closing === 0 ? -1 : ((n.x - from.x) * fx + (n.y - from.y) * fy + (n.z - from.z) * fz) / closing;
             const [dx, dy, dz] = [from.x + towards.x * along - n.x, from.y + towards.y * along - n.y, from.z + towards.z * along - n.z];
-            const hit = along > 0 && (nearest === null || along < nearest.along) &&
-                Math.abs(dx * rx + dy * ry + dz * rz) <= n.width / 2 && Math.abs(dx * ux + dy * uy + dz * uz) <= n.height / 2;
+            const [across, up] = [dx * rx + dy * ry + dz * rz, dx * ux + dy * uy + dz * uz];
+            const hit = along > 0 && (nearest === null || along < nearest.along) && Math.abs(across) <= n.width / 2 && Math.abs(up) <= n.height / 2;
             if (hit) nearest = { node: n, along };
+            // a corner of a selected node that has a size of its own: it is resized by it, from in the node or out of it
+            const reach = n.selected === true && n.manual === true ? seenAcross(eyes, n, CORNER_REACH) : 0;
+            const onCorner = along > 0 && reach > 0 &&
+                Math.abs(Math.abs(across) - n.width / 2) <= reach && Math.abs(Math.abs(up) - n.height / 2) <= reach;
+            if (onCorner && right.side === "right" && (corner === null || along < corner.along)) corner = { id: n.id, along, node: n };
         });
         const hit = nearest as { node: VrNode; along: number } | null;
         at = hit === null ? null : { at: from.clone().addScaledVector(towards, hit.along), along: hit.along };
@@ -1288,28 +1439,136 @@ function pointWith(right: typeof hands[number]) {
     const found = nearest as { node: VrNode; along: number } | null;
     right.pointed = found?.node ?? null;
     if (right.side === "right") {
+        pointedCorner = corner;
         pointed = right.pointed;
         pointedAt = found === null ? null : at;
     }
-    const i = found === null ? undefined : laid?.index.get(found.node);
-    frameAround.visible = found !== null && i !== undefined;
-    if (found !== null && laid !== null && i !== undefined) {
+    // a corner pointed at from out of its node frames the node too
+    const cornered = corner as { id: string; along: number; node: VrNode } | null;
+    const framed = found?.node ?? cornered?.node ?? null;
+    const i = framed === null ? undefined : laid?.index.get(framed);
+    frameAround.visible = framed !== null && i !== undefined;
+    if (framed !== null && laid !== null && i !== undefined) {
         // turned as the node is
-        const n = found.node;
+        const n = framed;
+        const { width, height } = sizeOf(n);
         const axes = laid.axes;
         const corners = frameAround.geometry.getAttribute("position") as THREE.BufferAttribute;
-        [FRAME_AWAY + FRAME_WIDTH, FRAME_AWAY].forEach((away, ring) => {
+        [FRAME_AWAY + seenAcross(eyesInGraph(), n, FRAME_PIXELS * PIXEL), FRAME_AWAY].forEach((away, ring) => {
             [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], k) => {
-                const a = sx * (n.width / 2 + away);
-                const c = sy * (n.height / 2 + away);
+                const a = sx * (width / 2 + away);
+                const c = sy * (height / 2 + away);
                 corners.setXYZ(ring * 4 + k, n.x + axes[i * 9] * a + axes[i * 9 + 3] * c, n.y + axes[i * 9 + 1] * a + axes[i * 9 + 4] * c, n.z + axes[i * 9 + 2] * a + axes[i * 9 + 5] * c);
             });
         });
         corners.needsUpdate = true;
         frameAround.position.copy(offset);
     }
-    right.ray.scale.z = found !== null ? found.along : RAY_LENGTH;
+    right.ray.scale.z = found?.along ?? cornered?.along ?? RAY_LENGTH;
     right.ray.material.color.set(right.side === "right" && shown?.exploring ? RAY_EXPLORING : RAY);
+}
+
+/** The bands around the selected nodes ([FRAME_PIXELS] wide, [FRAME_AWAY] from them, as the one around a node pointed at), in one mesh made anew each frame. */
+const SELECTED = 0x3d9bff;
+const selectedFrames = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: SELECTED, depthTest: false, side: THREE.DoubleSide }));
+selectedFrames.frustumCulled = false;
+selectedFrames.renderOrder = 4;
+graph.add(selectedFrames);
+
+/** The corners of the selected nodes that have a size of their own, by which they are resized: squares, in one mesh. */
+const corners = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, side: THREE.DoubleSide }));
+corners.frustumCulled = false;
+corners.renderOrder = 6;
+graph.add(corners);
+
+/** What [tellBeside] last told, and when. */
+let besideTold = "";
+let besideToldAt = 0;
+const BESIDE_EVERY_MS = 100;
+
+/**
+ * The one node selected (none active), and of the others the nearest one to each side of it as the eyes see them, upright:
+ * the window's arrow keys select those. Told when it changes, no oftener than [BESIDE_EVERY_MS].
+ */
+function tellBeside() {
+    const nodes = shown?.nodes ?? [];
+    const selected = nodes.filter((n) => n.selected === true);
+    const one = selected.length === 1 && shown?.active === null && renderer.xr.isPresenting ? selected[0] : null;
+    const eyes = renderer.xr.getCamera().matrixWorld;
+    const head = new THREE.Vector3().setFromMatrixPosition(eyes);
+    const up = new THREE.Vector3(0, 1, 0);
+    const right = new THREE.Vector3(1, 0, 0).transformDirection(eyes).projectOnPlane(up).normalize();
+    const ahead = new THREE.Vector3().crossVectors(up, right);
+    // where a node is seen: its angles aside and up from the way the eyes look
+    const seen = (n: VrNode) => {
+        const d = worldOf(n).sub(head);
+        const [x, y, z] = [d.dot(right), d.dot(up), d.dot(ahead)];
+        return [Math.atan2(x, z), Math.atan2(y, Math.hypot(x, z))];
+    };
+    const from = one === null ? null : seen(one);
+    const others = one === null ? [] : nodes.filter((n) => n !== one).map((n) => ({ n, at: seen(n) }));
+    // the nearest that way, a node off to the side counting double for how far off it is
+    const towards = (ux: number, uy: number) => from === null ? null : others.reduce<{ id: string; score: number } | null>((best, it) => {
+        const [dx, dy] = [it.at[0] - from[0], it.at[1] - from[1]];
+        const along = dx * ux + dy * uy;
+        const score = along + 2 * Math.abs(dx * uy - dy * ux);
+        return along > 0 && (best === null || score < best.score) ? { id: it.n.id, score } : best;
+    }, null)?.id ?? null;
+    const now = JSON.stringify({ type: "beside", id: one?.id ?? null, left: towards(-1, 0), right: towards(1, 0), up: towards(0, 1), down: towards(0, -1) });
+    if (now !== besideTold && performance.now() - besideToldAt >= BESIDE_EVERY_MS) {
+        besideTold = now;
+        besideToldAt = performance.now();
+        tell?.(now);
+    }
+}
+
+function frameSelected() {
+    const nodes = laid === null ? [] : (shown?.nodes ?? []).filter((n) => n.selected === true && laid!.index.has(n));
+    const positions = new Float32Array(nodes.length * 24);
+    const indices: number[] = [];
+    const eyes = eyesInGraph();
+    nodes.forEach((n, f) => {
+        const i = laid!.index.get(n)!;
+        const axes = laid!.axes;
+        const { width, height } = sizeOf(n);
+        // turned as the node is: the outer four corners, then the inner four
+        [FRAME_AWAY + seenAcross(eyes, n, FRAME_PIXELS * PIXEL), FRAME_AWAY].forEach((away, ring) => {
+            [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], k) => {
+                const a = sx * (width / 2 + away);
+                const c = sy * (height / 2 + away);
+                positions.set([n.x + axes[i * 9] * a + axes[i * 9 + 3] * c, n.y + axes[i * 9 + 1] * a + axes[i * 9 + 4] * c,
+                    n.z + axes[i * 9 + 2] * a + axes[i * 9 + 5] * c], f * 24 + (ring * 4 + k) * 3);
+            });
+        });
+        [0, 1, 2, 3].forEach((k) => indices.push(...[k, (k + 1) % 4, 4 + k, 4 + k, (k + 1) % 4, 4 + (k + 1) % 4].map((it) => f * 8 + it)));
+    });
+    selectedFrames.geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    selectedFrames.geometry.setIndex(indices);
+    selectedFrames.position.copy(offset);
+    selectedFrames.visible = nodes.length > 0;
+    const sized = nodes.filter((n) => n.manual === true);
+    const squares = new Float32Array(sized.length * 4 * 4 * 3);
+    const squaresIndex: number[] = [];
+    sized.forEach((n, f) => {
+        const i = laid!.index.get(n)!;
+        const axes = laid!.axes;
+        const half = seenAcross(eyes, n, CORNER_DRAWN);
+        const { width, height } = sizeOf(n);
+        [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([sx, sy], k) => {
+            const q = (f * 4 + k) * 4;
+            [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([cx, cy], m) => {
+                const a = sx * width / 2 + cx * half;
+                const c = sy * height / 2 + cy * half;
+                squares.set([n.x + axes[i * 9] * a + axes[i * 9 + 3] * c, n.y + axes[i * 9 + 1] * a + axes[i * 9 + 4] * c,
+                    n.z + axes[i * 9 + 2] * a + axes[i * 9 + 5] * c], (q + m) * 3);
+            });
+            squaresIndex.push(q, q + 1, q + 2, q, q + 2, q + 3);
+        });
+    });
+    corners.geometry.setAttribute("position", new THREE.BufferAttribute(squares, 3));
+    corners.geometry.setIndex(squaresIndex);
+    corners.position.copy(offset);
+    corners.visible = sized.length > 0;
 }
 
 function point() {
@@ -1321,11 +1580,12 @@ function point() {
     hands.forEach(pointWith);
 }
 
-/** The right thumbstick turns and zooms the graph ([steer]); X of the left controller asks into explore mode or out of it, twice soon the room scanned anew; Y onto the walls or off them. */
+/** The thumbsticks, both as one, turn and zoom the graph ([steer]); X of the left controller asks into explore mode or out of it, twice soon the room scanned anew; Y onto the walls or off them. */
 function buttons() {
+    const both = (axis: number) => Math.max(-1, Math.min(1, hands.reduce((sum, it) => sum + (it.source?.gamepad?.axes[axis] ?? 0), 0)));
+    steer(both(2), both(3));
     hands.forEach((it) => {
         const pad = it.source?.gamepad;
-        if (it.side === "right") steer(pad?.axes[2] ?? 0, pad?.axes[3] ?? 0);
         const x = it.side === "left" && pad?.buttons[BUTTON_X]?.pressed === true;
         if (x && !it.x && performance.now() - it.xAt < DOUBLE_MS) {
             if (exploreLater !== null) clearTimeout(exploreLater);
@@ -1341,9 +1601,16 @@ function buttons() {
             }, DOUBLE_MS);
         }
         it.x = x;
-        // Y: the graph on the walls of the room, or in the space of it
+        // Y clicked: the graph on the walls of the room, or in the space of it; held: `o`, the springs move the nodes until let go
         const y = it.side === "left" && pad?.buttons[BUTTON_Y]?.pressed === true;
-        if (y && !it.y) tell?.(JSON.stringify({ type: "walls" }));
+        if (y && !it.y) it.yAt = performance.now();
+        if (y && !it.yHolding && performance.now() - it.yAt >= CLICK_MS) {
+            it.yHolding = true;
+            tell?.(JSON.stringify({ type: "optimize", on: true }));
+        }
+        if (!y && it.y && it.yHolding) tell?.(JSON.stringify({ type: "optimize", on: false }));
+        else if (!y && it.y) tell?.(JSON.stringify({ type: "walls" }));
+        if (!y) it.yHolding = false;
         it.y = y;
     });
 }
@@ -1372,7 +1639,51 @@ wallsShown.visible = false;
 scene.add(wallsShown);
 const around = { turned: 0, raised: 0, away: 1, middle: new THREE.Vector3() };
 
+/** The walls the graph is on, as [showWalls] was last given them: of each the two ends seen from above, x and z (metres). */
+let wallsNow: number[] = [];
+
+/** How far along the ray of [hand] it meets a wall, the nearest (metres); null when it meets none. */
+function wallAlong(hand: THREE.Object3D): number | null {
+    const from = new THREE.Vector3().setFromMatrixPosition(hand.matrixWorld);
+    const towards = new THREE.Vector3(0, 0, -1).transformDirection(hand.matrixWorld);
+    let nearest: number | null = null;
+    for (let i = 0; i + 3 < wallsNow.length; i += 4) {
+        const [x1, z1, x2, z2] = wallsNow.slice(i, i + 4);
+        // seen from above: the ray, from + t towards, meets the wall, its end 1 + s (end 2 - end 1), with t > 0 and s in 0..1
+        const [ex, ez, wx, wz] = [x2 - x1, z2 - z1, x1 - from.x, z1 - from.z];
+        const across = towards.x * ez - towards.z * ex;
+        const t = across === 0 ? -1 : (wx * ez - wz * ex) / across;
+        const s = across === 0 ? -1 : (wx * towards.z - wz * towards.x) / across;
+        if (t > 0 && s >= 0 && s <= 1 && (nearest === null || t < nearest)) nearest = t;
+    }
+    return nearest;
+}
+
+/** How fast a thumbstick, fully pushed, takes the graph held further or nearer, or flies: metres a second. */
+const STICK_SPEED = 1;
+let reachedAt = performance.now();
+
+/**
+ * A thumbstick forward or back (pushed forward the axis is below 0), while something is held: the node the right trigger
+ * holds goes further along the ray or nearer, the graph the left grip holds further from the eyes or nearer, flying (the left
+ * trigger) goes on in or back out. Whether it was any of these.
+ */
+function reach(forward: number): boolean {
+    const now = performance.now();
+    const seconds = Math.min((now - reachedAt) / 1000, 0.1);
+    reachedAt = now;
+    const holds = hands.flatMap((it) => [it.trigger, it.grip]).filter((it): it is Hold => it !== null && it.going);
+    const taken = holds.find((it) => it.kind === "along");
+    const flying = holds.find((it) => it.kind === "against");
+    const pushed = Math.abs(forward) > 0.2;
+    if (pushed && held !== null) held.along = Math.max(0.05, held.along * (1 - forward * 0.03));
+    else if (pushed && taken !== undefined) taken.pushed += forward * STICK_SPEED * seconds;
+    else if (pushed && flying !== undefined) flying.flown.addScaledVector(flying.inwards, forward * STICK_SPEED * seconds);
+    return held !== null || taken !== undefined || flying !== undefined;
+}
+
 function showWalls(walls: number[]) {
+    wallsNow = walls;
     const lines: number[] = [];
     const xs: number[] = [];
     const zs: number[] = [];
@@ -1574,6 +1885,8 @@ renderer.setAnimationLoop((_time, frame) => {
     carry();
     face();
     point();
+    frameSelected();
+    tellBeside();
     pointInMenu();
     pointInKeypad();
     sizeRoomLines();

@@ -6,7 +6,7 @@ import { Colours, NodeEditor, PAD_COLUMNS, Place, TERMINAL_FONT_PX } from "./nod
 import { TerminalNode, type TerminalPainting } from "./terminalNode";
 import { NodePicture, Shell, shellColours, SpaceRenderer, SpaceScene } from "./space";
 import { mockRoom, outlines, wallsOf } from "./room";
-import { startVr, VrLive, VrScene, VrSurface } from "./vrServer";
+import { Beside, startVr, VrLive, VrScene, VrSurface } from "./vrServer";
 
 // The page: draws what the client core says the view shows and
 // passes the user's input to it. No graph logic in here.
@@ -799,6 +799,19 @@ const MIN_MAXIMIZED_LINE_PX = 5;
 /** Pixels of the window left free around a maximized node, as around a node being edited. */
 const MAXIMIZED_MARGIN = 40;
 
+/**
+ * The text of the node that is active a step bigger, or smaller (a headset's thumbstick): of a maximized one as Ctrl+wheel
+ * makes it, else of the node itself, as the style picker does.
+ */
+function textBigger(view: client.JsView, grid: client.GridMetrics, bigger: boolean) {
+    const shown = lastScene?.nodes.find((n) => n.id === maximizedIn(view));
+    if (shown !== undefined && lastScene !== null) {
+        const lowest = MIN_MAXIMIZED_LINE_PX / (grid.lineHeight * shown.fontSize);
+        maximizedZoom = Math.max(lowest, lastScene.scale * shown.depthScale * (bigger ? ZOOM_STEP : 1 / ZOOM_STEP));
+        page.repaint();
+    } else view.pickSize(bigger ? 1 : -1);
+}
+
 /** The node of [view] that is maximized now: a terminal with the keys, or a node being edited; null when none is. */
 function maximizedIn(view: client.JsView): string | null {
     return (inTerminal?.maximized === true && inTerminal.view === view ? inTerminal.id : null) ?? (editing?.maximized === true ? editing.id : null);
@@ -879,6 +892,19 @@ const TERMINAL_KEYS: { [key: string]: string } = {
  * A key pressed in the headset's page (opened on this machine: the server takes none from the network), as if it were
  * pressed in the window: in a terminal node it is the shell's, in the line the line's, otherwise whatever takes the keys now.
  */
+/** What a headset sees beside the node selected alone there, as it last said; null while none says. */
+let beside: Beside | null = null;
+
+/** An arrow key, with one node selected and none active: the node a headset sees on that side of it is selected instead. */
+function besideKey(view: client.JsView, e: KeyboardEvent): boolean {
+    const side = ({ ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" } as const)[e.key as string];
+    const alone = view.selectedAlone();
+    const seen = beside;
+    const to = side === undefined || e.ctrlKey || e.shiftKey || e.altKey || alone === null || seen === null || seen.id !== alone ? null : seen[side];
+    if (to !== null) view.selectAlone(to);
+    return to !== null;
+}
+
 function keyFromPage(key: string, ctrl: boolean, shift: boolean) {
     const terminal = inTerminal === null ? undefined : terminals.get(inTerminal.view)?.get(inTerminal.id);
     const character = [...key].length === 1;
@@ -1160,6 +1186,8 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
             const leads: string[] | undefined = links[n.id];
             const node = {
                 id: n.id, x: n.x, y: n.y, z: n.z, width: n.width * size, height: n.height * size, fill: n.bg ?? colours().background, ink: inkOf(n),
+                selected: n.selected,
+                manual: n.manual,
                 ...(leads === undefined ? {} : { links: leads.slice(0, MAX_VR_LINKS).map((it) => it.slice(0, MAX_VR_LINK)) }),            };
             // a node shown smaller: its picture has more pixels to a unit
             return place === null ? node : {
@@ -1172,6 +1200,8 @@ function vrScene(view: client.JsView | null | undefined, grid: client.GridMetric
         background: canvasColour(colours().background),
         ink: colours().foreground,
         exploring: view!.exploring,
+        active: (inTerminal !== null && inTerminal.view === view ? inTerminal.id : null) ?? editing?.id ?? null,
+        room: view!.room,
         status: statusText.slice(0, MAX_VR_STATUS),
         inRoom: onWalls !== null,
         ...(onWalls === null ? {} : { walls: wallsOf(roomSurfaces ?? []) }),
@@ -1568,6 +1598,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             if (editor.key(e)) e.preventDefault();
         }
         // and while the line is open they are the line's
+        else if (editing === null && !lineOpen() && besideKey(view, e)) e.preventDefault();
         else if (editing === null && !lineOpen() && view.keyDown(e.key, e.ctrlKey, e.shiftKey)) e.preventDefault();
     }));
     // letting go of a key ends what lasts while it is held (`o`)
@@ -1620,11 +1651,19 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
                 if (view && entering) enterTerminal(view, id);
             },
             move: (id: string, x: number, y: number, z: number, held: boolean) => app.current()?.dragNode(id, x, y, z, !held),
+            beside: (now: Beside | null) => {
+                beside = now;
+            },
+            create: (x: number, y: number, z: number, near: string | null) => app.current()?.createNode(x, y, z, near),
+            // the headset's sizes are the nodes' times what they are made bigger by on the walls
+            resize: (id: string, width: number, height: number, held: boolean) => app.current()?.resizeNode(id, width / vrNodeScale, height / vrNodeScale, !held),
+            text: (bigger: boolean) => current((view) => textBigger(view, grid, bigger)),
             follow: (id: string, letter: string) => app.current()?.followLink(id, letter),
             // as the keys of the window: Ctrl+O back, Ctrl+I forward
             jump: (back: boolean) => app.current()?.keyDown(back ? "o" : "i", true, false),
             explore: () => app.current()?.toggleExplore(),
             walls: () => app.current()?.toggleWalls(),
+            optimize: (on: boolean) => app.current()?.optimize(on),
             stand: (x: number, z: number, ax: number, az: number) => {
                 standing = [x, z, ax, az];
             },
@@ -1635,16 +1674,17 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
         // local network it is still asked for before a terminal node is gone into, which starts a shell
         const atStart = query.get("vrNoPin") === null;
         const pin = String(require("crypto").randomInt(10000)).padStart(4, "0");
-        const give = atStart ? `and give the PIN ${pin}` : lan ? `(no PIN is asked for; to go into a terminal node: ${pin})` : "(no PIN is asked for)";
+        // `no-pin`: asked for only before a terminal node is gone into, and on this machine not at all
+        const give = atStart ? `PIN ${pin}` : lan ? `no-pin, PIN ${pin}` : "no-pin";
         const served = startVr(Number(vr) || 0, token, pin, atStart, lan, source, (address, error) => {
             const port = address === null ? "" : new URL(address).port;
             const text = address === null
                 ? `VR: could not start: ${error}`
                 : lan
-                    ? `VR: answering on the local network. With the headset on the same Wi-Fi, open in its browser\n    ${address}\n` +
-                        `go on past its warning about the certificate (this machine made it for itself), ${give}`
+                    ? `VR: answering on the local network.\nWith the headset on the same Wi-Fi, open in its browser\n    ${address}\n` +
+                        `go on past its warning about the certificate\n(this machine made it for itself)\n    ${give}`
                     : `VR: with the headset on its USB cable, run\n    adb reverse tcp:${port} tcp:${port}\n` +
-                        `open in the headset's browser\n    ${address}\n${give}`;
+                        `open in the headset's browser\n    ${address}\n    ${give}`;
             // where the application was started from, and in the window
             process.stdout.write(`sane-graph-edit: ${text}\n`);
             showMessage(`${text}\n(Escape puts this away)`, false, true);

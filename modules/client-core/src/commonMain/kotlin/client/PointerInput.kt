@@ -150,6 +150,29 @@ class PointerInput(private val view: EditorView) {
         view.repaint()
     }
 
+    /** The node a headset resizes by a corner, and what its size and place were before, for undo. */
+    private var resizedFromAfar: Pair<Node, Pair<String?, Vector2>>? = null
+
+    /**
+     * A headset holds a corner of the node [id] (which has a size of its own) so that it is [width] × [height] around its
+     * middle, which stays; [done]: let go of, one undo step from where it was taken.
+     */
+    fun resizedFromAfar(id: String, width: Double, height: Double, done: Boolean) {
+        val node = view.g.visibleNodes().firstOrNull { it.id == id && ManualSize.of(it) != null }
+        if (node != null && !view.content.isBusy && gestures.state == null) {
+            val taken = resizedFromAfar?.takeIf { it.first == node } ?: (node to (node.attributes.other[ManualSize.ATTRIBUTE] to node.position))
+            resizedFromAfar = taken
+            node.attributes.other[ManualSize.ATTRIBUTE] = ManualSize.write(Vector2(width.coerceAtLeast(ManualSize.SMALLEST), height.coerceAtLeast(ManualSize.SMALLEST)))
+            view.g.needsRecomputing(node)
+            if (done) {
+                val after = node.attributes.other[ManualSize.ATTRIBUTE] to node.position
+                if (after != taken.second) view.g.commitApplied(SetManualSizeCommand(view.g, mapOf(node to taken.second), mapOf(node to after)))
+                resizedFromAfar = null
+            }
+            view.repaint()
+        }
+    }
+
     private fun endResize(by: Resizing) {
         val after = by.node.attributes.other[ManualSize.ATTRIBUTE] to by.node.position
         if (after != by.before) view.g.commitApplied(SetManualSizeCommand(view.g, mapOf(by.node to by.before), mapOf(by.node to after)))

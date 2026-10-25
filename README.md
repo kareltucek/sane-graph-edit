@@ -447,14 +447,19 @@ while on:
 - `wall-scale=<n>` — with `walls`, how many millimetres of a wall a
   unit of the graph is: 1 (a node 150 units wide is 15 cm) unless set;
   0.5 shows everything half as big.
+- `room` — in a headset (`--vr`), its room: the outlines of the flat
+  surfaces it knows, and the shape it has scanned (furniture too) as a
+  net of lines; off unless set. What of the graph is behind it is
+  shown faint either way.
 - `walls` — in a headset (`--vr`) the graph is on the walls of the
-  room instead of before the eyes: flat as it is, bent around the
-  room along the walls, its middle on the wall one looks at when
-  this is switched on, at the height of the eyes; past the last wall it goes on over the first.
-  It is made smaller to fit once around the room, but in explore
-  mode, where it is as big as it is. Where it is on the walls is
-  decided when it is first shown so, and when explore mode is entered
-  or left. Doors and windows are not known of. Nothing in the graph
+  room instead of before the eyes, in explore mode only (for now: out
+  of it the graph stays before the eyes): flat as it is, bent around
+  the room along the walls, its middle on the wall one looks at when
+  explore mode is entered, at the height of the eyes, as big as it is;
+  past the last wall it goes on over the first. Where it is on the
+  walls is decided then (or when the walls are first known, or
+  `wall-scale` changes) and stays so: what is unfolded or moved goes
+  onto the walls without shifting the rest. Doors and windows are not known of. Nothing in the graph
   is moved by this; a node taken and let go of somewhere in the room
   is put on the wall nearest to that place, as high as it was let go
   of. Needs
@@ -634,20 +639,40 @@ the four-digit PIN it prints with it. The page
 shows the graph of the tab that is shown in the window, as that
 changes, and offers to enter with the room visible (passthrough) or
 hidden. Of each controller the trigger is its left button and the
-grip its right one; a press let go of within 0.3 s (the hand still)
-is a click, a longer one a hold.
+grip its right one; a press let go of with the controller still (moved
+less than 3 cm, turned less than 6°) and within 0.3 s is a click, else
+a hold. The right trigger on a node has no time limit: held still as
+long as one likes, it is a click.
 
 The right controller points. Trigger click on a node: selects it
 (explore mode: unfolds it); on a terminal node already selected, goes
-into its shell;
+into its shell; on no node, makes a new one there, selected, as far
+along the ray as the node nearest to the ray is (on the walls: where
+the ray meets one); a terminal when every node shown is one;
 held on a node, takes it along where the ray goes (explore mode: as
-a Shift-drag, the others making way). Grip click on a node: takes it
+a Shift-drag, the others making way), as far along the ray as it was,
+a thumbstick taking it further (forward) or nearer (back); with
+the graph on the walls, where the ray meets a wall. A selected node
+that has a size of its own shows its corners (white squares): the
+trigger held on one, or just outside it (within 1.2° as the eyes see
+it), resizes the node around its middle. Selected nodes have a blue
+band around them, 4 pixels wide however far. Grip click on a node: takes it
 out of the selection (explore mode: folds it); held, the node it was
 pressed on goes, until let go of, to where a node was last taken in
-hand (clicked, dragged, turned around or held so). The
-thumbstick makes the graph bigger or smaller (forward, back) and turns
-it about the upright (aside), both around the node the ray is on, or
-the one nearest to the ray. A and B do nothing.
+hand (clicked, dragged, turned around or held so). A and B do nothing.
+
+Both thumbsticks do the same. Forward and back: with a node held by
+the right trigger, it further or nearer along the ray; with the graph
+held by the left grip, it further from the eyes or nearer; flying, on
+in or back out (a metre a second, fully pushed); while a node is
+active (a terminal gone into, a node being edited), its text bigger or
+smaller (maximized: as Ctrl+wheel); else the graph bigger or smaller.
+Aside: the graph turns about the upright. Zoom and turn are around
+the node the right ray is on, or the one nearest to it.
+
+With one node selected and none active, the arrow keys (of the
+window, or typed in the headset's page) select the node next to it
+on that side, as the headset sees them.
 
 The left controller points too. Trigger click on a node that has
 links: follows its link, into a new tab; of several, a menu opens
@@ -655,22 +680,31 @@ around the node, and the next click follows the one pointed at.
 Grip click: back to where a link was followed from (Ctrl+O). Held,
 the grip takes the graph in the hand: it goes and turns as the hand
 does, as the eyes see the hand, but in and out (away from the eyes)
-4 times as far; turning around with it, the graph is seen as before. The trigger held flies one through the
-graph: across, the graph goes as far as the hand; in and out, as fast
-as the hand is from where it was pressed (4 metres a second for each
-metre), times how hard the trigger is pressed. X goes into
+4 times as far; turning around with it, the graph is seen as before.
+It only ever turns about the upright: its up stays the room's (as the
+headset's recentring has it), however the hand tilts.
+The trigger held flies one through the graph, in the room and never
+turned: across the way the eyes looked when it was pressed the graph
+goes as far as the hand; along it, the other way, as fast as the hand
+is from where it was pressed (4 metres a second for each metre),
+times how hard the trigger is pressed. X goes into
 explore mode (from the node selected, or from the roots of the graph)
 and out of it; X twice quickly asks the headset to scan the room
-anew. Y puts the graph on the walls of the room or off them into its
-space (`:set walls`; the status line says `[walls]` or `[space]`).
-The thumbstick does nothing. The nodes face whoever looks,
-from wherever. The window's status line is shown on a
+anew. Y clicked puts the graph on the walls of the room or off them
+into its space (`:set walls`; the status line says `[walls]` or
+`[space]`); Y held is `o` held: the springs move the nodes until it is
+let go of. The nodes face whoever looks, from wherever, turned about
+the upright only. The window's status line is shown on a
 strip before and below the eyes: it stays where it is in the room,
 and comes along when one turns or walks away from it. The
 headset only places pictures the window makes of the nodes: it holds
 nothing, and reloading its page loses nothing. When the editor is
 quit, the headset leaves its immersive session and stops trying to
-connect: started again, the editor prints a new address.
+connect: started again, the editor prints a new address. The editor
+and the headset tell each other they are there every second; heard
+nothing from for 6 seconds, the headset leaves its immersive session
+too (and keeps trying to connect), and the editor drops the headset,
+letting go of what it held (`o`).
 
 It is off unless asked for, answers on this machine only and only
 to who gives the PIN (which sends the browser on to an address with
@@ -715,11 +749,12 @@ it once and has to be told to go on.
 
 Where the headset knows the flat surfaces of its room (on a Quest:
 after its space setup, and when its browser is allowed to see them),
-the page outlines them with what they are (`wall`, `floor`, `desk`…)
-and tells the window of them: `:room` lists them, with their sizes
-and where they are. Nothing is laid out by them yet. Where it has
-the scanned shape of the room too (furniture and all), the page
-shows that as a net of lines; the window is not told of it yet. X twice
+the page tells the window of them: `:room` lists them, with what they
+are (`wall`, `floor`, `desk`…), their sizes and where they are. Where
+it has the scanned shape of the room too (furniture and all), what of
+the graph is behind it is shown faint; the window is not told of it
+yet. With `:set room` (off unless set) the page draws the surfaces'
+outlines and the scanned shape as a net of lines; never their names. X twice
 quickly on the left controller asks the headset to scan the room
 anew, where its browser can (once after entering).
 

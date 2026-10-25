@@ -972,6 +972,7 @@ class KeyMapper(
             "show-children", "show-childs" -> graph_tools.ViewModes.showChildren = change(graph_tools.ViewModes.showChildren)
             "dynamic" -> graph_tools.ViewModes.dynamic = change(graph_tools.ViewModes.dynamic)
             "walls" -> graph_tools.ViewModes.walls = change(graph_tools.ViewModes.walls)
+            "room" -> graph_tools.ViewModes.room = change(graph_tools.ViewModes.room)
             "discard" -> graph_tools.ViewModes.discard = change(graph_tools.ViewModes.discard)
             // of the graph shown, not of all of them
             "explore" -> activeView?.let { Explore.set(it, change(Explore.isOn(it))) }
@@ -1177,11 +1178,17 @@ class KeyMapper(
         sb.appendLine("                    A real move: one undo step, saved with the file.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.dynamic) "on" else "off"}.")
         sb.appendLine()
-        sb.appendLine("  walls             In a headset the graph is on the walls of the")
-        sb.appendLine("                    room, bent around it, its middle straight ahead;")
-        sb.appendLine("                    made smaller to fit, but in explore mode, where")
-        sb.appendLine("                    it is as big as it is. Nothing is moved.")
+        sb.appendLine("  walls             In a headset, in explore mode, the graph is on")
+        sb.appendLine("                    the walls of the room, bent around it, its middle")
+        sb.appendLine("                    straight ahead when explore mode is entered, as")
+        sb.appendLine("                    big as it is. Nothing is moved.")
         sb.appendLine("                    Current: ${if (graph_tools.ViewModes.walls) "on" else "off"}.")
+        sb.appendLine()
+        sb.appendLine("  room              In a headset, its room: the outlines of the flat")
+        sb.appendLine("                    surfaces it knows, and the shape it has scanned")
+        sb.appendLine("                    (furniture too) as a net of lines. What of the")
+        sb.appendLine("                    graph is behind it is faint all the same.")
+        sb.appendLine("                    Current: ${if (graph_tools.ViewModes.room) "on" else "off"}.")
         sb.appendLine()
         sb.appendLine("  wall-scale=<n>    How many millimetres of a wall a unit of the graph")
         sb.appendLine("                    is (walls). 1: a node 150 units wide is 15 cm.")
@@ -1422,7 +1429,7 @@ class KeyMapper(
         val APPLICATION_FLAGS = mutableSetOf<String>()
 
         /** `:set <flag>` / `no<flag>` / `<flag>!` settings ([applyFlag]). */
-        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "walls", "discard", "3d", "explore", "suns")
+        val FLAG_SETTINGS = listOf("unhide", "show-parents", "show-children", "dynamic", "walls", "room", "discard", "3d", "explore", "suns")
 
         /** A button of the mouse on a node, as a key that can be mapped (`:map <RightMouse> zO`): the left one clicked, the right one pressed. */
         const val LEFT_MOUSE = "<LeftMouse>"
