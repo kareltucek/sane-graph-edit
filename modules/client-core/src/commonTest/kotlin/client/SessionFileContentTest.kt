@@ -217,6 +217,20 @@ class SessionFileContentTest {
     }
 
     @Test
+    fun `e in a view of a text file reads the file again, and what is unsaved goes only when that is agreed to`() {
+        val view = opened("sections.txt")
+        Fs.writeText(text, "changed outside\n")
+        view.content.reload()
+        assertTrue("changed outside" in text(view, SourceView.NODE_ID))
+        edit(view, SourceView.NODE_ID, "mine")
+        view.content.reload()
+        assertEquals("mine", text(view, SourceView.NODE_ID))
+        view.content.reload(force = true)
+        assertTrue("changed outside" in text(view, SourceView.NODE_ID))
+        assertFalse(view.content.isDirty)
+    }
+
+    @Test
     fun `lines added in the middle of a block found by patterns stay in it, and the blocks below move down`() {
         Fs.writeText(dir.resolve("blocks.txt"), "head\n\nSection A {\n  a1\n}\n\nSection B {\n  b1\n  b2\n  b3\n}\n\nSection C {\n  c1\n}\n")
         val blocks = open(
