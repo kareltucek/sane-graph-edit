@@ -216,7 +216,7 @@ Flags:
 | `1`        | Centre view on selection                                  |
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |
-| `Ctrl+Space` | Same as `Space`, the node shown maximized (below) meanwhile |
+| `Ctrl+Space` | Same as `Space`, the node shown maximized (below) meanwhile; a markdown node is read first (below) |
 
 ### How big a node is: `node-size`
 
@@ -242,6 +242,15 @@ file format's table of content types says which is allowed where:
 | `code-<lang>`  | code, e.g. `code-scala` | highlighted as neovim highlights that file type    |
 | `code`         | code in no named language | as it is                                         |
 | `markdown`     | markdown               | formatted; ` ```mermaid ` and ` ```dot ` blocks are drawn as diagrams |
+
+`Ctrl+Space` on a `markdown` node (Electron client) reads it: formatted,
+over the whole window but a margin. The wheel, `j`/`k`, the arrows,
+`d`/`u`, `PgUp`/`PgDn` and `g`/`G` scroll; `Ctrl`+wheel makes the text
+bigger or smaller and sets it anew for that; `Space` edits it in neovim,
+maximized, about as far down; `Shift+Escape` or `:q` there comes back to
+reading, and `Escape`, `Shift+Escape`, `Ctrl+Space` or a click outside
+goes on to the graph. `Ctrl+Space` in that neovim gives it the node's
+size, and leaving it then goes straight to the graph.
 
 A `terminal` node (Electron client) is not text but a terminal with
 your shell (`$SHELL`) in it, as big as the node; making a node one
@@ -517,12 +526,12 @@ navigation, not data.
 | `Ctrl+S`        | Save — writes to the current file, prompts on first save |
 | `Ctrl+Shift+S`  | Save As — always prompts                               |
 | `:w <path>`     | Save As to `path`: the tab's file from then on         |
-| `F5`            | Reload the current file from disk (asks if unsaved). Undo brings back the graph as it was before the reload |
+| `F5`            | Reload the current file from disk (asks if unsaved). Undo brings back the graph as it was before the reload. In a tab that shows a text file (`sane-graph-edit notes.md`), that file (`:e` too) |
 | `gf`            | Follow the selected node's `link` in this tab: open the file (and focus `:nodeid` if given), or show the directory's file tree |
 | `g<letter>`     | Same for `link-<letter>`, unless `g<letter>` is mapped to something else. Without such a link it reports that and does nothing (it doesn't grab) — except `gx` / `gy` / `gs` / `gg`, which then grab |
 | `gF`            | Same as `gf`, but into a new tab                       |
 | `:browse [dir]` | New tab with a file tree of `dir` (default: working directory), its graphs and markdown files; `gf` on a node opens it. Files are one column right of their directory, subdirectories two; the tree is cut to the depth that fits the window, the last level being `name/ …`. The `help` node above the directory opens the key and command reference; the node below it says that `i` `d` (select all, delete) empties the tab to start a graph: with a node added or deleted, the tab is an untitled graph of yours, to save. Bare `:e` reads the directory again. `:tabnew` is `:browse` of the workspace |
-| `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line); a `.dot` file that is not there yet opens as an empty graph, which `:w` makes |
+| `:e <path>`     | Open a file in a new tab; a directory opens as its file tree (also from the open dialog and the command line); a `.dot` file that is not there yet opens as an empty graph, which `:w` makes; any other text file (also `sane-graph-edit notes.md`) opens as with `Ctrl+Space`: read if markdown, in maximized neovim otherwise |
 | `:file`         | Show the full path of the tab's file (or the browsed directory); with one node selected whose text is kept in a file, that file too, with its lines as they are now |
 | `:cd <dir>`     | Switch the workspace to `dir` (see [Workspaces](#workspaces)); bare `:cd` shows it |
 | `:open-workspace` | New tab with the workspaces that have a session and the graphs open in each; `gf` on a workspace switches to it, on a graph opens it here |

@@ -70,7 +70,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         }
         if (pendingEdit) {
             pendingEdit = false
-            view.g.nodes.firstOrNull { it.attributes.name == SourceView.NODE_ID }?.let { view.startNodeEdit(it, null) }
+            view.g.nodes.firstOrNull { it.attributes.name == SourceView.NODE_ID }?.let { view.startMaximized(it) }
         }
     }
 
@@ -372,7 +372,9 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
     fun reload(force: Boolean = false) {
         val path = currentFile
         val dir = browseDir
-        if (path == null && dir != null) {
+        if (sourceView != null) {
+            reloadSource(force)
+        } else if (path == null && dir != null) {
             if (force || confirmDiscard("reload ${dir.name}")) rebrowse(dir)
         } else if (path == null) {
             shell.alert("Reload", "This tab has no file to reload.", error = false)
@@ -389,6 +391,15 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
                 shell.alert("Reload error", "Could not reload $path:\n${t.message}")
             }
         }
+    }
+
+    /** `:e` in a view of a text file: the file is read again. What is unsaved may be another view's too: it goes only when this view's, and agreed to. */
+    private fun reloadSource(force: Boolean) {
+        val discarded = force || (isDirty && confirmDiscard("reload $title"))
+        if (discarded) FileContent.reload(view)
+        else if (!isDirty) FileContent.refresh(view)
+        if (discarded) dirty(false)
+        view.repaint()
     }
 
     // one more step in the graph's own history: undo brings back what the reload replaced

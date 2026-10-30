@@ -33,6 +33,7 @@ export class MarkdownPictures {
     private readonly ready: Promise<void>;
     private readonly waiting = new Map<number, (answer: Answer) => void>();
     private readonly pictures = new Recent<Picture | null>(MAX_PICTURES);
+    private readonly failures = new Set<string>();
     private nextId = 0;
 
     /** [onArrived] is told when a picture that was asked for is there to be drawn. */
@@ -69,7 +70,7 @@ export class MarkdownPictures {
      * use) and for a text that cannot be made a picture of.
      */
     get(markdown: string, font: string, foreground: string, dark: boolean, maxWidth: number): Picture | null {
-        const key = [font, foreground, dark, maxWidth, markdown].join("\n");
+        const key = this.keyOf(markdown, font, foreground, dark, maxWidth);
         if (!this.pictures.has(key)) {
             this.pictures.set(key, null);
             const id = this.nextId++;
@@ -81,16 +82,30 @@ export class MarkdownPictures {
         return this.pictures.get(key) ?? null;
     }
 
+    /** Whether no picture of this will come, as [get] takes it. */
+    failed(markdown: string, font: string, foreground: string, dark: boolean, maxWidth: number): boolean {
+        return this.failures.has(this.keyOf(markdown, font, foreground, dark, maxWidth));
+    }
+
+    private keyOf(markdown: string, font: string, foreground: string, dark: boolean, maxWidth: number): string {
+        return [font, foreground, dark, maxWidth, markdown].join("\n");
+    }
+
     private arrived(key: string, answer: Answer) {
         const { svg, width, height } = answer;
+        const none = () => {
+            this.failures.add(key);
+            this.onArrived();
+        };
         if (svg !== undefined && width !== undefined && height !== undefined && width > 0 && height > 0) {
             const image = new Image();
             image.onload = () => {
                 this.pictures.set(key, { image, width, height });
                 this.onArrived();
             };
+            image.onerror = none;
             // as an image and never as markup: whatever is in it cannot run
             image.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
-        }
+        } else none();
     }
 }
