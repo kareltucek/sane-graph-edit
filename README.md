@@ -216,7 +216,7 @@ Flags:
 | `1`        | Centre view on selection                                  |
 | `Space`    | Edit the text of the last active node                     |
 | `Shift+Space` | Same, but replace selection with that node first       |
-| `Ctrl+Space` | Same as `Space`, the node shown maximized (below) meanwhile |
+| `Ctrl+Space` | Same as `Space`, the node shown maximized (below) meanwhile; a markdown node is read first (below) |
 
 ### How big a node is: `node-size`
 
@@ -242,6 +242,15 @@ file format's table of content types says which is allowed where:
 | `code-<lang>`  | code, e.g. `code-scala` | highlighted as neovim highlights that file type    |
 | `code`         | code in no named language | as it is                                         |
 | `markdown`     | markdown               | formatted; ` ```mermaid ` and ` ```dot ` blocks are drawn as diagrams |
+
+`Ctrl+Space` on a `markdown` node (Electron client) reads it: formatted,
+over the whole window but a margin. The wheel, `j`/`k`, the arrows,
+`d`/`u`, `PgUp`/`PgDn` and `g`/`G` scroll; `Ctrl`+wheel makes the text
+bigger or smaller and sets it anew for that; `Space` edits it in neovim,
+maximized, about as far down; `Shift+Escape` or `:q` there comes back to
+reading, and `Escape`, `Shift+Escape`, `Ctrl+Space` or a click outside
+goes on to the graph. `Ctrl+Space` in that neovim gives it the node's
+size, and leaving it then goes straight to the graph.
 
 A `terminal` node (Electron client) is not text but a terminal with
 your shell (`$SHELL`) in it, as big as the node; making a node one

@@ -611,7 +611,8 @@ function drawNode(n: SceneNode, grid: client.GridMetrics, scene: Scene, dpr: num
         }
         // only what is in the view
         const seen = { top: -view.offsetY / scale, bottom: (ctx.canvas.height / dpr - view.offsetY) / scale };
-        contentsOf(n, grid).filter((it) => it.top <= seen.bottom && it.top + it.height >= seen.top).forEach((it) => drawContent(it, view, dpr));
+        if (ctx === flat && reading?.id === n.id) drawReading(reading, n, grid, view, dpr);
+        else contentsOf(n, grid).filter((it) => it.top <= seen.bottom && it.top + it.height >= seen.top).forEach((it) => drawContent(it, view, dpr));
         ctx.restore();
     }
     if (n.manual && n.selected && !entered) {
@@ -754,15 +755,16 @@ function textPlace(n: SceneNode, whole: Scene, grid: client.GridMetrics): Place 
 }
 
 /**
- * Open neovim on the node [id]; with [click] (a position in the view) the cursor goes to the character clicked. A [maximized]
- * one is shown as big as the window lets it while it is edited.
+ * Open neovim on the node [id]; with [click] (a position in the view) the cursor goes to the character clicked, or to the
+ * start of line [row]. A [maximized] one is shown as big as the window lets it while it is edited.
  */
-function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, maximized = false) {
+function editNode(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, maximized = false, row = 0) {
+    leaveReading();
     // the click that asks for this also closed the editor that was open; that one tells its text first
     endEdit(view);
     // a terminal node has no text to edit: entering it is going to its shell
     if (lastScene?.nodes.find((it) => it.id === id)?.type === "terminal") enterTerminal(view, id, maximized);
-    else (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click, maximized));
+    else (closing ?? Promise.resolve()).then(() => openEditor(view, grid, id, click, maximized, row));
 }
 
 // --- terminal nodes: a shell in a terminal over the node, started when the node is first entered, running on afterwards ---
@@ -793,9 +795,156 @@ const MIN_MAXIMIZED_LINE_PX = 5;
 /** Pixels of the window left free around a maximized node, as around a node being edited. */
 const MAXIMIZED_MARGIN = 40;
 
-/** The node of [view] that is maximized now: a terminal with the keys, or a node being edited; null when none is. */
+/** The node of [view] that is maximized now: a terminal with the keys, a node being edited, or one being read; null when none is. */
 function maximizedIn(view: client.JsView): string | null {
-    return (inTerminal?.maximized === true && inTerminal.view === view ? inTerminal.id : null) ?? (editing?.maximized === true ? editing.id : null);
+    return (inTerminal?.maximized === true && inTerminal.view === view ? inTerminal.id : null)
+        ?? (editing?.maximized === true ? editing.id : null)
+        ?? (reading?.view === view ? reading.id : null);
+}
+
+// --- reading: a markdown node maximized and formatted, scrolled through; Space edits it, and leaving neovim comes back here ---
+
+/** How high a drawing of a part of what is read is, in pixels of the screen: whole pixels, so that the parts meet exactly. */
+const READ_TILE_PX = 1024;
+/** How long after the zoom or the window last changed the text is set anew for it, which takes a while. */
+const READ_SETTLE_MS = 200;
+/** How many lines a notch of the wheel scrolls. */
+const READ_WHEEL_LINES = 3;
+/** How high a line of formatted text is, in the pixels of its picture ([REFERENCE_FONT_PX]). */
+const READ_LINE_PX = REFERENCE_FONT_PX * 1.2;
+
+/** What the text is set for: how wide its lines may be in the pixels of its picture, and how many pixels of the screen a unit of the graph is. */
+interface ReadSetting {
+    maxWidth: number;
+    scale: number;
+}
+
+interface Reading {
+    view: client.JsView;
+    id: string;
+    /** How far down the top of what is seen is, as a share of all of it: it stays when the text is set anew. */
+    place: number;
+    settled: ReadSetting | null;
+    /** What it is about to be set for, and what will do that. */
+    pending: ReadSetting | null;
+    timer: ReturnType<typeof setTimeout> | undefined;
+    /** The picture being shown, and the [ReadSetting.scale] it was made for; the old one until a new one is there. */
+    shown: { picture: Picture; scale: number } | null;
+    /** How much is seen at once, in the pixels of the picture. */
+    page: number;
+}
+
+let reading: Reading | null = null;
+/** Where the last node read was left: reading it again, or after editing it, starts there. */
+let lastRead: { view: client.JsView; id: string; place: number } | null = null;
+
+function enterReading(view: client.JsView, id: string) {
+    leaveTerminal();
+    const place = lastRead?.view === view && lastRead.id === id ? lastRead.place : 0;
+    reading = { view, id, place, settled: null, pending: null, timer: undefined, shown: null, page: 0 };
+    page.repaint();
+}
+
+function leaveReading() {
+    const was = reading;
+    if (was !== null) {
+        reading = null;
+        clearTimeout(was.timer);
+        lastRead = { view: was.view, id: was.id, place: was.place };
+        leftMaximized(was.id);
+    }
+}
+
+/** Scroll by [pixels] of the picture; how far it may go is seen to when it is drawn ([drawReading]). */
+function readBy(pixels: number) {
+    if (reading?.shown != null) reading.place += pixels / reading.shown.picture.height;
+    page.repaint();
+}
+
+/** A key while reading: all of them are its, as none of what they do in the graph is to happen unseen. */
+function readKey(key: string) {
+    const moves: { [key: string]: (seen: number) => number } = {
+        j: () => READ_LINE_PX,
+        ArrowDown: () => READ_LINE_PX,
+        k: () => -READ_LINE_PX,
+        ArrowUp: () => -READ_LINE_PX,
+        d: (seen) => seen / 2,
+        u: (seen) => -seen / 2,
+        PageDown: (seen) => seen - READ_LINE_PX,
+        PageUp: (seen) => READ_LINE_PX - seen,
+    };
+    const move = moves[key];
+    if (move !== undefined && reading !== null) readBy(move(reading.page));
+    else if (key === "g" && reading !== null) reading.place = 0;
+    else if (key === "G" && reading !== null) reading.place = 1;
+    page.repaint();
+}
+
+/** Edit what is read, maximized, about as far down as it was being read. */
+function editRead(view: client.JsView, grid: client.GridMetrics) {
+    const was = reading;
+    const lines = was === null ? 0 : (view.textToEdit(was.id) ?? "").split("\n").length;
+    leaveReading();
+    if (was !== null) {
+        view.entering(was.id);
+        editNode(view, grid, was.id, null, true, Math.floor(was.place * lines));
+    }
+}
+
+/** What [read] is to be set for is [wanted]: at once the first time, and after that when it has stayed so for a while. */
+function settleReading(read: Reading, wanted: ReadSetting) {
+    const same = (a: ReadSetting | null, b: ReadSetting) => a !== null && a.maxWidth === b.maxWidth && a.scale === b.scale;
+    if (read.settled === null) read.settled = wanted;
+    else if (same(read.settled, wanted)) {
+        clearTimeout(read.timer);
+        read.pending = null;
+    } else if (!same(read.pending, wanted)) {
+        clearTimeout(read.timer);
+        read.pending = wanted;
+        read.timer = setTimeout(() => {
+            read.settled = wanted;
+            read.pending = null;
+            page.repaint();
+        }, READ_SETTLE_MS);
+    }
+}
+
+/**
+ * The formatted text of the node [n] being read, in drawings of a part of it each, kept: what scrolling brings into the view is
+ * drawn once, however long the text. The clip is set. Until a picture made for the zoom is there, the last one is shown bigger or smaller.
+ */
+function drawReading(read: Reading, n: SceneNode, grid: client.GridMetrics, view: View, dpr: number) {
+    const natural = n.fontSize / REFERENCE_FONT_PX;
+    const inset = n.fontSize * 0.5;
+    const scale = view.scale * dpr;
+    settleReading(read, { maxWidth: Math.floor((n.width - 2 * inset) / natural), scale });
+    const text = n.lines.join("\n");
+    const dark = !isLight(n.bg ?? colours().background);
+    const maxWidth = read.settled?.maxWidth ?? 0;
+    const made = markdownPictures.get(text, FONT, inkOf(n), dark, maxWidth);
+    if (made !== null) read.shown = { picture: made, scale: read.settled?.scale ?? scale };
+    const shown = read.shown;
+    if (shown !== null) {
+        const picture = shown.picture;
+        read.page = (n.height - 2 * inset) / natural;
+        read.place = Math.min(read.place, Math.max(0, 1 - read.page / picture.height));
+        read.place = Math.max(0, read.place);
+        // pixels of a drawing for one of the picture, and how much bigger they are shown until the zoom has settled
+        const pixels = natural * shown.scale;
+        const stretch = scale / shown.scale;
+        const left = Math.round(((n.x - n.width / 2 + inset) * view.scale + view.offsetX) * dpr);
+        const top = Math.round(((n.y - n.height / 2 + inset) * view.scale + view.offsetY) * dpr);
+        const wide = Math.ceil(picture.width * pixels);
+        const down = Math.round(read.place * picture.height * pixels);
+        const first = Math.floor(down / READ_TILE_PX);
+        const last = Math.floor(Math.min(down + read.page * pixels, picture.height * pixels - 1) / READ_TILE_PX);
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        Array.from({ length: Math.max(0, last - first + 1) }, (_, i) => first + i).forEach((tile) => {
+            const bitmap = bitmaps.get(`read ${nameOf(picture)} ${pixels} ${tile}`, wide, READ_TILE_PX, 1, (to) =>
+                to.drawImage(picture.image, 0, tile * READ_TILE_PX / pixels, picture.width, READ_TILE_PX / pixels, 0, 0, picture.width * pixels, READ_TILE_PX));
+            ctx.drawImage(bitmap.image, left, top + (tile * READ_TILE_PX - down) * stretch, wide * stretch, READ_TILE_PX * stretch);
+        });
+    } else if (markdownPictures.failed(text, FONT, inkOf(n), dark, maxWidth)) drawContent(textContent(n, grid, null), view, dpr);
 }
 
 /** A maximized node [id] was left: the zoom it was shown at is kept. */
@@ -956,14 +1105,14 @@ function sizeTerminals(view: client.JsView, scene: Scene, grid: client.GridMetri
     });
 }
 
-function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, maximized: boolean) {
+function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, click: { x: number; y: number } | null, maximized: boolean, startRow: number) {
     const n = lastScene?.nodes.find((it) => it.id === id);
     const text = view.textToEdit(id);
     if (n === undefined || lastScene === null || text == null || editing !== null) return;
     const place = textPlace(n, lastScene, grid);
     const bounds = canvas.getBoundingClientRect();
     const lines = text.split("\n");
-    const row = click === null ? 0 : Math.min(lines.length - 1, Math.max(0, Math.floor((bounds.top + click.y - place.top) / place.cellHeight)));
+    const row = Math.min(lines.length - 1, click === null ? startRow : Math.max(0, Math.floor((bounds.top + click.y - place.top) / place.cellHeight)));
     const column = click === null ? 0 : Math.min(Math.max(0, lines[row].length - 1), Math.max(0, Math.floor((bounds.left + click.x - place.left) / place.cellWidth)));
     view.textEditStarted(id);
     if (useGridEditor) {
@@ -983,7 +1132,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
         };
         const editor = GridEditor.open(text, row, column, { background: n.bg ?? colours().background, foreground: inkOf(n) }, filetypeOf(n), insert, {
             text: (now) => view.textTyped(now),
-            exit: () => endEdit(view),
+            exit: () => leaveEditor(view),
             shown: () => page.repaint(),
             drawn: () => page.repaint(),
             line: showEditorLine,
@@ -1005,7 +1154,7 @@ function openEditor(view: client.JsView, grid: client.GridMetrics, id: string, c
             // a node in the palette's colours is edited in them
             n.palette && n.bg !== null && n.fg !== null ? { background: n.bg, foreground: n.fg } : null,
             (now) => view.textTyped(now),
-            () => endEdit(view),
+            () => leaveEditor(view),
             () => page.repaint(),
         );
         editing = { id, editor, maximized };
@@ -1088,18 +1237,24 @@ function inside(view: client.JsView, grid: client.GridMetrics): Inside | null {
     const shell = inTerminal?.view === view ? inTerminal : null;
     const terminal = shell === null ? undefined : terminals.get(view)?.get(shell.id);
     // the one in a terminal of its own takes neither the mouse nor the wheel: it is no grid of cells drawn in the node
-    return editor instanceof GridEditor ? {
+    return reading?.view === view ? {
+        cellAt: (x, y) => inNode(reading?.id, x, y) ? { row: 0, column: 0 } : null,
+        takes: () => true,
+        mouse: () => {},
+        wheel: (direction) => readBy((direction === "up" ? -1 : 1) * READ_WHEEL_LINES * READ_LINE_PX),
+        leave: leaveReading,
+    } : editor instanceof GridEditor ? {
         cellAt: (x, y) => editorCellAt(x, y, grid),
         takes: (button) => button === 0,
         mouse: (action, _button, cell) => editor.mouse(action, cell.row, cell.column),
         wheel: (direction, cell) => editor.wheel(direction, cell.row, cell.column),
-        leave: () => endEdit(view),
+        leave: () => leaveEditor(view),
     } : editor !== undefined ? {
         cellAt: () => null,
         takes: () => false,
         mouse: () => {},
         wheel: null,
-        leave: () => endEdit(view),
+        leave: () => leaveEditor(view),
     } : terminal !== undefined && shell !== null ? {
         cellAt: (x, y) => terminalCellAt(shell.id, terminal, x, y, grid),
         takes: () => true,
@@ -1107,6 +1262,21 @@ function inside(view: client.JsView, grid: client.GridMetrics): Inside | null {
         wheel: (direction, cell) => terminal.wheel(direction, cell.row, cell.column),
         leave: leaveTerminal,
     } : null;
+}
+
+/** Whether the view position x, y is in the node [id] as it was drawn last. */
+function inNode(id: string | undefined, x: number, y: number): boolean {
+    const n = lastScene?.nodes.find((it) => it.id === id);
+    const view = n !== undefined && lastScene !== null ? viewOf(n, lastScene) : null;
+    return n !== undefined && view !== null && Math.abs(x - (n.x * view.scale + view.offsetX)) <= n.width * view.scale / 2 && Math.abs(y - (n.y * view.scale + view.offsetY)) <= n.height * view.scale / 2;
+}
+
+/** The user left the editor: a markdown node that was maximized goes on being read, anything else is back in the graph. */
+function leaveEditor(view: client.JsView) {
+    const was = editing;
+    const markdown = lastScene?.nodes.find((it) => it.id === was?.id)?.type === "markdown";
+    endEdit(view);
+    if (was?.maximized === true && markdown) enterReading(view, was.id);
 }
 
 /** Close the editor, if any; what it holds becomes the node's text. */
@@ -1282,9 +1452,11 @@ function draw(view: client.JsView, grid: client.GridMetrics) {
     }
     if (pickerOpen()) markPickedType(view);
     graphScene = view.scene() as Scene;
+    // another tab is shown, or the node is gone or is no more markdown
+    if (reading !== null && (reading.view !== view || !graphScene.nodes.some((n) => n.id === reading?.id && n.type === "markdown"))) leaveReading();
     const scene = enlarged(view, graphScene, width, height, grid);
     const maximized = maximizedIn(view);
-    const entered = editing?.id ?? (inTerminal?.view === view ? inTerminal.id : null);
+    const entered = editing?.id ?? reading?.id ?? (inTerminal?.view === view ? inTerminal.id : null);
     // In 3D mode the graph is drawn with depth on the canvas below, and this one, clear, has only what is laid over the graph:
     // the node being edited with its editor, a maximized terminal, and the selection box.
     const threeD = view.threeD;
@@ -1432,7 +1604,11 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.repaint = repaint;
     page.editNode = (id, atClick, x, y) => current((view) => editNode(view, grid, id, atClick ? { x, y } : null));
     page.endEdit = () => current((view) => endEdit(view));
-    page.enterMaximized = (id) => current((view) => editNode(view, grid, id, null, true));
+    // a markdown node is read first, and edited from there
+    page.enterMaximized = (id) => current((view) => {
+        if (lastScene?.nodes.find((it) => it.id === id)?.type === "markdown") enterReading(view, id);
+        else editNode(view, grid, id, null, true);
+    });
     page.tabs = () => showTabs(app);
     page.cacheStats = () => cacheStats(grid, app.current()?.threeD ?? false);
     page.room = roomText;
@@ -1462,6 +1638,16 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     // Super and what is pressed with it are the window manager's: nothing here takes them, not the graph, neovim, a shell or the line
     window.addEventListener("keydown", (e) => {
         if (e.metaKey || e.key === "Meta" || e.key === "OS") e.stopImmediatePropagation();
+    }, true);
+    // while reading the keys are all its own
+    window.addEventListener("keydown", (e) => {
+        if (reading !== null) {
+            e.stopImmediatePropagation();
+            e.preventDefault();
+            if (e.key === "Escape" || (e.key === " " && e.ctrlKey)) leaveReading();
+            else if (e.key === " ") current((view) => editRead(view, grid));
+            else readKey(e.key);
+        }
     }, true);
     // before a terminal or neovim has the key: Shift+Escape gives the keys back to the graph, and is not theirs; nor Ctrl+Space
     window.addEventListener("keydown", (e) => {
@@ -1525,6 +1711,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
             else {
                 // a press anywhere else gives the keys back to the graph
                 leaveTerminal();
+                leaveReading();
                 view.pointerDown(x(e), y(e), e.button, e.ctrlKey, e.shiftKey);
             }
         });
