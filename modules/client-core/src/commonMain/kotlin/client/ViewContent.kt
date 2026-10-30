@@ -70,7 +70,7 @@ class ViewContent(private val view: EditorView, private val shell: Shell, privat
         }
         if (pendingEdit) {
             pendingEdit = false
-            view.g.nodes.firstOrNull { it.attributes.name == SourceView.NODE_ID }?.let { view.startNodeEdit(it, null) }
+            view.g.nodes.firstOrNull { it.attributes.name == SourceView.NODE_ID }?.let { view.startMaximized(it) }
         }
     }
 

@@ -1606,7 +1606,7 @@ function start(app: client.JsApp, grid: client.GridMetrics) {
     page.endEdit = () => current((view) => endEdit(view));
     // a markdown node is read first, and edited from there
     page.enterMaximized = (id) => current((view) => {
-        if (lastScene?.nodes.find((it) => it.id === id)?.type === "markdown") enterReading(view, id);
+        if (view.nodeType(id) === "markdown") enterReading(view, id);
         else editNode(view, grid, id, null, true);
     });
     page.tabs = () => showTabs(app);

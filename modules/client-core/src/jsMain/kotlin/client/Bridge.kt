@@ -385,6 +385,9 @@ class JsView internal constructor(
     /** The text the editor of the node [id] opens on: none for the text a new node is given, so that what is typed replaces it. */
     fun textToEdit(id: String): String? = if (hasDefaultText(id)) "" else nodeText(id)
 
+    /** What the text of the node [id] is (`plain`, `code`, `markdown`, `terminal`), also before the first drawing; null when there is no such node. */
+    fun nodeType(id: String): String? = view.g.node(id)?.let { graph_tools.NodeType.of(it).kind.id }
+
     /** The renderer is about to open its editor on the node [id] of itself, not asked by the client: the text is made ready as [EditorView.startNodeEdit] does. */
     fun entering(id: String) {
         view.g.node(id)?.let {

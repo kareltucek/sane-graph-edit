@@ -86,6 +86,22 @@ class ViewContentTest {
     }
 
     @Test
+    fun `a text file opened to be edited starts maximized, once the view is painted`() {
+        dir.resolve("notes.txt").writeText("one\ntwo\n")
+        val maximized = mutableListOf<String>()
+        val renderer = object : Renderer by NoRenderer {
+            override fun startMaximized(nodeId: String) {
+                maximized += nodeId
+            }
+        }
+        val view = EditorView(Graph(), renderer, shell)
+        assertTrue(view.content.showSourceInPlace(FileLink.Target(dir.resolve("notes.txt"), null)))
+        assertEquals(emptyList(), maximized)
+        view.content.painted()
+        assertEquals(view.g.nodes.filter { it.attributes.name == SourceView.NODE_ID }.map { it.id }, maximized)
+    }
+
+    @Test
     fun `a link's type says what it opens -a workspace, a graph as text, or nothing when it is no link's type`() {
         val other = Files.createDirectory(dir.resolve("other"))
         dir.resolve("b.dot").writeText("digraph b {\n  t;\n  u;\n}\n")
